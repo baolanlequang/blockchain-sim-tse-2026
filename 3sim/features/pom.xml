@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.palladiosimulator.blockchainsystems</groupId>
+        <artifactId>parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+    <artifactId>features</artifactId>
+    <packaging>pom</packaging>
+
+    <profiles>
+        <profile>
+            <id>build-all</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <modules>
+                <module>org.palladiosimulator.blockchainsystems.feature.bscm</module>
+                <module>org.palladiosimulator.blockchainsystems.feature.core</module>
+                <module>org.palladiosimulator.blockchainsystems.feature.kotlin-deps</module>
+                <module>org.palladiosimulator.blockchainsystems.feature.threesim</module>
+            </modules>
+        </profile>
+        <profile>
+            <id>build-kotlin-deps-feature</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <modules>
+                <module>org.palladiosimulator.blockchainsystems.feature.kotlin-deps</module>
+            </modules>
+        </profile>
+        <profile>
+            <id>build-model-feature</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <modules>
+                <module>org.palladiosimulator.blockchainsystems.feature.bscm</module>
+            </modules>
+        </profile>
+        <profile>
+            <id>build-core-feature</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <modules>
+                <module>org.palladiosimulator.blockchainsystems.feature.core</module>
+            </modules>
+        </profile>
+        <profile>
+            <id>build-threesim-feature</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <modules>
+                <module>org.palladiosimulator.blockchainsystems.feature.threesim</module>
+            </modules>
+        </profile>
+    </profiles>
+</project>

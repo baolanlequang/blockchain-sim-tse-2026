@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<genmodel:GenModel xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" xmlns:genmodel="http://www.eclipse.org/emf/2002/GenModel"
+    modelDirectory="/org.palladiosimulator.blockchainsystems.bscm/src-gen"
+    creationIcons="false" editDirectory="/org.palladiosimulator.blockchainsystems.bscm.edit/src-gen"
+    editorDirectory="/org.palladiosimulator.blockchainsystems.bscm.editor/src-gen"
+    modelPluginID="org.palladiosimulator.blockchainsystems.bscm" modelName="Bscm"
+    rootExtendsClass="org.eclipse.emf.ecore.impl.MinimalEObjectImpl$Container" codeFormatting="true"
+    importerID="org.eclipse.emf.importer.ecore" complianceLevel="17.0" copyrightFields="false"
+    usedGenPackages="../../org.palladiosimulator.pcm/model/pcm.genmodel#//pcm platform:/plugin/de.uka.ipd.sdq.identifier/model/identifier.genmodel#//identifier platform:/plugin/org.eclipse.emf.ecore/model/Ecore.genmodel#//ecore platform:/plugin/de.uka.ipd.sdq.stoex/model/stoex.genmodel#//stoex platform:/plugin/de.uka.ipd.sdq.units/model/Units.genmodel#//units platform:/plugin/de.uka.ipd.sdq.probfunction/model/ProbabilityFunction.genmodel#//probfunction"
+    importOrganizing="true">
+  <foreignModel>bscm.ecore</foreignModel>
+  <testsDirectory xsi:nil="true"/>
+  <genPackages prefix="Bscm" basePackage="org.palladiosimulator.blockchainsystems"
+      disposableProviderFactory="true" ecorePackage="bscm.ecore#/">
+    <nestedGenPackages prefix="Nodeallocation" basePackage="org.palladiosimulator.blockchainsystems.bscm"
+        disposableProviderFactory="true" ecorePackage="bscm.ecore#//nodeallocation">
+      <genClasses ecoreClass="bscm.ecore#//nodeallocation/NodeAllocation">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//nodeallocation/NodeAllocation/AllocationContexts"/>
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//nodeallocation/NodeAllocation/NodeAllocationEnvironment"/>
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//nodeallocation/NodeAllocation/NodeSystem"/>
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//nodeallocation/NodeAllocation/GeographicalRegion"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//nodeallocation/NodeAllocationRepository">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//nodeallocation/NodeAllocationRepository/NodeAllocations"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//nodeallocation/NodeAllocationContext">
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//nodeallocation/NodeAllocationContext/AssemblyContext"/>
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//nodeallocation/NodeAllocationContext/ResourceContainer"/>
+      </genClasses>
+    </nestedGenPackages>
+    <nestedGenPackages prefix="Nodesystem" basePackage="org.palladiosimulator.blockchainsystems.bscm"
+        disposableProviderFactory="true" ecorePackage="bscm.ecore#//nodesystem">
+      <genEnums typeSafeEnumCompatible="false" ecoreEnum="bscm.ecore#//nodesystem/NodeBehavior">
+        <genEnumLiterals ecoreEnumLiteral="bscm.ecore#//nodesystem/NodeBehavior/Honest"/>
+        <genEnumLiterals ecoreEnumLiteral="bscm.ecore#//nodesystem/NodeBehavior/Malicious"/>
+      </genEnums>
+      <genClasses ecoreClass="bscm.ecore#//nodesystem/BlockchainSystemNodeSystem">
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//nodesystem/BlockchainSystemNodeSystem/MiningProcessAssembly"/>
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//nodesystem/BlockchainSystemNodeSystem/BlockValidatorAssembly"/>
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//nodesystem/BlockchainSystemNodeSystem/AssemblyContexts"/>
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//nodesystem/BlockchainSystemNodeSystem/Behavior"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//nodesystem/BlockchainSystemNodeAssemblyContext">
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//nodesystem/BlockchainSystemNodeAssemblyContext/EncapsulatedComponent"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//nodesystem/NodeBehaviorSpecification">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EAttribute bscm.ecore#//nodesystem/NodeBehaviorSpecification/Behavior"/>
+      </genClasses>
+    </nestedGenPackages>
+    <nestedGenPackages prefix="BlockchainsystemComponentRepository" basePackage="org.palladiosimulator.blockchainsystems.bscm"
+        disposableProviderFactory="true" ecorePackage="bscm.ecore#//blockchainsystemComponentRepository">
+      <genClasses image="false" ecoreClass="bscm.ecore#//blockchainsystemComponentRepository/BlockchainSystemNodeComponent"/>
+      <genClasses ecoreClass="bscm.ecore#//blockchainsystemComponentRepository/BlockchainSystemNodeComponentRepository">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//blockchainsystemComponentRepository/BlockchainSystemNodeComponentRepository/Components"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//blockchainsystemComponentRepository/BlockValidatorComponent">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//blockchainsystemComponentRepository/BlockValidatorComponent/ValidationDuration"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//blockchainsystemComponentRepository/MiningProcessComponent">
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystemComponentRepository/MiningProcessComponent/IsMiningProcessEnabled"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//blockchainsystemComponentRepository/BlockValiationDurationSpecification">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//blockchainsystemComponentRepository/BlockValiationDurationSpecification/Values"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//blockchainsystemComponentRepository/BlockValidationDurationValue">
+        <genFeatures documentation="Unit: ms" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystemComponentRepository/BlockValidationDurationValue/Duration"/>
+        <genFeatures documentation="Unit: 0.0 - 1.0" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystemComponentRepository/BlockValidationDurationValue/Probability"/>
+      </genClasses>
+    </nestedGenPackages>
+    <nestedGenPackages prefix="P2pnetwork" basePackage="org.palladiosimulator.blockchainsystems.bscm"
+        disposableProviderFactory="true" ecorePackage="bscm.ecore#//p2pnetwork">
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/P2PNetwork">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/P2PNetwork/Topology"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/NetworkTopology"/>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/ExplicitNetworkTopology">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/ExplicitNetworkTopology/Nodes"/>
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/ExplicitNetworkTopology/Links"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/ConstraintNetworkTopology"/>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/Node">
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/Node/Allocation"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/Link">
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/Link/Allocation"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/ConnectedSubgraphsNetworkTopology">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/ConnectedSubgraphsNetworkTopology/Subgraphs"/>
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/ConnectedSubgraphsNetworkTopology/SubgraphLinks"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/SubgraphSpecification">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/SubgraphSpecification/NodeTemplates"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//p2pnetwork/SubgraphSpecification/Connectivity"/>
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/SubgraphSpecification/LinkAllocation"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/SubgraphLink">
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/SubgraphLink/Allocation"/>
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/SubgraphLink/ConnectedSubgraphs"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/SubgraphNodeTemplate">
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//p2pnetwork/SubgraphNodeTemplate/NumberOfNodeOccurences"/>
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/SubgraphNodeTemplate/Allocation"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//p2pnetwork/SubgraphNodeTemplate/IsSubgraphProxy"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/BidirectionalLink">
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/BidirectionalLink/ConnectedNodes"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/UnidirectionalLink">
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/UnidirectionalLink/FromNode"/>
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/UnidirectionalLink/ToNode"/>
+      </genClasses>
+    </nestedGenPackages>
+    <nestedGenPackages prefix="Blockchainsystem" basePackage="org.palladiosimulator.blockchainsystems.bscm"
+        disposableProviderFactory="true" ecorePackage="bscm.ecore#//blockchainsystem">
+      <genClasses ecoreClass="bscm.ecore#//blockchainsystem/BlockchainSystem">
+        <genFeatures createChild="false" ecoreFeature="ecore:EReference bscm.ecore#//blockchainsystem/BlockchainSystem/Network"/>
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//blockchainsystem/BlockchainSystem/Specification"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EReference bscm.ecore#//blockchainsystem/BlockchainSystem/TransactionsSpecification"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EReference bscm.ecore#//blockchainsystem/BlockchainSystem/GeographicalRegionsSpecification"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//blockchainsystem/BlockchainSystemSpecification">
+        <genFeatures documentation="Unit: ms" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/MeanBlockTime"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/NumOfRequiredSecurityConfirmations"/>
+        <genFeatures documentation="Unit: Byte" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/MaxBlockSize"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/BlockReward"/>
+      </genClasses>
+    </nestedGenPackages>
+    <nestedGenPackages prefix="Nodeenvironment" basePackage="org.palladiosimulator.blockchainsystems.bscm"
+        disposableProviderFactory="true" ecorePackage="bscm.ecore#//nodeenvironment">
+      <genClasses ecoreClass="bscm.ecore#//nodeenvironment/NodeEnvironment">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//nodeenvironment/NodeEnvironment/ResourceContainers"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//nodeenvironment/NodeResourceContainer">
+        <genFeatures documentation="Unit: MH/s" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//nodeenvironment/NodeResourceContainer/ResourcePower"/>
+      </genClasses>
+    </nestedGenPackages>
+    <nestedGenPackages prefix="Geographicalregions" disposableProviderFactory="true"
+        ecorePackage="bscm.ecore#//geographicalregions">
+      <genClasses ecoreClass="bscm.ecore#//geographicalregions/GeographicalRegionsSpecification">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//geographicalregions/GeographicalRegionsSpecification/Regions"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//geographicalregions/GeographicalRegion">
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//geographicalregions/GeographicalRegion/RegionName"/>
+      </genClasses>
+    </nestedGenPackages>
+    <nestedGenPackages prefix="Linkallocation" disposableProviderFactory="true" ecorePackage="bscm.ecore#//linkallocation">
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/LinkAllocationRepository">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//linkallocation/LinkAllocationRepository/LinkAllocations"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/LinkAllocation">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//linkallocation/LinkAllocation/latencySpecification"/>
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//linkallocation/LinkAllocation/throughputSpecification"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/LinkLatencySpecification"/>
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/DynamicLinkLatencySpecificationValue">
+        <genFeatures documentation="Unit: ms" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/DynamicLinkLatencySpecificationValue/Latency"/>
+        <genFeatures documentation="Unit: 0.0 - 1.0" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/DynamicLinkLatencySpecificationValue/Probability"/>
+        <genFeatures documentation="Unit: ms" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/DynamicLinkLatencySpecificationValue/Duration"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/LinkThroughputSpecification"/>
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/DynamicLinkThroughputSpecificationValue">
+        <genFeatures documentation="Unit: Bit per Second (bps)" createChild="false"
+            ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/DynamicLinkThroughputSpecificationValue/Throughput"/>
+        <genFeatures documentation="Unit: 0.0 - 1.0" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/DynamicLinkThroughputSpecificationValue/Probability"/>
+        <genFeatures documentation="Unit: ms" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/DynamicLinkThroughputSpecificationValue/Duration"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/DynamicLinkLatencySpecification">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//linkallocation/DynamicLinkLatencySpecification/Values"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/DynamicLinkThroughputSpecification">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//linkallocation/DynamicLinkThroughputSpecification/Values"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/StaticLinkLatencySpecification">
+        <genFeatures documentation="Unit: ms" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/StaticLinkLatencySpecification/Latency"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/StaticLinkThroughputSpecification">
+        <genFeatures documentation="Unit: Bit per Second (bps)" createChild="false"
+            ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/StaticLinkThroughputSpecification/Throughput"/>
+      </genClasses>
+    </nestedGenPackages>
+    <nestedGenPackages prefix="Transactions" disposableProviderFactory="true" ecorePackage="bscm.ecore#//transactions">
+      <genClasses ecoreClass="bscm.ecore#//transactions/TransactionsSpecification">
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//transactions/TransactionsSpecification/MeanTransactionCreationInterval"/>
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//transactions/TransactionsSpecification/TransactionPropertiesSpecification"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//transactions/TransactionPropertiesSpecification">
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//transactions/TransactionPropertiesSpecification/Values"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//transactions/TransactionPropertiesSpecificationValue">
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//transactions/TransactionPropertiesSpecificationValue/Size"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//transactions/TransactionPropertiesSpecificationValue/Fee"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//transactions/TransactionPropertiesSpecificationValue/Probability"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//transactions/TransactionPropertiesSpecificationValue/Amount"/>
+      </genClasses>
+    </nestedGenPackages>
+  </genPackages>
+</genmodel:GenModel>
