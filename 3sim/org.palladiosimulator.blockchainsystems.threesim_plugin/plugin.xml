@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+    <extension
+            point="org.eclipse.debug.core.launchConfigurationTypes">
+        <launchConfigurationType
+                name="3SIM Simulation"
+                delegate="org.palladiosimulator.blockchainsystems.threesim_plugin.ThreesimPluginLaunch"
+                modes="run, debug"
+                id="org.palladiosimulator.blockchainsystems.threesim_plugin.PluginLaunchConfigurationType">
+        </launchConfigurationType>
+    </extension>
+
+    <extension
+            point="org.eclipse.ui.views">
+        <view
+                name="3SIM Results Explorer"
+                class="org.palladiosimulator.blockchainsystems.threesim_plugin.ThreesimSimulationResultsExplorer"
+                id="org.palladiosimulator.blockchainsystems.threesim_plugin.ThreesimSimulationResultsExplorer">
+        </view>
+    </extension>
+
+    <extension
+            point="org.eclipse.debug.ui.launchConfigurationTabGroups">
+        <launchConfigurationTabGroup
+                class="org.palladiosimulator.blockchainsystems.threesim_plugin.ThreesimTabGroup"
+                id="org.palladiosimulator.blockchainsystems.threesim_plugin.ConfigurationTabGroups"
+                type="org.palladiosimulator.blockchainsystems.threesim_plugin.PluginLaunchConfigurationType">
+        </launchConfigurationTabGroup>
+    </extension>
+
+    <extension
+            point="org.eclipse.debug.ui.launchConfigurationTypeImages">
+        <launchConfigurationTypeImage
+                id="org.palladiosimulator.blockchainsystems.threesim_plugin.ConfigurationTabGroupsImage"
+                configTypeID="org.palladiosimulator.blockchainsystems.threesim_plugin.PluginLaunchConfigurationType"
+                icon="icons/block.png">
+        </launchConfigurationTypeImage>
+    </extension>
+</plugin>
