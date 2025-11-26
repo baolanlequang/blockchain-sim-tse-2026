@@ -1,0 +1,3 @@
+package org.palladiosimulator.blockchainsystems.core.propagation
+
+interface Propagatable
