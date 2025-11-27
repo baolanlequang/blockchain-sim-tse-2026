@@ -197,13 +197,22 @@ public interface BlockchainsystemPackage extends EPackage {
 	int BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD = EntityPackage.ENTITY_FEATURE_COUNT + 3;
 
 	/**
+	 * The feature id for the '<em><b>Block Validation Rule</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE = EntityPackage.ENTITY_FEATURE_COUNT + 4;
+
+	/**
 	 * The number of structural features of the '<em>Blockchain System Specification</em>' class.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
 	 * @generated
 	 * @ordered
 	 */
-	int BLOCKCHAIN_SYSTEM_SPECIFICATION_FEATURE_COUNT = EntityPackage.ENTITY_FEATURE_COUNT + 4;
+	int BLOCKCHAIN_SYSTEM_SPECIFICATION_FEATURE_COUNT = EntityPackage.ENTITY_FEATURE_COUNT + 5;
 
 	/**
 	 * Returns the meta object for class '{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystem <em>Blockchain System</em>}'.
@@ -312,6 +321,17 @@ public interface BlockchainsystemPackage extends EPackage {
 	 * @generated
 	 */
 	EAttribute getBlockchainSystemSpecification_BlockReward();
+
+	/**
+	 * Returns the meta object for the attribute '{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getBlockValidationRule <em>Block Validation Rule</em>}'.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the meta object for the attribute '<em>Block Validation Rule</em>'.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getBlockValidationRule()
+	 * @see #getBlockchainSystemSpecification()
+	 * @generated
+	 */
+	EAttribute getBlockchainSystemSpecification_BlockValidationRule();
 
 	/**
 	 * Returns the factory that creates the instances of the model.
@@ -424,6 +444,15 @@ public interface BlockchainsystemPackage extends EPackage {
 		 */
 		EAttribute BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD = eINSTANCE
 				.getBlockchainSystemSpecification_BlockReward();
+
+		/**
+		 * The meta object literal for the '<em><b>Block Validation Rule</b></em>' attribute feature.
+		 * <!-- begin-user-doc -->
+		 * <!-- end-user-doc -->
+		 * @generated
+		 */
+		EAttribute BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE = eINSTANCE
+				.getBlockchainSystemSpecification_BlockValidationRule();
 
 	}
 
