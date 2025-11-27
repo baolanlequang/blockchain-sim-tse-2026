@@ -25,6 +25,7 @@ import org.palladiosimulator.pcm.core.entity.impl.EntityImpl;
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.impl.BlockchainSystemSpecificationImpl#getNumOfRequiredSecurityConfirmations <em>Num Of Required Security Confirmations</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.impl.BlockchainSystemSpecificationImpl#getMaxBlockSize <em>Max Block Size</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.impl.BlockchainSystemSpecificationImpl#getBlockReward <em>Block Reward</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.impl.BlockchainSystemSpecificationImpl#getBlockValidationRule <em>Block Validation Rule</em>}</li>
  * </ul>
  *
  * @generated
@@ -109,6 +110,26 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 	 * @ordered
 	 */
 	protected double blockReward = BLOCK_REWARD_EDEFAULT;
+
+	/**
+	 * The default value of the '{@link #getBlockValidationRule() <em>Block Validation Rule</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #getBlockValidationRule()
+	 * @generated
+	 * @ordered
+	 */
+	protected static final double BLOCK_VALIDATION_RULE_EDEFAULT = 0.0;
+
+	/**
+	 * The cached value of the '{@link #getBlockValidationRule() <em>Block Validation Rule</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #getBlockValidationRule()
+	 * @generated
+	 * @ordered
+	 */
+	protected double blockValidationRule = BLOCK_VALIDATION_RULE_EDEFAULT;
 
 	/**
 	 * <!-- begin-user-doc -->
@@ -235,6 +256,31 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 	 * @generated
 	 */
 	@Override
+	public double getBlockValidationRule() {
+		return blockValidationRule;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public void setBlockValidationRule(double newBlockValidationRule) {
+		double oldBlockValidationRule = blockValidationRule;
+		blockValidationRule = newBlockValidationRule;
+		if (eNotificationRequired())
+			eNotify(new ENotificationImpl(this, Notification.SET,
+					BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE,
+					oldBlockValidationRule, blockValidationRule));
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
 	public Object eGet(int featureID, boolean resolve, boolean coreType) {
 		switch (featureID) {
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__MEAN_BLOCK_TIME:
@@ -245,6 +291,8 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 			return getMaxBlockSize();
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD:
 			return getBlockReward();
+		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE:
+			return getBlockValidationRule();
 		}
 		return super.eGet(featureID, resolve, coreType);
 	}
@@ -268,6 +316,9 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 			return;
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD:
 			setBlockReward((Double) newValue);
+			return;
+		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE:
+			setBlockValidationRule((Double) newValue);
 			return;
 		}
 		super.eSet(featureID, newValue);
@@ -293,6 +344,9 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD:
 			setBlockReward(BLOCK_REWARD_EDEFAULT);
 			return;
+		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE:
+			setBlockValidationRule(BLOCK_VALIDATION_RULE_EDEFAULT);
+			return;
 		}
 		super.eUnset(featureID);
 	}
@@ -313,6 +367,8 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 			return maxBlockSize != MAX_BLOCK_SIZE_EDEFAULT;
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD:
 			return blockReward != BLOCK_REWARD_EDEFAULT;
+		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE:
+			return blockValidationRule != BLOCK_VALIDATION_RULE_EDEFAULT;
 		}
 		return super.eIsSet(featureID);
 	}
@@ -336,6 +392,8 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 		result.append(maxBlockSize);
 		result.append(", BlockReward: ");
 		result.append(blockReward);
+		result.append(", BlockValidationRule: ");
+		result.append(blockValidationRule);
 		result.append(')');
 		return result.toString();
 	}

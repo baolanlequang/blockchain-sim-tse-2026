@@ -17,6 +17,7 @@ import org.palladiosimulator.pcm.core.entity.Entity;
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getNumOfRequiredSecurityConfirmations <em>Num Of Required Security Confirmations</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getMaxBlockSize <em>Max Block Size</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getBlockReward <em>Block Reward</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getBlockValidationRule <em>Block Validation Rule</em>}</li>
  * </ul>
  *
  * @see org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainsystemPackage#getBlockchainSystemSpecification()
@@ -117,5 +118,27 @@ public interface BlockchainSystemSpecification extends Entity {
 	 * @generated
 	 */
 	void setBlockReward(double value);
+
+	/**
+	 * Returns the value of the '<em><b>Block Validation Rule</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the value of the '<em>Block Validation Rule</em>' attribute.
+	 * @see #setBlockValidationRule(double)
+	 * @see org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainsystemPackage#getBlockchainSystemSpecification_BlockValidationRule()
+	 * @model required="true"
+	 * @generated
+	 */
+	double getBlockValidationRule();
+
+	/**
+	 * Sets the value of the '{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getBlockValidationRule <em>Block Validation Rule</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @param value the new value of the '<em>Block Validation Rule</em>' attribute.
+	 * @see #getBlockValidationRule()
+	 * @generated
+	 */
+	void setBlockValidationRule(double value);
 
 } // BlockchainSystemSpecification
