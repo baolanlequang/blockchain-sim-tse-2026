@@ -7,6 +7,8 @@ import org.eclipse.emf.ecore.plugin.EcorePlugin;
 import tools.mdsd.library.standalone.initialization.StandaloneInitializationException;
 import tools.mdsd.library.standalone.initialization.StandaloneInitializerBuilder;
 
+import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.*;
+
 public class BlockchainTrilemmaStandalone {
 	private final Logger logger = Logger.getLogger(BlockchainTrilemmaStandalone.class);
 	
@@ -35,6 +37,8 @@ public class BlockchainTrilemmaStandalone {
                 .init();
 
             logger.info("Successfully initialized standalone environment.");
+            
+            getSimulationParametersFromConfiguration();
             return true;
 
         } catch (StandaloneInitializationException e) {
@@ -43,4 +47,9 @@ public class BlockchainTrilemmaStandalone {
             return false;
         }
     }
+	
+	private SimulationParameters getSimulationParametersFromConfiguration() {
+		System.out.println("getSimulationParametersFromConfiguration");
+		
+	}
 }
