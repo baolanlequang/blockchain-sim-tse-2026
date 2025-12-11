@@ -7,7 +7,7 @@ public class TrilemmaSimulator {
 		BlockchainTrilemmaStandalone simulator = new BlockchainTrilemmaStandalone("", Activator.class);
 		if (simulator.initAnalysis()) {
 			System.out.println("Success initialize simulator");
-
+			simulator.runSimulation();
 
 		} else {
 			System.out.println("Unable to initialize simulator");

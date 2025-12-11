@@ -7,7 +7,9 @@ import org.eclipse.emf.ecore.plugin.EcorePlugin;
 import tools.mdsd.library.standalone.initialization.StandaloneInitializationException;
 import tools.mdsd.library.standalone.initialization.StandaloneInitializerBuilder;
 
-import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.*;
+import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationParameters;
+import org.palladiosimulator.blockchainsystems.core.simulation.SimulationType;
+import org.palladiosimulator.blockchainsystems.core.simulation.SingleSimulationParameters;
 
 public class BlockchainTrilemmaStandalone {
 	private final Logger logger = Logger.getLogger(BlockchainTrilemmaStandalone.class);
@@ -26,7 +28,24 @@ public class BlockchainTrilemmaStandalone {
 		if (!initStandalone()) {
             return false;
 		}
+		
 		return true;
+	}
+	
+	public void runSimulation() {
+		var simulationParameters = getSimulationParametersFromConfiguration();
+		
+//		var simulationTypeName = "";
+//		switch(simulationParameters.getSimulationType()) {
+//			case SimulationType.MonteCarlo:
+//				simulationTypeName = "Monte-Carlo";
+//				break;
+//			default:
+//				simulationTypeName = "Single";
+//		}
+//		
+		var simulationFactory = new TrilemmaSimulationFactory(simulationParameters);
+		simulationFactory.run();
 	}
 	
 	private boolean initStandalone() {
@@ -38,7 +57,6 @@ public class BlockchainTrilemmaStandalone {
 
             logger.info("Successfully initialized standalone environment.");
             
-            getSimulationParametersFromConfiguration();
             return true;
 
         } catch (StandaloneInitializationException e) {
@@ -50,6 +68,15 @@ public class BlockchainTrilemmaStandalone {
 	
 	private SimulationParameters getSimulationParametersFromConfiguration() {
 		System.out.println("getSimulationParametersFromConfiguration");
+//		var simulationType = SimulationType.Single; //TODO default need to be changed
+		
+		var maxAllowedBlockchainLength = 100; //TODO default need to be changed
+		var blockchainSystemModelFilePath = "/Users/lanle/Documents/Working/Uni_Ulm/PhD/blockchain-sim-tse-2026/trilemma/org.palladiosimulator.blockchainsystems.trilemma/testmodels/My.blockchainsystem";  //TODO default need to be changed
+		
+		var singleSimulation = new SingleSimulationParameters(maxAllowedBlockchainLength, blockchainSystemModelFilePath);
+		
+		
+		return singleSimulation;
 		
 	}
 }
