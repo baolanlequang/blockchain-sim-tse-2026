@@ -4,7 +4,7 @@ public class TrilemmaSimulator {
 
 	public static void main(String[] args) {
 		// TODO Implementation
-		BlockchainTrilemmaStandalone simulator = new BlockchainTrilemmaStandalone("", Activator.class);
+		BlockchainTrilemmaStandalone simulator = new BlockchainTrilemmaStandalone("org.palladiosimulator.blockchainsystems.trilemma", Activator.class);
 		if (simulator.initAnalysis()) {
 			System.out.println("Success initialize simulator");
 			simulator.runSimulation();

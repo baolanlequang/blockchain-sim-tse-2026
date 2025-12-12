@@ -6,6 +6,7 @@ import org.eclipse.emf.ecore.plugin.EcorePlugin;
 
 import tools.mdsd.library.standalone.initialization.StandaloneInitializationException;
 import tools.mdsd.library.standalone.initialization.StandaloneInitializerBuilder;
+import tools.mdsd.library.standalone.initialization.emfprofiles.EMFProfileInitializationTask;
 
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.SimulationType;
@@ -14,7 +15,7 @@ import org.palladiosimulator.blockchainsystems.core.simulation.SingleSimulationP
 public class BlockchainTrilemmaStandalone {
 	private final Logger logger = Logger.getLogger(BlockchainTrilemmaStandalone.class);
 	
-	private String modelProjectName = "";
+	private String modelProjectName = "org.palladiosimulator.blockchainsystems.trilemma";
     private Class<? extends Plugin> modelProjectActivator;
 	
 	public BlockchainTrilemmaStandalone(String modelProjectName,
@@ -45,7 +46,9 @@ public class BlockchainTrilemmaStandalone {
 //		}
 //		
 		var simulationFactory = new TrilemmaSimulationFactory(simulationParameters);
-		simulationFactory.run();
+		System.out.println("imulationFactory.run");
+		var result = simulationFactory.run();
+		System.out.println("result: " + result);
 	}
 	
 	private boolean initStandalone() {
@@ -70,7 +73,7 @@ public class BlockchainTrilemmaStandalone {
 		System.out.println("getSimulationParametersFromConfiguration");
 //		var simulationType = SimulationType.Single; //TODO default need to be changed
 		
-		var maxAllowedBlockchainLength = 100; //TODO default need to be changed
+		var maxAllowedBlockchainLength = 0; //TODO default need to be changed
 		var blockchainSystemModelFilePath = "/Users/lanle/Documents/Working/Uni_Ulm/PhD/blockchain-sim-tse-2026/trilemma/org.palladiosimulator.blockchainsystems.trilemma/testmodels/My.blockchainsystem";  //TODO default need to be changed
 		
 		var singleSimulation = new SingleSimulationParameters(maxAllowedBlockchainLength, blockchainSystemModelFilePath);
