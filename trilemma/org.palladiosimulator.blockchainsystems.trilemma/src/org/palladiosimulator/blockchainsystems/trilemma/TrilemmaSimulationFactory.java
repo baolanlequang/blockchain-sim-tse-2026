@@ -41,10 +41,10 @@ public class TrilemmaSimulationFactory implements Simulation {
 	}
 	
 	private ThreesimSimulationParameters getThreesimSimulationParametersFromConfiguration() {
-		final var failureThroughputThreshold = 0.0; // TODO need to be implement
-		final var shannonEntropyK = 0.0;
-		final var nakamotoCoefficientThreshold = 0.0;
-		final var reliabilityObservationTimespan = 0.0;
+		final var failureThroughputThreshold = 1.0; // TODO need to be implement
+		final var shannonEntropyK = 1.0;
+		final var nakamotoCoefficientThreshold = 50.0;
+		final var reliabilityObservationTimespan = 0.000277778; // 1 second
 		var threesimSimulationParameters = new ThreesimSimulationParameters(
 				failureThroughputThreshold, shannonEntropyK,
 				nakamotoCoefficientThreshold, reliabilityObservationTimespan);
@@ -54,7 +54,6 @@ public class TrilemmaSimulationFactory implements Simulation {
 	private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(SimulationParameters simulationParameters) {
 		final var designModelLoader = new BlockchainSystemModelLoader();
 		final var designBlockchainSystem = designModelLoader.load(simulationParameters.getBlockchainSystemModelFilePath());
-		System.out.println(designBlockchainSystem.getEntityName());
 		final var networkTopology = designBlockchainSystem.getNetwork().getTopology();
 		
 		if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) { 

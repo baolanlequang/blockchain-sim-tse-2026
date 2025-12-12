@@ -1,0 +1,37 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: %pluginName
+Bundle-SymbolicName: org.palladiosimulator.blockchainsystems.bscm.editor
+ ;singleton:=true
+Automatic-Module-Name: org.palladiosimulator.blockchainsystems.bscm.edit
+ or
+Bundle-Version: 0.0.1.202512121452
+Bundle-ClassPath: .
+Bundle-Activator: org.palladiosimulator.blockchainsystems.bscm.nodealloc
+ ation.presentation.BscmEditorPlugin$Implementation
+Bundle-Vendor: %providerName
+Bundle-Localization: plugin
+Export-Package: org.palladiosimulator.blockchainsystems.bscm.blockchains
+ ystem.presentation,org.palladiosimulator.blockchainsystems.bscm.blockch
+ ainsystemComponentRepository.presentation,org.palladiosimulator.blockch
+ ainsystems.bscm.geographicalregions.presentation,org.palladiosimulator.
+ blockchainsystems.bscm.linkallocation.presentation,org.palladiosimulato
+ r.blockchainsystems.bscm.nodeallocation.presentation,org.palladiosimula
+ tor.blockchainsystems.bscm.nodeenvironment.presentation,org.palladiosim
+ ulator.blockchainsystems.bscm.nodesystem.presentation,org.palladiosimul
+ ator.blockchainsystems.bscm.p2pnetwork.presentation,org.palladiosimulat
+ or.blockchainsystems.bscm.transactions.presentation
+Require-Bundle: org.eclipse.core.runtime,org.eclipse.core.resources;visi
+ bility:=reexport,org.palladiosimulator.blockchainsystems.bscm.edit;visi
+ bility:=reexport,org.eclipse.emf.ecore.xmi;visibility:=reexport,org.ecl
+ ipse.emf.edit.ui;visibility:=reexport,org.eclipse.ui.ide;visibility:=re
+ export,org.eclipse.emf.ecore.edit;visibility:=reexport,de.uka.ipd.sdq.i
+ dentifier.edit;visibility:=reexport,org.palladiosimulator.pcm.edit;visi
+ bility:=reexport,de.uka.ipd.sdq.probfunction.edit;visibility:=reexport,
+ de.uka.ipd.sdq.stoex.edit;visibility:=reexport,de.uka.ipd.sdq.units.edi
+ t;visibility:=reexport
+Bundle-ActivationPolicy: lazy
+Bundle-License: The Apache License, Version 2.0;link="http://www.apache.
+ org/licenses/LICENSE-2.0.txt"
+Require-Capability: osgi.ee;filter:="(&(osgi.ee=JavaSE)(version=17))"
+
