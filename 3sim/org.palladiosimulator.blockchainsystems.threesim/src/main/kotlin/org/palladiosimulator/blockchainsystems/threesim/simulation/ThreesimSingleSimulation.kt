@@ -20,16 +20,12 @@ class ThreesimSingleSimulation(
   private val threesimSimulationParameters: ThreesimSimulationParameters
 ) : SingleSimulation {
   override fun run(): SingleSimulationResult {
-    println("ThreesimSingleSimulation run")
     val result = ThreesimSimulationRound(
       blockchainSystemFactory,
       logOutputProvider?.logOutputs,
       maxAllowedBlockchainLength,
       threesimSimulationParameters
     ).run();
-
-    println("simulation reuslt")
-    println(result)
 
     return ThreesimSingleSimulationResult(
       simulationParameters,

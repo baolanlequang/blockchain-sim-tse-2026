@@ -164,7 +164,6 @@ class ThreesimSimulationMonitor(
   }
 
   override fun shouldTerminate(): Boolean {
-    print("maxBlockchainLengthCondition " + maxBlockchainLengthCondition)
     return maxBlockchainLengthCondition.hasLengthExceeded()
   }
 

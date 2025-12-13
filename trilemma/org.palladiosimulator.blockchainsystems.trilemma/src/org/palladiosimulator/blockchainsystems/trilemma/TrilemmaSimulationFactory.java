@@ -8,6 +8,8 @@ import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.Simu
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSingleSimulation;
 import org.palladiosimulator.blockchainsystems.threesim.creation.ThreesimBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.creation.network.connectedsubgraphs.ConnectedSubgraphNetworkBlockchainSystemFactory;
+import org.palladiosimulator.blockchainsystems.threesim.serialization.ThreesimSerializers;
+import org.eclipse.core.runtime.CoreException;
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectedSubgraphsNetworkTopology;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSimulationParameters;
 
@@ -21,9 +23,15 @@ public class TrilemmaSimulationFactory implements Simulation {
 	
 	public TrilemmaSimulationFactory(SimulationParameters simulationParameters) {
 		var blockchainSystemFactory = createBlockchainSystemFactory(simulationParameters);
-		LogOutputProviderImpl logOutputProvider = null;
 		var maxAllowedBlockchainLength = simulationParameters.getMaxAllowedBlockchainLength();
 		var threesimSimulationParameters = getThreesimSimulationParametersFromConfiguration();
+		LogOutputProviderImpl logOutputProvider;
+		try {
+			logOutputProvider = LogOutputProviderImpl.Companion.fromLaunchConfiguration(ThreesimSerializers.INSTANCE.getJson(), null);
+		} catch (CoreException e) {
+			logOutputProvider = null;
+			e.printStackTrace();
+		}
 		
 		simulation = new ThreesimSingleSimulation(
 				blockchainSystemFactory, logOutputProvider, 
@@ -44,7 +52,7 @@ public class TrilemmaSimulationFactory implements Simulation {
 		final var failureThroughputThreshold = 1.0; // TODO need to be implement
 		final var shannonEntropyK = 1.0;
 		final var nakamotoCoefficientThreshold = 50.0;
-		final var reliabilityObservationTimespan = 0.000277778; // 1 second
+		final var reliabilityObservationTimespan = 24.0; // 1 day
 		var threesimSimulationParameters = new ThreesimSimulationParameters(
 				failureThroughputThreshold, shannonEntropyK,
 				nakamotoCoefficientThreshold, reliabilityObservationTimespan);
