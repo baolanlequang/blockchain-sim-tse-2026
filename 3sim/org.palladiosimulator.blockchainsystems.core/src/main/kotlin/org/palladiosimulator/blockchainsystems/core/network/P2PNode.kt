@@ -1,5 +1,7 @@
 package org.palladiosimulator.blockchainsystems.core.network
 
+import kotlinx.serialization.Serializable
+
 import org.palladiosimulator.blockchainsystems.core.common.P2PNetworkObject
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.Event
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.Message
@@ -7,6 +9,7 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.NodeP2PN
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetwork
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetworkEndpoint
 
+@Serializable
 class P2PNode(
   override val endpointId: String
 ) : P2PNetworkObject(), NodeP2PNetworkInterface, P2PNetworkEndpoint {

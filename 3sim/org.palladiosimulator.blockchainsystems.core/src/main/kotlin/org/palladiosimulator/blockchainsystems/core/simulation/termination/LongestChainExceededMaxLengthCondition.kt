@@ -9,8 +9,6 @@ class LongestChainExceededMaxLengthCondition(
     private set
 
   fun hasLengthExceeded(): Boolean {
-    println("currentLength: " + currentLength)
-    println("maxAllowedLength: " + maxAllowedLength)
     return currentLength >= maxAllowedLength
   }
 

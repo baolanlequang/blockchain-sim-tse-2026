@@ -63,7 +63,7 @@ public class BlockchainSystemModelLoader  {
         } while (currentResources.size() != resourceSet.getResources()
             .size());
         
-        System.out.println("currentResources " + (currentResources.size()));
+//        System.out.println("currentResources " + (currentResources.size()));
 //        System.out.println("currentResources " + ((P2PNetwork)currentResources.get(1).getContents().getFirst()).getTopology());
 //        System.out.println("currentResources " + ((BlockchainSystem) currentResources.get(0).getContents().get(0)).getNetwork().getTopology());
         
