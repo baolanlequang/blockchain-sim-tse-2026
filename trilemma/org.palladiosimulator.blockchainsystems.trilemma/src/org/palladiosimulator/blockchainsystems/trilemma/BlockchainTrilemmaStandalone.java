@@ -1,5 +1,7 @@
 package org.palladiosimulator.blockchainsystems.trilemma;
 
+import java.util.Map;
+
 import org.apache.log4j.Logger;
 import org.eclipse.core.runtime.Plugin;
 import org.eclipse.emf.ecore.plugin.EcorePlugin;
@@ -8,6 +10,9 @@ import tools.mdsd.library.standalone.initialization.StandaloneInitializationExce
 import tools.mdsd.library.standalone.initialization.StandaloneInitializerBuilder;
 
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationParameters;
+import org.palladiosimulator.blockchainsystems.threesim.simulation.results.ThreesimMonteCarloSimulationResult;
+import org.palladiosimulator.blockchainsystems.threesim.simulation.results.ThreesimSingleSimulationResult;
+import org.palladiosimulator.blockchainsystems.core.simulation.MonteCarloSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.SimulationType;
 import org.palladiosimulator.blockchainsystems.core.simulation.SingleSimulationParameters;
 
@@ -32,8 +37,8 @@ public class BlockchainTrilemmaStandalone {
 		return true;
 	}
 	
-	public void runSimulation() {
-		var simulationParameters = getSimulationParametersFromConfiguration();
+	public void runSimulation(Map<String, String> configuration) {
+		var simulationParameters = getSimulationParametersFromConfiguration(configuration);
 		
 //		var simulationTypeName = "";
 //		switch(simulationParameters.getSimulationType()) {
@@ -44,10 +49,19 @@ public class BlockchainTrilemmaStandalone {
 //				simulationTypeName = "Single";
 //		}
 //		
-		var simulationFactory = new TrilemmaSimulationFactory(simulationParameters);
+		var simulationFactory = new TrilemmaSimulationFactory(simulationParameters, configuration);
 		System.out.println("simulationFactory.run");
 		var result = simulationFactory.run();
+//		var serialization = new ThreesimSimulationResultSerializer(ThreesimSerializers.INSTANCE.getJson());
+//		var jsonResult = serialization.serialize(result);
+		
 		System.out.println("result: " + result);
+		if (result instanceof ThreesimMonteCarloSimulationResult monteCarloSimulationResult) {
+			System.out.println("final result monte-carlo: " + monteCarloSimulationResult.getSimulationRoundResults());
+		} else if (result instanceof ThreesimSingleSimulationResult singleSimulationResult) {
+			System.out.println("final result single: " + singleSimulationResult.getSimulationRoundResult());
+		}
+		 
 	}
 	
 	private boolean initStandalone() {
@@ -68,17 +82,30 @@ public class BlockchainTrilemmaStandalone {
         }
     }
 	
-	private SimulationParameters getSimulationParametersFromConfiguration() {
+	private SimulationParameters getSimulationParametersFromConfiguration(Map<String, String> configuration) {
 		System.out.println("getSimulationParametersFromConfiguration");
-//		var simulationType = SimulationType.Single; //TODO default need to be changed
 		
-		var maxAllowedBlockchainLength = 10; //TODO default need to be changed
-		var blockchainSystemModelFilePath = "/Users/lanle/Documents/Working/Uni_Ulm/PhD/blockchain-sim-tse-2026/trilemma/org.palladiosimulator.blockchainsystems.trilemma/testmodels/My.blockchainsystem";  //TODO default need to be changed
+		SimulationType simulationType = SimulationType.Single;
+		var simulationTypeName = configuration.getOrDefault("simulationType", "");
+		if (simulationTypeName.equals("Monte-Carlo")) {
+			simulationType = SimulationType.MonteCarlo;
+		}
 		
-		var singleSimulation = new SingleSimulationParameters(maxAllowedBlockchainLength, blockchainSystemModelFilePath);
+		var maxAllowedBlockchainLength = Integer. parseInt(configuration.getOrDefault("maxAllowedBlockchainLength", "30"));
+		var numberOfMonteCarloRounds = Integer. parseInt(configuration.getOrDefault("numberOfMonteCarloRounds", "1"));
+		var blockchainSystemModelFilePath = configuration.getOrDefault("blockchainSystemModelFilePath", "");
 		
 		
-		return singleSimulation;
+		SimulationParameters simulationParameters = null;
+		switch (simulationType) {
+		case MonteCarlo:
+			simulationParameters = new MonteCarloSimulationParameters(maxAllowedBlockchainLength, numberOfMonteCarloRounds, blockchainSystemModelFilePath);
+			break;
+		default:
+			simulationParameters = new SingleSimulationParameters(maxAllowedBlockchainLength, blockchainSystemModelFilePath);
+		}
+		
+		return simulationParameters;
 		
 	}
 }
