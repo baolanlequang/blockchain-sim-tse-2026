@@ -12,19 +12,30 @@ import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.Mont
  * @author Yannik Sproll, Davis Riedel
  */
 class MonteCarloSimulationProgressMonitorAdapter(
-  private val progressMonitor: IProgressMonitor
+  private val progressMonitor: IProgressMonitor?
 ) :
   MonteCarloSimulationProgressMonitor {
   override fun onSimulationStarted(numberOfSimulationRounds: Int) {
-    progressMonitor.beginTask("Running Monte-Carlo Simulation", numberOfSimulationRounds)
+    if (progressMonitor != null) {
+      progressMonitor.beginTask("Running Monte-Carlo Simulation", numberOfSimulationRounds)
+    } else {
+      System.out.println("Running Monte-Carlo Simulation with " + numberOfSimulationRounds + " simulation round(s)");
+    }
+    
   }
 
   @Synchronized
   override fun onSimulationRoundFinished() {
-    progressMonitor.worked(1)
+    if (progressMonitor != null) {
+      progressMonitor.worked(1)
+    }
   }
 
   override fun onSimulationFinished() {
-    progressMonitor.done()
+    if (progressMonitor != null) {
+      progressMonitor.done()
+    } else {
+      System.out.println("Monte-Carlo Simulation finished");
+    }
   }
 }
