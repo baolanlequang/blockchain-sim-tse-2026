@@ -139,6 +139,7 @@
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/NumOfRequiredSecurityConfirmations"/>
         <genFeatures documentation="Unit: Byte" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/MaxBlockSize"/>
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/BlockReward"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/BlockValidationRule"/>
       </genClasses>
     </nestedGenPackages>
     <nestedGenPackages prefix="Nodeenvironment" basePackage="org.palladiosimulator.blockchainsystems.bscm"
@@ -150,8 +151,8 @@
         <genFeatures documentation="Unit: MH/s" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//nodeenvironment/NodeResourceContainer/ResourcePower"/>
       </genClasses>
     </nestedGenPackages>
-    <nestedGenPackages prefix="Geographicalregions" disposableProviderFactory="true"
-        ecorePackage="bscm.ecore#//geographicalregions">
+    <nestedGenPackages prefix="Geographicalregions" basePackage="org.palladiosimulator.blockchainsystems.bscm"
+        disposableProviderFactory="true" ecorePackage="bscm.ecore#//geographicalregions">
       <genClasses ecoreClass="bscm.ecore#//geographicalregions/GeographicalRegionsSpecification">
         <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//geographicalregions/GeographicalRegionsSpecification/Regions"/>
       </genClasses>
@@ -159,7 +160,8 @@
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//geographicalregions/GeographicalRegion/RegionName"/>
       </genClasses>
     </nestedGenPackages>
-    <nestedGenPackages prefix="Linkallocation" disposableProviderFactory="true" ecorePackage="bscm.ecore#//linkallocation">
+    <nestedGenPackages prefix="Linkallocation" basePackage="org.palladiosimulator.blockchainsystems.bscm"
+        disposableProviderFactory="true" ecorePackage="bscm.ecore#//linkallocation">
       <genClasses ecoreClass="bscm.ecore#//linkallocation/LinkAllocationRepository">
         <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//linkallocation/LinkAllocationRepository/LinkAllocations"/>
       </genClasses>
@@ -194,7 +196,8 @@
             ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/StaticLinkThroughputSpecification/Throughput"/>
       </genClasses>
     </nestedGenPackages>
-    <nestedGenPackages prefix="Transactions" disposableProviderFactory="true" ecorePackage="bscm.ecore#//transactions">
+    <nestedGenPackages prefix="Transactions" basePackage="org.palladiosimulator.blockchainsystems.bscm"
+        disposableProviderFactory="true" ecorePackage="bscm.ecore#//transactions">
       <genClasses ecoreClass="bscm.ecore#//transactions/TransactionsSpecification">
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//transactions/TransactionsSpecification/MeanTransactionCreationInterval"/>
         <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//transactions/TransactionsSpecification/TransactionPropertiesSpecification"/>

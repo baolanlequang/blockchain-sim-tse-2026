@@ -88,7 +88,7 @@ class P2PLink(
       // Link is operational, send message
 
       val latency = latencyValueProvider.getValue() // in ms
-      val messageSize = event.message.content.getSize().toLong() // in byte
+      val messageSize = event.message.content.size.toLong() // in byte
 
       val bypms = bps.toDouble() / 8000 // Convert bit per second to bytes per millisecond
       val transmissionDuration = (latency + messageSize / bypms).roundToLong()
