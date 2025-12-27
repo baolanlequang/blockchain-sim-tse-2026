@@ -1,16 +1,22 @@
 package org.palladiosimulator.blockchainsystems.trilemma;
 
+import org.palladiosimulator.blockchainsystems.core.simulation.MonteCarloSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.SingleSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.Simulation;
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationResult;
 import org.palladiosimulator.blockchainsystems.plugin.logging.LogOutputProviderImpl;
+import org.palladiosimulator.blockchainsystems.plugin.simulation.MonteCarloSimulationProgressMonitorAdapter;
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationParameters;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSingleSimulation;
 import org.palladiosimulator.blockchainsystems.threesim.creation.ThreesimBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.creation.network.connectedsubgraphs.ConnectedSubgraphNetworkBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.serialization.ThreesimSerializers;
+
+import java.util.Map;
+
 import org.eclipse.core.runtime.CoreException;
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectedSubgraphsNetworkTopology;
+import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimMonteCarloSimulation;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSimulationParameters;
 
 public class TrilemmaSimulationFactory implements Simulation {
@@ -21,10 +27,12 @@ public class TrilemmaSimulationFactory implements Simulation {
 		
 	}
 	
-	public TrilemmaSimulationFactory(SimulationParameters simulationParameters) {
+	public TrilemmaSimulationFactory(SimulationParameters simulationParameters, Map<String, String> configuration) {
 		var blockchainSystemFactory = createBlockchainSystemFactory(simulationParameters);
 		var maxAllowedBlockchainLength = simulationParameters.getMaxAllowedBlockchainLength();
-		var threesimSimulationParameters = getThreesimSimulationParametersFromConfiguration();
+		var threesimSimulationParameters = getThreesimSimulationParametersFromConfiguration(configuration);
+		
+		System.out.println("simulationParameters " + simulationParameters);
 		LogOutputProviderImpl logOutputProvider;
 		try {
 			logOutputProvider = LogOutputProviderImpl.Companion.fromLaunchConfiguration(ThreesimSerializers.INSTANCE.getJson(), null);
@@ -33,26 +41,32 @@ public class TrilemmaSimulationFactory implements Simulation {
 			e.printStackTrace();
 		}
 		
-		simulation = new ThreesimSingleSimulation(
-				blockchainSystemFactory, logOutputProvider, 
-				maxAllowedBlockchainLength, (SingleSimulationParameters) simulationParameters, 
-				threesimSimulationParameters);
+		if (simulationParameters instanceof MonteCarloSimulationParameters) {
+			var progressMonitor = new MonteCarloSimulationProgressMonitorAdapter(null);
+			simulation = new ThreesimMonteCarloSimulation(progressMonitor, blockchainSystemFactory, logOutputProvider, 
+					maxAllowedBlockchainLength, (MonteCarloSimulationParameters) simulationParameters, 
+					threesimSimulationParameters);
+			
+		} else {
+			simulation = new ThreesimSingleSimulation(
+					blockchainSystemFactory, logOutputProvider, 
+					maxAllowedBlockchainLength, (SingleSimulationParameters) simulationParameters, 
+					threesimSimulationParameters);
+		}
 		
 		
 	}
 
 	@Override
 	public SimulationResult run() {
-		// TODO need to implement monte-carlo
-		
 		return simulation.run();
 	}
 	
-	private ThreesimSimulationParameters getThreesimSimulationParametersFromConfiguration() {
-		final var failureThroughputThreshold = 1.0; // TODO need to be implement
-		final var shannonEntropyK = 1.0;
-		final var nakamotoCoefficientThreshold = 50.0;
-		final var reliabilityObservationTimespan = 24.0; // 1 day
+	private ThreesimSimulationParameters getThreesimSimulationParametersFromConfiguration(Map<String, String> configuration) {
+		var failureThroughputThreshold = Double.parseDouble(configuration.getOrDefault("failureThroughputThreshold", "1.0"));
+		var shannonEntropyK = Double.parseDouble(configuration.getOrDefault("shannonEntropyK", "1.0"));
+		var nakamotoCoefficientThreshold = Double.parseDouble(configuration.getOrDefault("nakamotoCoefficientThreshold", "50.0"));
+		var reliabilityObservationTimespan = Double.parseDouble(configuration.getOrDefault("reliabilityObservationTimespan", "24.0"));
 		var threesimSimulationParameters = new ThreesimSimulationParameters(
 				failureThroughputThreshold, shannonEntropyK,
 				nakamotoCoefficientThreshold, reliabilityObservationTimespan);
