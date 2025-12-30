@@ -12,6 +12,7 @@ package org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRe
  * </p>
  * <ul>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.BlockValidatorComponent#getValidationDuration <em>Validation Duration</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.BlockValidatorComponent#isCrashed <em>Crashed</em>}</li>
  * </ul>
  *
  * @see org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.BlockchainsystemComponentRepositoryPackage#getBlockValidatorComponent()
@@ -40,5 +41,27 @@ public interface BlockValidatorComponent extends BlockchainSystemNodeComponent {
 	 * @generated
 	 */
 	void setValidationDuration(BlockValiationDurationSpecification value);
+
+	/**
+	 * Returns the value of the '<em><b>Crashed</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the value of the '<em>Crashed</em>' attribute.
+	 * @see #setCrashed(boolean)
+	 * @see org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.BlockchainsystemComponentRepositoryPackage#getBlockValidatorComponent_Crashed()
+	 * @model
+	 * @generated
+	 */
+	boolean isCrashed();
+
+	/**
+	 * Sets the value of the '{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.BlockValidatorComponent#isCrashed <em>Crashed</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @param value the new value of the '<em>Crashed</em>' attribute.
+	 * @see #isCrashed()
+	 * @generated
+	 */
+	void setCrashed(boolean value);
 
 } // BlockValidatorComponent

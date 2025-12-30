@@ -62,6 +62,7 @@
       </genClasses>
       <genClasses ecoreClass="bscm.ecore#//blockchainsystemComponentRepository/BlockValidatorComponent">
         <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//blockchainsystemComponentRepository/BlockValidatorComponent/ValidationDuration"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystemComponentRepository/BlockValidatorComponent/crashed"/>
       </genClasses>
       <genClasses ecoreClass="bscm.ecore#//blockchainsystemComponentRepository/MiningProcessComponent">
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystemComponentRepository/MiningProcessComponent/IsMiningProcessEnabled"/>
@@ -168,8 +169,12 @@
       <genClasses ecoreClass="bscm.ecore#//linkallocation/LinkAllocation">
         <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//linkallocation/LinkAllocation/latencySpecification"/>
         <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//linkallocation/LinkAllocation/throughputSpecification"/>
+        <genFeatures property="None" children="true" createChild="true" ecoreFeature="ecore:EReference bscm.ecore#//linkallocation/LinkAllocation/bandwidthSpecification"/>
       </genClasses>
       <genClasses ecoreClass="bscm.ecore#//linkallocation/LinkLatencySpecification"/>
+      <genClasses ecoreClass="bscm.ecore#//linkallocation/BandwidthSpecification">
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/BandwidthSpecification/Bandwidth"/>
+      </genClasses>
       <genClasses ecoreClass="bscm.ecore#//linkallocation/DynamicLinkLatencySpecificationValue">
         <genFeatures documentation="Unit: ms" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/DynamicLinkLatencySpecificationValue/Latency"/>
         <genFeatures documentation="Unit: 0.0 - 1.0" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/DynamicLinkLatencySpecificationValue/Probability"/>

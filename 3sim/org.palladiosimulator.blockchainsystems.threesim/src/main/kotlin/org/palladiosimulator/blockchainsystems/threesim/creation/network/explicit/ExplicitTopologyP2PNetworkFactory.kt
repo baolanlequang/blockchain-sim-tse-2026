@@ -36,6 +36,7 @@ class ExplicitTopologyP2PNetworkFactory(
       val linkSpecification = designLink.allocation
       val latencyValueProvider = createLatencyValueProvider(linkSpecification.latencySpecification)
       val throughputValueProvider = createThroughputValueProvider(linkSpecification.throughputSpecification)
+      val bandwidthValueProvider = createBandwidthValueProvider(linkSpecification.bandwidthSpecification)
 
       when (designLink) {
         is UnidirectionalLink -> {

@@ -179,13 +179,22 @@ public interface BlockchainsystemComponentRepositoryPackage extends EPackage {
 	int BLOCK_VALIDATOR_COMPONENT__VALIDATION_DURATION = BLOCKCHAIN_SYSTEM_NODE_COMPONENT_FEATURE_COUNT + 0;
 
 	/**
+	 * The feature id for the '<em><b>Crashed</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int BLOCK_VALIDATOR_COMPONENT__CRASHED = BLOCKCHAIN_SYSTEM_NODE_COMPONENT_FEATURE_COUNT + 1;
+
+	/**
 	 * The number of structural features of the '<em>Block Validator Component</em>' class.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
 	 * @generated
 	 * @ordered
 	 */
-	int BLOCK_VALIDATOR_COMPONENT_FEATURE_COUNT = BLOCKCHAIN_SYSTEM_NODE_COMPONENT_FEATURE_COUNT + 1;
+	int BLOCK_VALIDATOR_COMPONENT_FEATURE_COUNT = BLOCKCHAIN_SYSTEM_NODE_COMPONENT_FEATURE_COUNT + 2;
 
 	/**
 	 * The meta object id for the '{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.impl.MiningProcessComponentImpl <em>Mining Process Component</em>}' class.
@@ -387,6 +396,17 @@ public interface BlockchainsystemComponentRepositoryPackage extends EPackage {
 	EReference getBlockValidatorComponent_ValidationDuration();
 
 	/**
+	 * Returns the meta object for the attribute '{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.BlockValidatorComponent#isCrashed <em>Crashed</em>}'.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the meta object for the attribute '<em>Crashed</em>'.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.BlockValidatorComponent#isCrashed()
+	 * @see #getBlockValidatorComponent()
+	 * @generated
+	 */
+	EAttribute getBlockValidatorComponent_Crashed();
+
+	/**
 	 * Returns the meta object for class '{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.MiningProcessComponent <em>Mining Process Component</em>}'.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
@@ -529,6 +549,14 @@ public interface BlockchainsystemComponentRepositoryPackage extends EPackage {
 		 */
 		EReference BLOCK_VALIDATOR_COMPONENT__VALIDATION_DURATION = eINSTANCE
 				.getBlockValidatorComponent_ValidationDuration();
+
+		/**
+		 * The meta object literal for the '<em><b>Crashed</b></em>' attribute feature.
+		 * <!-- begin-user-doc -->
+		 * <!-- end-user-doc -->
+		 * @generated
+		 */
+		EAttribute BLOCK_VALIDATOR_COMPONENT__CRASHED = eINSTANCE.getBlockValidatorComponent_Crashed();
 
 		/**
 		 * The meta object literal for the '{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.impl.MiningProcessComponentImpl <em>Mining Process Component</em>}' class.

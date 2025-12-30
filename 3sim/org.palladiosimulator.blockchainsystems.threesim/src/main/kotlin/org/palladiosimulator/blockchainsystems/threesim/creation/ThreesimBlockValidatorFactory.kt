@@ -32,6 +32,6 @@ class ThreesimBlockValidatorFactory(
       RandomGenerator.of("Random")
     )
 
-    return BlockValidatorImpl(adapter)
+    return BlockValidatorImpl(adapter, component.isCrashed)
   }
 }

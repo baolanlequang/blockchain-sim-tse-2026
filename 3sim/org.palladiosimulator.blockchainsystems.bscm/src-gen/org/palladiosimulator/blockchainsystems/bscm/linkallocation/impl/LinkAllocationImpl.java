@@ -10,6 +10,7 @@ import org.eclipse.emf.ecore.InternalEObject;
 
 import org.eclipse.emf.ecore.impl.ENotificationImpl;
 
+import org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification;
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkAllocation;
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkLatencySpecification;
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkThroughputSpecification;
@@ -27,6 +28,7 @@ import org.palladiosimulator.pcm.core.entity.impl.EntityImpl;
  * <ul>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.impl.LinkAllocationImpl#getLatencySpecification <em>Latency Specification</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.impl.LinkAllocationImpl#getThroughputSpecification <em>Throughput Specification</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.impl.LinkAllocationImpl#getBandwidthSpecification <em>Bandwidth Specification</em>}</li>
  * </ul>
  *
  * @generated
@@ -51,6 +53,16 @@ public class LinkAllocationImpl extends EntityImpl implements LinkAllocation {
 	 * @ordered
 	 */
 	protected LinkThroughputSpecification throughputSpecification;
+
+	/**
+	 * The cached value of the '{@link #getBandwidthSpecification() <em>Bandwidth Specification</em>}' containment reference.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #getBandwidthSpecification()
+	 * @generated
+	 * @ordered
+	 */
+	protected BandwidthSpecification bandwidthSpecification;
 
 	/**
 	 * <!-- begin-user-doc -->
@@ -191,12 +203,71 @@ public class LinkAllocationImpl extends EntityImpl implements LinkAllocation {
 	 * @generated
 	 */
 	@Override
+	public BandwidthSpecification getBandwidthSpecification() {
+		return bandwidthSpecification;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	public NotificationChain basicSetBandwidthSpecification(BandwidthSpecification newBandwidthSpecification,
+			NotificationChain msgs) {
+		BandwidthSpecification oldBandwidthSpecification = bandwidthSpecification;
+		bandwidthSpecification = newBandwidthSpecification;
+		if (eNotificationRequired()) {
+			ENotificationImpl notification = new ENotificationImpl(this, Notification.SET,
+					LinkallocationPackage.LINK_ALLOCATION__BANDWIDTH_SPECIFICATION, oldBandwidthSpecification,
+					newBandwidthSpecification);
+			if (msgs == null)
+				msgs = notification;
+			else
+				msgs.add(notification);
+		}
+		return msgs;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public void setBandwidthSpecification(BandwidthSpecification newBandwidthSpecification) {
+		if (newBandwidthSpecification != bandwidthSpecification) {
+			NotificationChain msgs = null;
+			if (bandwidthSpecification != null)
+				msgs = ((InternalEObject) bandwidthSpecification).eInverseRemove(this,
+						EOPPOSITE_FEATURE_BASE - LinkallocationPackage.LINK_ALLOCATION__BANDWIDTH_SPECIFICATION, null,
+						msgs);
+			if (newBandwidthSpecification != null)
+				msgs = ((InternalEObject) newBandwidthSpecification).eInverseAdd(this,
+						EOPPOSITE_FEATURE_BASE - LinkallocationPackage.LINK_ALLOCATION__BANDWIDTH_SPECIFICATION, null,
+						msgs);
+			msgs = basicSetBandwidthSpecification(newBandwidthSpecification, msgs);
+			if (msgs != null)
+				msgs.dispatch();
+		} else if (eNotificationRequired())
+			eNotify(new ENotificationImpl(this, Notification.SET,
+					LinkallocationPackage.LINK_ALLOCATION__BANDWIDTH_SPECIFICATION, newBandwidthSpecification,
+					newBandwidthSpecification));
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
 	public NotificationChain eInverseRemove(InternalEObject otherEnd, int featureID, NotificationChain msgs) {
 		switch (featureID) {
 		case LinkallocationPackage.LINK_ALLOCATION__LATENCY_SPECIFICATION:
 			return basicSetLatencySpecification(null, msgs);
 		case LinkallocationPackage.LINK_ALLOCATION__THROUGHPUT_SPECIFICATION:
 			return basicSetThroughputSpecification(null, msgs);
+		case LinkallocationPackage.LINK_ALLOCATION__BANDWIDTH_SPECIFICATION:
+			return basicSetBandwidthSpecification(null, msgs);
 		}
 		return super.eInverseRemove(otherEnd, featureID, msgs);
 	}
@@ -213,6 +284,8 @@ public class LinkAllocationImpl extends EntityImpl implements LinkAllocation {
 			return getLatencySpecification();
 		case LinkallocationPackage.LINK_ALLOCATION__THROUGHPUT_SPECIFICATION:
 			return getThroughputSpecification();
+		case LinkallocationPackage.LINK_ALLOCATION__BANDWIDTH_SPECIFICATION:
+			return getBandwidthSpecification();
 		}
 		return super.eGet(featureID, resolve, coreType);
 	}
@@ -230,6 +303,9 @@ public class LinkAllocationImpl extends EntityImpl implements LinkAllocation {
 			return;
 		case LinkallocationPackage.LINK_ALLOCATION__THROUGHPUT_SPECIFICATION:
 			setThroughputSpecification((LinkThroughputSpecification) newValue);
+			return;
+		case LinkallocationPackage.LINK_ALLOCATION__BANDWIDTH_SPECIFICATION:
+			setBandwidthSpecification((BandwidthSpecification) newValue);
 			return;
 		}
 		super.eSet(featureID, newValue);
@@ -249,6 +325,9 @@ public class LinkAllocationImpl extends EntityImpl implements LinkAllocation {
 		case LinkallocationPackage.LINK_ALLOCATION__THROUGHPUT_SPECIFICATION:
 			setThroughputSpecification((LinkThroughputSpecification) null);
 			return;
+		case LinkallocationPackage.LINK_ALLOCATION__BANDWIDTH_SPECIFICATION:
+			setBandwidthSpecification((BandwidthSpecification) null);
+			return;
 		}
 		super.eUnset(featureID);
 	}
@@ -265,6 +344,8 @@ public class LinkAllocationImpl extends EntityImpl implements LinkAllocation {
 			return latencySpecification != null;
 		case LinkallocationPackage.LINK_ALLOCATION__THROUGHPUT_SPECIFICATION:
 			return throughputSpecification != null;
+		case LinkallocationPackage.LINK_ALLOCATION__BANDWIDTH_SPECIFICATION:
+			return bandwidthSpecification != null;
 		}
 		return super.eIsSet(featureID);
 	}

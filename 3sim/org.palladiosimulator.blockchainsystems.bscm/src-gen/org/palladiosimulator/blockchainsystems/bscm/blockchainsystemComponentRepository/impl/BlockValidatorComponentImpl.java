@@ -23,6 +23,7 @@ import org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRep
  * </p>
  * <ul>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.impl.BlockValidatorComponentImpl#getValidationDuration <em>Validation Duration</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.impl.BlockValidatorComponentImpl#isCrashed <em>Crashed</em>}</li>
  * </ul>
  *
  * @generated
@@ -37,6 +38,26 @@ public class BlockValidatorComponentImpl extends BlockchainSystemNodeComponentIm
 	 * @ordered
 	 */
 	protected BlockValiationDurationSpecification validationDuration;
+
+	/**
+	 * The default value of the '{@link #isCrashed() <em>Crashed</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #isCrashed()
+	 * @generated
+	 * @ordered
+	 */
+	protected static final boolean CRASHED_EDEFAULT = false;
+
+	/**
+	 * The cached value of the '{@link #isCrashed() <em>Crashed</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #isCrashed()
+	 * @generated
+	 * @ordered
+	 */
+	protected boolean crashed = CRASHED_EDEFAULT;
 
 	/**
 	 * <!-- begin-user-doc -->
@@ -120,6 +141,31 @@ public class BlockValidatorComponentImpl extends BlockchainSystemNodeComponentIm
 	 * @generated
 	 */
 	@Override
+	public boolean isCrashed() {
+		return crashed;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public void setCrashed(boolean newCrashed) {
+		boolean oldCrashed = crashed;
+		crashed = newCrashed;
+		if (eNotificationRequired())
+			eNotify(new ENotificationImpl(this, Notification.SET,
+					BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__CRASHED, oldCrashed,
+					crashed));
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
 	public NotificationChain eInverseRemove(InternalEObject otherEnd, int featureID, NotificationChain msgs) {
 		switch (featureID) {
 		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__VALIDATION_DURATION:
@@ -138,6 +184,8 @@ public class BlockValidatorComponentImpl extends BlockchainSystemNodeComponentIm
 		switch (featureID) {
 		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__VALIDATION_DURATION:
 			return getValidationDuration();
+		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__CRASHED:
+			return isCrashed();
 		}
 		return super.eGet(featureID, resolve, coreType);
 	}
@@ -152,6 +200,9 @@ public class BlockValidatorComponentImpl extends BlockchainSystemNodeComponentIm
 		switch (featureID) {
 		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__VALIDATION_DURATION:
 			setValidationDuration((BlockValiationDurationSpecification) newValue);
+			return;
+		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__CRASHED:
+			setCrashed((Boolean) newValue);
 			return;
 		}
 		super.eSet(featureID, newValue);
@@ -168,6 +219,9 @@ public class BlockValidatorComponentImpl extends BlockchainSystemNodeComponentIm
 		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__VALIDATION_DURATION:
 			setValidationDuration((BlockValiationDurationSpecification) null);
 			return;
+		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__CRASHED:
+			setCrashed(CRASHED_EDEFAULT);
+			return;
 		}
 		super.eUnset(featureID);
 	}
@@ -182,8 +236,27 @@ public class BlockValidatorComponentImpl extends BlockchainSystemNodeComponentIm
 		switch (featureID) {
 		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__VALIDATION_DURATION:
 			return validationDuration != null;
+		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__CRASHED:
+			return crashed != CRASHED_EDEFAULT;
 		}
 		return super.eIsSet(featureID);
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public String toString() {
+		if (eIsProxy())
+			return super.toString();
+
+		StringBuilder result = new StringBuilder(super.toString());
+		result.append(" (crashed: ");
+		result.append(crashed);
+		result.append(')');
+		return result.toString();
 	}
 
 } //BlockValidatorComponentImpl

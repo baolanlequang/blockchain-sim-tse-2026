@@ -125,6 +125,23 @@ public class LinkallocationSwitch<T> extends Switch<T> {
 				result = defaultCase(theEObject);
 			return result;
 		}
+		case LinkallocationPackage.BANDWIDTH_SPECIFICATION: {
+			BandwidthSpecification bandwidthSpecification = (BandwidthSpecification) theEObject;
+			T result = caseBandwidthSpecification(bandwidthSpecification);
+			if (result == null)
+				result = caseEntity(bandwidthSpecification);
+			if (result == null)
+				result = caseIdentifier(bandwidthSpecification);
+			if (result == null)
+				result = caseNamedElement(bandwidthSpecification);
+			if (result == null)
+				result = casePCMBaseClass(bandwidthSpecification);
+			if (result == null)
+				result = casePCMClass(bandwidthSpecification);
+			if (result == null)
+				result = defaultCase(theEObject);
+			return result;
+		}
 		case LinkallocationPackage.DYNAMIC_LINK_LATENCY_SPECIFICATION_VALUE: {
 			DynamicLinkLatencySpecificationValue dynamicLinkLatencySpecificationValue = (DynamicLinkLatencySpecificationValue) theEObject;
 			T result = caseDynamicLinkLatencySpecificationValue(dynamicLinkLatencySpecificationValue);
@@ -299,6 +316,21 @@ public class LinkallocationSwitch<T> extends Switch<T> {
 	 * @generated
 	 */
 	public T caseLinkLatencySpecification(LinkLatencySpecification object) {
+		return null;
+	}
+
+	/**
+	 * Returns the result of interpreting the object as an instance of '<em>Bandwidth Specification</em>'.
+	 * <!-- begin-user-doc -->
+	 * This implementation returns null;
+	 * returning a non-null result will terminate the switch.
+	 * <!-- end-user-doc -->
+	 * @param object the target of the switch.
+	 * @return the result of interpreting the object as an instance of '<em>Bandwidth Specification</em>'.
+	 * @see #doSwitch(org.eclipse.emf.ecore.EObject) doSwitch(EObject)
+	 * @generated
+	 */
+	public T caseBandwidthSpecification(BandwidthSpecification object) {
 		return null;
 	}
 

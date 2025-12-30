@@ -10,7 +10,9 @@ import tools.mdsd.library.standalone.initialization.StandaloneInitializationExce
 import tools.mdsd.library.standalone.initialization.StandaloneInitializerBuilder;
 
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationParameters;
+import org.palladiosimulator.blockchainsystems.threesim.serialization.ThreesimSerializers;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.results.ThreesimMonteCarloSimulationResult;
+import org.palladiosimulator.blockchainsystems.threesim.simulation.results.ThreesimSimulationResultSerializer;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.results.ThreesimSingleSimulationResult;
 import org.palladiosimulator.blockchainsystems.core.simulation.MonteCarloSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.SimulationType;
@@ -52,15 +54,16 @@ public class BlockchainTrilemmaStandalone {
 		var simulationFactory = new TrilemmaSimulationFactory(simulationParameters, configuration);
 		System.out.println("simulationFactory.run");
 		var result = simulationFactory.run();
-//		var serialization = new ThreesimSimulationResultSerializer(ThreesimSerializers.INSTANCE.getJson());
-//		var jsonResult = serialization.serialize(result);
+		var serialization = new ThreesimSimulationResultSerializer(ThreesimSerializers.INSTANCE.getJson());
+		var jsonResult = serialization.serialize(result);
 		
 		System.out.println("result: " + result);
-		if (result instanceof ThreesimMonteCarloSimulationResult monteCarloSimulationResult) {
-			System.out.println("final result monte-carlo: " + monteCarloSimulationResult.getSimulationRoundResults());
-		} else if (result instanceof ThreesimSingleSimulationResult singleSimulationResult) {
-			System.out.println("final result single: " + singleSimulationResult.getSimulationRoundResult());
-		}
+		System.out.println("jsonResult: " + jsonResult);
+//		if (result instanceof ThreesimMonteCarloSimulationResult monteCarloSimulationResult) {
+//			System.out.println("final result monte-carlo: " + monteCarloSimulationResult.getSimulationRoundResults());
+//		} else if (result instanceof ThreesimSingleSimulationResult singleSimulationResult) {
+//			System.out.println("final result single: " + singleSimulationResult.getSimulationRoundResult());
+//		}
 		 
 	}
 	

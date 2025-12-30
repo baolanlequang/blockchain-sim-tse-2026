@@ -293,6 +293,16 @@ public class BlockchainsystemComponentRepositoryPackageImpl extends EPackageImpl
 	 * @generated
 	 */
 	@Override
+	public EAttribute getBlockValidatorComponent_Crashed() {
+		return (EAttribute) blockValidatorComponentEClass.getEStructuralFeatures().get(1);
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
 	public EClass getMiningProcessComponent() {
 		return miningProcessComponentEClass;
 	}
@@ -395,6 +405,7 @@ public class BlockchainsystemComponentRepositoryPackageImpl extends EPackageImpl
 
 		blockValidatorComponentEClass = createEClass(BLOCK_VALIDATOR_COMPONENT);
 		createEReference(blockValidatorComponentEClass, BLOCK_VALIDATOR_COMPONENT__VALIDATION_DURATION);
+		createEAttribute(blockValidatorComponentEClass, BLOCK_VALIDATOR_COMPONENT__CRASHED);
 
 		miningProcessComponentEClass = createEClass(MINING_PROCESS_COMPONENT);
 		createEAttribute(miningProcessComponentEClass, MINING_PROCESS_COMPONENT__IS_MINING_PROCESS_ENABLED);
@@ -463,6 +474,9 @@ public class BlockchainsystemComponentRepositoryPackageImpl extends EPackageImpl
 		initEReference(getBlockValidatorComponent_ValidationDuration(), this.getBlockValiationDurationSpecification(),
 				null, "ValidationDuration", null, 1, 1, BlockValidatorComponent.class, !IS_TRANSIENT, !IS_VOLATILE,
 				IS_CHANGEABLE, IS_COMPOSITE, !IS_RESOLVE_PROXIES, !IS_UNSETTABLE, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
+		initEAttribute(getBlockValidatorComponent_Crashed(), theEcorePackage.getEBoolean(), "crashed", null, 0, 1,
+				BlockValidatorComponent.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE, !IS_UNSETTABLE, !IS_ID,
+				IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
 
 		initEClass(miningProcessComponentEClass, MiningProcessComponent.class, "MiningProcessComponent", !IS_ABSTRACT,
 				!IS_INTERFACE, IS_GENERATED_INSTANCE_CLASS);

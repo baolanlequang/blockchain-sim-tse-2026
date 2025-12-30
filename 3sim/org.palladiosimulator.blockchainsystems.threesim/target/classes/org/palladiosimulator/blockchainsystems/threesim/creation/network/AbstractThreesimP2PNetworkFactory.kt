@@ -6,12 +6,14 @@ import org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkLatencySp
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkThroughputSpecification
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.StaticLinkLatencySpecification
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.StaticLinkThroughputSpecification
+import org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.SimulationLifecycleAwareValueProvider
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetworkFactory
 import org.palladiosimulator.blockchainsystems.threesim.creation.LatencyValueProviderAdapter
 import org.palladiosimulator.blockchainsystems.threesim.creation.StaticLatencyValueProvider
 import org.palladiosimulator.blockchainsystems.threesim.creation.StaticThroughputValueProvider
 import org.palladiosimulator.blockchainsystems.threesim.creation.ThroughputValueProviderAdapter
+import org.palladiosimulator.blockchainsystems.threesim.creation.BandwidthValueProvider
 import java.util.random.RandomGenerator
 
 /**
@@ -62,6 +64,22 @@ abstract class AbstractThreesimP2PNetworkFactory() : P2PNetworkFactory {
       else -> {
         throw IllegalArgumentException(
           "Unsupported throughput specification type: ${throughputSpecification::class.java.name}"
+        )
+      }
+    }
+  }
+
+  protected fun createBandwidthValueProvider(
+    bandwidthSpecification: BandwidthSpecification
+  ): SimulationLifecycleAwareValueProvider<Long> {
+    return when (bandwidthSpecification) {
+      is BandwidthSpecification -> {
+        BandwidthValueProvider(bandwidthSpecification.bandwidth)
+      }
+
+      else -> {
+        throw IllegalArgumentException(
+          "Unsupported bandwidth specification type: ${bandwidthSpecification::class.java.name}"
         )
       }
     }
