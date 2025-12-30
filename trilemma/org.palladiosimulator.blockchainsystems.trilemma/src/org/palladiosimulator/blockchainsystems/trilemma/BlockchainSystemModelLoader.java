@@ -3,6 +3,8 @@ package org.palladiosimulator.blockchainsystems.trilemma;
 import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystem;
 import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainsystemPackage;
 
+import com.google.common.io.Files;
+
 import java.nio.file.Paths;
 import java.util.ArrayList;
 
@@ -11,7 +13,6 @@ import org.eclipse.emf.ecore.resource.Resource;
 import org.eclipse.emf.ecore.resource.ResourceSet;
 import org.eclipse.emf.ecore.resource.impl.ResourceSetImpl;
 import org.eclipse.emf.ecore.util.EcoreUtil;
-import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.P2PNetwork;
 
 public class BlockchainSystemModelLoader  {
 	
@@ -21,36 +22,22 @@ public class BlockchainSystemModelLoader  {
 		// TODO: need to be implement
 		BlockchainsystemPackage.eINSTANCE.eClass();
 		
-//		Resource.Factory.Registry registry = Resource.Factory.Registry.INSTANCE;
-//	    Map<String, Object> map = registry.getExtensionToFactoryMap();
-//	    map.put("blockchainsystem", new XMIResourceFactoryImpl());
-//	    map.put("p2pnetwork", new XMIResourceFactoryImpl());
-//	    map.put("nodeallocation", new XMIResourceFactoryImpl());
-//	    map.put("blockchainsystemComponentRepository", new XMIResourceFactoryImpl());
-//	    map.put("nodesystem", new XMIResourceFactoryImpl());
-//	    map.put("nodeenvironment", new XMIResourceFactoryImpl());
-//	    map.put("geographcalregions", new XMIResourceFactoryImpl());
-//	    map.put("linkallocation", new XMIResourceFactoryImpl());
-//	    map.put("transactions", new XMIResourceFactoryImpl());
+		String folderName = Paths.get(uri).getParent().getFileName().toString();
+		String blockChainSystemFileName = Paths.get(uri).getFileName().toString();
+		String nameWithoutExtension = Files.getNameWithoutExtension(blockChainSystemFileName);
 		
-//		Resource.Factory.Registry.INSTANCE.getExtensionToFactoryMap().put(
-//		        "blockchainsystem", new XMIResourceFactoryImpl()
-//		);
-//		Resource.Factory.Registry.INSTANCE.getExtensionToFactoryMap().put(
-//		        "p2pnetwork", new XMIResourceFactoryImpl()
-//		);
-	    
+//		Files.getNameWithoutExtension("blockChainSystemFileName.blockchainsystem");
 
 	    // Get the resource
-		var blockchainsystem = resourceSet.getResource(createRelativePluginURI("My.blockchainsystem"), true);
-	    var networkResource = resourceSet.getResource(createRelativePluginURI("My.p2pnetwork"), true);
-	    resourceSet.getResource(createRelativePluginURI("My.nodeallocation"), true);
-	    resourceSet.getResource(createRelativePluginURI("My.blockchainsystemComponentRepository"), true);
-	    resourceSet.getResource(createRelativePluginURI("My.nodesystem"), true);
-	    resourceSet.getResource(createRelativePluginURI("My.nodeenvironment"), true);
-	    resourceSet.getResource(createRelativePluginURI("My.geographicalregions"), true);
-	    resourceSet.getResource(createRelativePluginURI("My.linkallocation"), true);
-	    var transactionResource = resourceSet.getResource(createRelativePluginURI("My.transactions"), true);
+		var blockchainsystem = resourceSet.getResource(createRelativePluginURI(folderName, blockChainSystemFileName), true);
+	    var networkResource = resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".p2pnetwork"), true);
+	    resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".nodeallocation"), true);
+	    resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".blockchainsystemComponentRepository"), true);
+//	    resourceSet.getResource(createRelativePluginURI("Net.nodesystem"), true);
+//	    resourceSet.getResource(createRelativePluginURI("Net.nodeenvironment"), true);
+	    resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".geographicalregions"), true);
+	    resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".linkallocation"), true);
+	    var transactionResource = resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".transactions"), true);
 	    
 	    
 	    ArrayList<Resource> currentResources = null;
@@ -75,8 +62,8 @@ public class BlockchainSystemModelLoader  {
 	    return (BlockchainSystem) currentResources.get(0).getContents().getFirst();
 	}
 	
-	private URI createRelativePluginURI(String relativePath) {
-		String path = Paths.get("org.palladiosimulator.blockchainsystems.trilemma/testmodels", relativePath).toString();
+	private URI createRelativePluginURI(String folder, String relativePath) {
+		String path = Paths.get("org.palladiosimulator.blockchainsystems.trilemma/testmodels/" + folder, relativePath).toString();
 		return URI.createPlatformPluginURI(path, false);
 	}
 
