@@ -64,6 +64,7 @@
       <eStructuralFeatures xsi:type="ecore:EReference" name="ValidationDuration" lowerBound="1"
           eType="#//blockchainsystemComponentRepository/BlockValiationDurationSpecification"
           containment="true"/>
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="crashed" eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EBoolean"/>
     </eClassifiers>
     <eClassifiers xsi:type="ecore:EClass" name="MiningProcessComponent" eSuperTypes="#//blockchainsystemComponentRepository/BlockchainSystemNodeComponent">
       <eStructuralFeatures xsi:type="ecore:EAttribute" name="IsMiningProcessEnabled"
@@ -203,9 +204,14 @@
           lowerBound="1" eType="#//linkallocation/LinkLatencySpecification" containment="true"/>
       <eStructuralFeatures xsi:type="ecore:EReference" name="throughputSpecification"
           lowerBound="1" eType="#//linkallocation/LinkThroughputSpecification" containment="true"/>
+      <eStructuralFeatures xsi:type="ecore:EReference" name="bandwidthSpecification"
+          lowerBound="1" eType="#//linkallocation/BandwidthSpecification" containment="true"/>
     </eClassifiers>
     <eClassifiers xsi:type="ecore:EClass" name="LinkLatencySpecification" abstract="true"
         eSuperTypes="../../org.palladiosimulator.pcm/model/pcm.ecore#//core/entity/Entity"/>
+    <eClassifiers xsi:type="ecore:EClass" name="BandwidthSpecification" eSuperTypes="../../org.palladiosimulator.pcm/model/pcm.ecore#//core/entity/Entity">
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="Bandwidth" eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//ELong"/>
+    </eClassifiers>
     <eClassifiers xsi:type="ecore:EClass" name="DynamicLinkLatencySpecificationValue"
         eSuperTypes="../../org.palladiosimulator.pcm/model/pcm.ecore#//core/entity/Entity">
       <eStructuralFeatures xsi:type="ecore:EAttribute" name="Latency" lowerBound="1"

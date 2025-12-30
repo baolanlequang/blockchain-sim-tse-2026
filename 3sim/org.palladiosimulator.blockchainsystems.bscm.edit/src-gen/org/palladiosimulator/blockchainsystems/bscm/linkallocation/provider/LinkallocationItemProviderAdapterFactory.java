@@ -119,6 +119,29 @@ public class LinkallocationItemProviderAdapterFactory extends LinkallocationAdap
 	}
 
 	/**
+	 * This keeps track of the one adapter used for all {@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification} instances.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	protected BandwidthSpecificationItemProvider bandwidthSpecificationItemProvider;
+
+	/**
+	 * This creates an adapter for a {@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification}.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public Adapter createBandwidthSpecificationAdapter() {
+		if (bandwidthSpecificationItemProvider == null) {
+			bandwidthSpecificationItemProvider = new BandwidthSpecificationItemProvider(this);
+		}
+
+		return bandwidthSpecificationItemProvider;
+	}
+
+	/**
 	 * This keeps track of the one adapter used for all {@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.DynamicLinkLatencySpecificationValue} instances.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
@@ -367,6 +390,8 @@ public class LinkallocationItemProviderAdapterFactory extends LinkallocationAdap
 			linkAllocationRepositoryItemProvider.dispose();
 		if (linkAllocationItemProvider != null)
 			linkAllocationItemProvider.dispose();
+		if (bandwidthSpecificationItemProvider != null)
+			bandwidthSpecificationItemProvider.dispose();
 		if (dynamicLinkLatencySpecificationValueItemProvider != null)
 			dynamicLinkLatencySpecificationValueItemProvider.dispose();
 		if (dynamicLinkThroughputSpecificationValueItemProvider != null)

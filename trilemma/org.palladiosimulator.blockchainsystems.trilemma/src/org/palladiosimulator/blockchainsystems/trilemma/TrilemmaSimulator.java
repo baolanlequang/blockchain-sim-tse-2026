@@ -1,30 +1,39 @@
 package org.palladiosimulator.blockchainsystems.trilemma;
 
-import java.util.HashMap;
+import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.Map;
+
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import java.io.FileReader;
 
 
 public class TrilemmaSimulator {
 
 	public static void main(String[] args) {
-		// TODO Implementation
+		
 		BlockchainTrilemmaStandalone simulator = new BlockchainTrilemmaStandalone("org.palladiosimulator.blockchainsystems.trilemma", Activator.class);
 		if (simulator.initAnalysis()) {
 			System.out.println("Success initialize simulator");
 			
-			Map<String, String> configuration = new HashMap<String, String>();
-			configuration.put("simulationType", "Single");
-//			configuration.put("simulationType", "Monte-Carlo");
-			configuration.put("maxAllowedBlockchainLength", "10");
-			configuration.put("numberOfMonteCarloRounds", "2");
-			configuration.put("blockchainSystemModelFilePath", "/Users/lanle/Documents/Working/Uni_Ulm/PhD/blockchain-sim-tse-2026/trilemma/org.palladiosimulator.blockchainsystems.trilemma/testmodels/My.blockchainsystem");
+//			Map<String, String> configuration = new HashMap<String, String>();
+			try {
+//				String jsonString = Files.readString(Paths.get("./configuration.json"));
+				String configFilePath = "/Users/lanle/Documents/Working/Uni_Ulm/PhD/blockchain-sim-tse-2026/trilemma/org.palladiosimulator.blockchainsystems.trilemma/testmodels/configuration.json";
+				Gson gson = new Gson();
+				Type type = new TypeToken<Map<String, String>>() {}.getType();
+
+				Map<String, String> configuration = gson.fromJson(new FileReader(configFilePath), type);
+				
+				simulator.runSimulation(configuration);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+////			configuration.put("simulationType", "Monte-Carlo");
 			
-			configuration.put("failureThroughputThreshold", "1.0");
-			configuration.put("shannonEntropyK", "1.0");
-			configuration.put("nakamotoCoefficientThreshold", "50.0");
-			configuration.put("reliabilityObservationTimespan", "24.0");
 			
-			simulator.runSimulation(configuration);
 
 		} else {
 			System.out.println("Unable to initialize simulator");

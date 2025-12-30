@@ -15,6 +15,7 @@ import org.palladiosimulator.pcm.core.entity.Entity;
  * <ul>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkAllocation#getLatencySpecification <em>Latency Specification</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkAllocation#getThroughputSpecification <em>Throughput Specification</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkAllocation#getBandwidthSpecification <em>Bandwidth Specification</em>}</li>
  * </ul>
  *
  * @see org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkallocationPackage#getLinkAllocation()
@@ -65,5 +66,27 @@ public interface LinkAllocation extends Entity {
 	 * @generated
 	 */
 	void setThroughputSpecification(LinkThroughputSpecification value);
+
+	/**
+	 * Returns the value of the '<em><b>Bandwidth Specification</b></em>' containment reference.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the value of the '<em>Bandwidth Specification</em>' containment reference.
+	 * @see #setBandwidthSpecification(BandwidthSpecification)
+	 * @see org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkallocationPackage#getLinkAllocation_BandwidthSpecification()
+	 * @model containment="true" required="true"
+	 * @generated
+	 */
+	BandwidthSpecification getBandwidthSpecification();
+
+	/**
+	 * Sets the value of the '{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkAllocation#getBandwidthSpecification <em>Bandwidth Specification</em>}' containment reference.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @param value the new value of the '<em>Bandwidth Specification</em>' containment reference.
+	 * @see #getBandwidthSpecification()
+	 * @generated
+	 */
+	void setBandwidthSpecification(BandwidthSpecification value);
 
 } // LinkAllocation

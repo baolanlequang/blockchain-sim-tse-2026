@@ -30,6 +30,7 @@ import org.palladiosimulator.blockchainsystems.bscm.geographicalregions.Geograph
 
 import org.palladiosimulator.blockchainsystems.bscm.geographicalregions.impl.GeographicalregionsPackageImpl;
 
+import org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification;
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.DynamicLinkLatencySpecification;
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.DynamicLinkLatencySpecificationValue;
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.DynamicLinkThroughputSpecification;
@@ -94,6 +95,13 @@ public class LinkallocationPackageImpl extends EPackageImpl implements Linkalloc
 	 * @generated
 	 */
 	private EClass linkLatencySpecificationEClass = null;
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	private EClass bandwidthSpecificationEClass = null;
 
 	/**
 	 * <!-- begin-user-doc -->
@@ -322,8 +330,38 @@ public class LinkallocationPackageImpl extends EPackageImpl implements Linkalloc
 	 * @generated
 	 */
 	@Override
+	public EReference getLinkAllocation_BandwidthSpecification() {
+		return (EReference) linkAllocationEClass.getEStructuralFeatures().get(2);
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
 	public EClass getLinkLatencySpecification() {
 		return linkLatencySpecificationEClass;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public EClass getBandwidthSpecification() {
+		return bandwidthSpecificationEClass;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public EAttribute getBandwidthSpecification_Bandwidth() {
+		return (EAttribute) bandwidthSpecificationEClass.getEStructuralFeatures().get(0);
 	}
 
 	/**
@@ -532,8 +570,12 @@ public class LinkallocationPackageImpl extends EPackageImpl implements Linkalloc
 		linkAllocationEClass = createEClass(LINK_ALLOCATION);
 		createEReference(linkAllocationEClass, LINK_ALLOCATION__LATENCY_SPECIFICATION);
 		createEReference(linkAllocationEClass, LINK_ALLOCATION__THROUGHPUT_SPECIFICATION);
+		createEReference(linkAllocationEClass, LINK_ALLOCATION__BANDWIDTH_SPECIFICATION);
 
 		linkLatencySpecificationEClass = createEClass(LINK_LATENCY_SPECIFICATION);
+
+		bandwidthSpecificationEClass = createEClass(BANDWIDTH_SPECIFICATION);
+		createEAttribute(bandwidthSpecificationEClass, BANDWIDTH_SPECIFICATION__BANDWIDTH);
 
 		dynamicLinkLatencySpecificationValueEClass = createEClass(DYNAMIC_LINK_LATENCY_SPECIFICATION_VALUE);
 		createEAttribute(dynamicLinkLatencySpecificationValueEClass, DYNAMIC_LINK_LATENCY_SPECIFICATION_VALUE__LATENCY);
@@ -601,6 +643,7 @@ public class LinkallocationPackageImpl extends EPackageImpl implements Linkalloc
 		linkAllocationRepositoryEClass.getESuperTypes().add(theEntityPackage.getEntity());
 		linkAllocationEClass.getESuperTypes().add(theEntityPackage.getEntity());
 		linkLatencySpecificationEClass.getESuperTypes().add(theEntityPackage.getEntity());
+		bandwidthSpecificationEClass.getESuperTypes().add(theEntityPackage.getEntity());
 		dynamicLinkLatencySpecificationValueEClass.getESuperTypes().add(theEntityPackage.getEntity());
 		linkThroughputSpecificationEClass.getESuperTypes().add(theEntityPackage.getEntity());
 		dynamicLinkThroughputSpecificationValueEClass.getESuperTypes().add(theEntityPackage.getEntity());
@@ -624,9 +667,18 @@ public class LinkallocationPackageImpl extends EPackageImpl implements Linkalloc
 		initEReference(getLinkAllocation_ThroughputSpecification(), this.getLinkThroughputSpecification(), null,
 				"throughputSpecification", null, 1, 1, LinkAllocation.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE,
 				IS_COMPOSITE, !IS_RESOLVE_PROXIES, !IS_UNSETTABLE, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
+		initEReference(getLinkAllocation_BandwidthSpecification(), this.getBandwidthSpecification(), null,
+				"bandwidthSpecification", null, 1, 1, LinkAllocation.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE,
+				IS_COMPOSITE, !IS_RESOLVE_PROXIES, !IS_UNSETTABLE, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
 
 		initEClass(linkLatencySpecificationEClass, LinkLatencySpecification.class, "LinkLatencySpecification",
 				IS_ABSTRACT, !IS_INTERFACE, IS_GENERATED_INSTANCE_CLASS);
+
+		initEClass(bandwidthSpecificationEClass, BandwidthSpecification.class, "BandwidthSpecification", !IS_ABSTRACT,
+				!IS_INTERFACE, IS_GENERATED_INSTANCE_CLASS);
+		initEAttribute(getBandwidthSpecification_Bandwidth(), theEcorePackage.getELong(), "Bandwidth", null, 0, 1,
+				BandwidthSpecification.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE, !IS_UNSETTABLE, !IS_ID,
+				IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
 
 		initEClass(dynamicLinkLatencySpecificationValueEClass, DynamicLinkLatencySpecificationValue.class,
 				"DynamicLinkLatencySpecificationValue", !IS_ABSTRACT, !IS_INTERFACE, IS_GENERATED_INSTANCE_CLASS);

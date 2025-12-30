@@ -67,6 +67,7 @@ class ConnectedSubgraphP2PNetworkFactory(
 
       val latencyValueProvider = createLatencyValueProvider(subgraphLinkSpecification.latencySpecification)
       val throughputValueProvider = createThroughputValueProvider(subgraphLinkSpecification.throughputSpecification)
+      val bandwidthValueProvider = createBandwidthValueProvider(subgraphLinkSpecification.bandwidthSpecification)
 
       // Create a bidirectional spanning tree in subgraph
       subgraphNodes

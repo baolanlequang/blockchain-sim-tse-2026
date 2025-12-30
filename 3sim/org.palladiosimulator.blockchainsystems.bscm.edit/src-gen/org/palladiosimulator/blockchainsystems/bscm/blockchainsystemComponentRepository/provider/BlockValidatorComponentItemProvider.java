@@ -10,7 +10,9 @@ import org.eclipse.emf.common.notify.Notification;
 
 import org.eclipse.emf.ecore.EStructuralFeature;
 
+import org.eclipse.emf.edit.provider.ComposeableAdapterFactory;
 import org.eclipse.emf.edit.provider.IItemPropertyDescriptor;
+import org.eclipse.emf.edit.provider.ItemPropertyDescriptor;
 import org.eclipse.emf.edit.provider.ViewerNotification;
 
 import org.palladiosimulator.blockchainsystems.bscm.blockchainsystemComponentRepository.BlockValidatorComponent;
@@ -45,8 +47,25 @@ public class BlockValidatorComponentItemProvider extends BlockchainSystemNodeCom
 		if (itemPropertyDescriptors == null) {
 			super.getPropertyDescriptors(object);
 
+			addCrashedPropertyDescriptor(object);
 		}
 		return itemPropertyDescriptors;
+	}
+
+	/**
+	 * This adds a property descriptor for the Crashed feature.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	protected void addCrashedPropertyDescriptor(Object object) {
+		itemPropertyDescriptors
+				.add(createItemPropertyDescriptor(((ComposeableAdapterFactory) adapterFactory).getRootAdapterFactory(),
+						getResourceLocator(), getString("_UI_BlockValidatorComponent_crashed_feature"),
+						getString("_UI_PropertyDescriptor_description", "_UI_BlockValidatorComponent_crashed_feature",
+								"_UI_BlockValidatorComponent_type"),
+						BlockchainsystemComponentRepositoryPackage.Literals.BLOCK_VALIDATOR_COMPONENT__CRASHED, true,
+						false, false, ItemPropertyDescriptor.BOOLEAN_VALUE_IMAGE, null, null));
 	}
 
 	/**
@@ -126,6 +145,9 @@ public class BlockValidatorComponentItemProvider extends BlockchainSystemNodeCom
 		updateChildren(notification);
 
 		switch (notification.getFeatureID(BlockValidatorComponent.class)) {
+		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__CRASHED:
+			fireNotifyChanged(new ViewerNotification(notification, notification.getNotifier(), false, true));
+			return;
 		case BlockchainsystemComponentRepositoryPackage.BLOCK_VALIDATOR_COMPONENT__VALIDATION_DURATION:
 			fireNotifyChanged(new ViewerNotification(notification, notification.getNotifier(), true, false));
 			return;

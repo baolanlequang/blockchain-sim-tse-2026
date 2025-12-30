@@ -11,25 +11,31 @@ import org.palladiosimulator.blockchainsystems.core.common.abstractions.ValuePro
  * in a blockchain system.
  *
  * @property blockValidationDurationProvider A provider for the duration of block validation in ms.
+ * @property isCrashed Identify the crashed validator.
  *
  * @author Yannik Sproll, Davis Riedel
  */
 class BlockValidatorImpl(
-  private val blockValidationDurationProvider: ValueProvider<Long>
+  private val blockValidationDurationProvider: ValueProvider<Long>,
+  private val isCrashed: Boolean
 ) : BlockchainNodeObject(),
   BlockValidator {
   private var onBlockValidatedCallback: ((Block, Boolean) -> Unit)? = null
 
   override fun validateBlock(block: Block) {
-    val blockValidationStartedEvent = BlockValidationStartedEvent(
-      simulationContext.systemClock.currentTime,
-      this,
-      block
-    )
+    if (!isCrashed) {
+      val blockValidationStartedEvent = BlockValidationStartedEvent(
+        simulationContext.systemClock.currentTime,
+        this,
+        block
+      )
 
-    simulationContext
-      .eventCoordinator
-      .raiseEvent(blockValidationStartedEvent)
+      simulationContext
+        .eventCoordinator
+        .raiseEvent(blockValidationStartedEvent)
+    } else {
+      // do not send
+    }
   }
 
   override fun dispatchEvent(event: Event) {
