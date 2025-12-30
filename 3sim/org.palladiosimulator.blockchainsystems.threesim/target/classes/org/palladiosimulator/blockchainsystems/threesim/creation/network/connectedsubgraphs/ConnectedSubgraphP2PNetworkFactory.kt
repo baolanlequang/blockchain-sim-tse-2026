@@ -79,6 +79,7 @@ class ConnectedSubgraphP2PNetworkFactory(
             fun(fromVertex: P2PNode, toVertex: P2PNode) = P2PLink(
               latencyValueProvider,
               throughputValueProvider,
+              bandwidthValueProvider,
               fromVertex,
               toVertex
             )
@@ -115,6 +116,7 @@ class ConnectedSubgraphP2PNetworkFactory(
             fun(fromVertex: P2PNode, toVertex: P2PNode) = P2PLink(
               latencyValueProvider,
               throughputValueProvider,
+              bandwidthValueProvider,
               fromVertex,
               toVertex
             )
@@ -140,6 +142,7 @@ class ConnectedSubgraphP2PNetworkFactory(
 
       val latencyValueProvider = createLatencyValueProvider(subgraphLinkSpecification.latencySpecification)
       val throughputValueProvider = createThroughputValueProvider(subgraphLinkSpecification.throughputSpecification)
+      val bandwidthValueProvider = createBandwidthValueProvider(subgraphLinkSpecification.bandwidthSpecification)
 
       firstSubgraphProxies.forEach { firstSubgraphProxy ->
         secondSubgraphProxies.forEach { secondSubgraphProxy ->
@@ -149,6 +152,7 @@ class ConnectedSubgraphP2PNetworkFactory(
             fun(fromVertex: P2PNode, toVertex: P2PNode) = P2PLink(
               latencyValueProvider,
               throughputValueProvider,
+              bandwidthValueProvider,
               fromVertex,
               toVertex
             )

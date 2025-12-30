@@ -14,6 +14,7 @@ import kotlin.math.roundToLong
 class P2PLink(
   private val latencyValueProvider: SimulationLifecycleAwareValueProvider<Long>,
   private val throughputValueProvider: SimulationLifecycleAwareValueProvider<Long>,
+  private val bandwidthValueProvider: SimulationLifecycleAwareValueProvider<Long>,
   val fromNode: P2PNode,
   val toNode: P2PNode
 ) : P2PNetworkObject() {
@@ -21,12 +22,14 @@ class P2PLink(
     super.onInitialize()
     latencyValueProvider.initialize(simulationContext)
     throughputValueProvider.initialize(simulationContext)
+    bandwidthValueProvider.initialize(simulationContext)
   }
 
   override fun onCleanup() {
     super.onCleanup()
     latencyValueProvider.cleanup()
     throughputValueProvider.cleanup()
+    bandwidthValueProvider.cleanup()
   }
 
   fun send(messageContent: Message) {
@@ -74,8 +77,9 @@ class P2PLink(
 
   private fun handleMessageSentEvent(event: MessageSentEvent) {
     val bps = throughputValueProvider.getValue() // in bits per second
+    val bandwidth = bandwidthValueProvider.getValue() // in Mega bits per second
 
-    val event = if (bps <= 0) {
+    val event = if (bps <= 0 || bandwidth <= 0) {
       // Link failed, raise message dropped event
       MessageDroppedEvent(
         event.message,
@@ -91,7 +95,9 @@ class P2PLink(
       val messageSize = event.message.content.size.toLong() // in byte
 
       val bypms = bps.toDouble() / 8000 // Convert bit per second to bytes per millisecond
-      val transmissionDuration = (latency + messageSize / bypms).roundToLong()
+      
+      val transmissionDuration = ((latency + messageSize * 8 * 1000) / (bandwidth.toDouble() * 1000000)).roundToLong() // in ms
+      // val transmissionDuration = (latency + messageSize / bypms).roundToLong()
 
       MessageReceivedEvent(
         event.message,
