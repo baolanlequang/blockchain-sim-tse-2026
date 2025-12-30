@@ -1,37 +1,7 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <units size='4'>
-  <unit id='org.palladiosimulator.blockchainsystems.feature.core.feature.jar' version='0.0.1.202512271310'>
-    <properties size='7'>
-      <property name='org.eclipse.equinox.p2.name' value='Blockchain Simulator Core'/>
-      <property name='org.eclipse.equinox.p2.description' value='A feature that installs the core components for Palladio-based blockchain simulators.'/>
-      <property name='org.eclipse.equinox.p2.provider' value='Palladio Blockchain Systems'/>
-      <property name='maven-groupId' value='org.palladiosimulator.blockchainsystems'/>
-      <property name='maven-artifactId' value='org.palladiosimulator.blockchainsystems.feature.core'/>
-      <property name='maven-version' value='0.0.1-SNAPSHOT'/>
-      <property name='maven-type' value='eclipse-feature'/>
-    </properties>
-    <provides size='3'>
-      <provided namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.feature.jar' version='0.0.1.202512271310'/>
-      <provided namespace='org.eclipse.equinox.p2.eclipse.type' name='feature' version='1.0.0'/>
-      <provided namespace='org.eclipse.update.feature' name='org.palladiosimulator.blockchainsystems.feature.core' version='0.0.1.202512271310'/>
-    </provides>
-    <filter>
-      (org.eclipse.update.install.features=true)
-    </filter>
-    <artifacts size='1'>
-      <artifact classifier='org.eclipse.update.feature' id='org.palladiosimulator.blockchainsystems.feature.core' version='0.0.1.202512271310'/>
-    </artifacts>
-    <touchpoint id='org.eclipse.equinox.p2.osgi' version='1.0.0'/>
-    <touchpointData size='1'>
-      <instructions size='1'>
-        <instruction key='zipped'>
-          true
-        </instruction>
-      </instructions>
-    </touchpointData>
-  </unit>
-  <unit id='org.palladiosimulator.blockchainsystems.feature.core.feature.group' version='0.0.1.202512271310' singleton='false'>
-    <update id='org.palladiosimulator.blockchainsystems.feature.core.feature.group' range='[0.0.0,0.0.1.202512271310)' severity='0'/>
+  <unit id='org.palladiosimulator.blockchainsystems.feature.core.feature.group' version='0.0.1.202512301000' singleton='false'>
+    <update id='org.palladiosimulator.blockchainsystems.feature.core.feature.group' range='[0.0.0,0.0.1.202512301000)' severity='0'/>
     <properties size='8'>
       <property name='org.eclipse.equinox.p2.name' value='Blockchain Simulator Core'/>
       <property name='org.eclipse.equinox.p2.description' value='A feature that installs the core components for Palladio-based blockchain simulators.'/>
@@ -43,13 +13,13 @@
       <property name='maven-type' value='eclipse-feature'/>
     </properties>
     <provides size='1'>
-      <provided namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.feature.group' version='0.0.1.202512271310'/>
+      <provided namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.feature.group' version='0.0.1.202512301000'/>
     </provides>
     <requires size='4'>
-      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.core' range='[0.0.1.202512271310,0.0.1.202512271310]'/>
-      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.loggers' range='[0.0.1.202512271310,0.0.1.202512271310]'/>
-      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.plugin' range='[0.0.1.202512271310,0.0.1.202512271310]'/>
-      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.feature.jar' range='[0.0.1.202512271310,0.0.1.202512271310]'>
+      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.core' range='[0.0.1.202512301000,0.0.1.202512301000]'/>
+      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.loggers' range='[0.0.1.202512301000,0.0.1.202512301000]'/>
+      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.plugin' range='[0.0.1.202512301000,0.0.1.202512301000]'/>
+      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.feature.jar' range='[0.0.1.202512301000,0.0.1.202512301000]'>
         <filter>
           (org.eclipse.update.install.features=true)
         </filter>
@@ -57,8 +27,38 @@
     </requires>
     <touchpoint id='null' version='0.0.0'/>
   </unit>
-  <unit id='org.palladiosimulator.blockchainsystems.feature.core.source.feature.group' version='0.0.1.202512271310' singleton='false'>
-    <update id='org.palladiosimulator.blockchainsystems.feature.core.source.feature.group' range='[0.0.0,0.0.1.202512271310)' severity='0'/>
+  <unit id='org.palladiosimulator.blockchainsystems.feature.core.feature.jar' version='0.0.1.202512301000'>
+    <properties size='7'>
+      <property name='org.eclipse.equinox.p2.name' value='Blockchain Simulator Core'/>
+      <property name='org.eclipse.equinox.p2.description' value='A feature that installs the core components for Palladio-based blockchain simulators.'/>
+      <property name='org.eclipse.equinox.p2.provider' value='Palladio Blockchain Systems'/>
+      <property name='maven-groupId' value='org.palladiosimulator.blockchainsystems'/>
+      <property name='maven-artifactId' value='org.palladiosimulator.blockchainsystems.feature.core'/>
+      <property name='maven-version' value='0.0.1-SNAPSHOT'/>
+      <property name='maven-type' value='eclipse-feature'/>
+    </properties>
+    <provides size='3'>
+      <provided namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.feature.jar' version='0.0.1.202512301000'/>
+      <provided namespace='org.eclipse.equinox.p2.eclipse.type' name='feature' version='1.0.0'/>
+      <provided namespace='org.eclipse.update.feature' name='org.palladiosimulator.blockchainsystems.feature.core' version='0.0.1.202512301000'/>
+    </provides>
+    <filter>
+      (org.eclipse.update.install.features=true)
+    </filter>
+    <artifacts size='1'>
+      <artifact classifier='org.eclipse.update.feature' id='org.palladiosimulator.blockchainsystems.feature.core' version='0.0.1.202512301000'/>
+    </artifacts>
+    <touchpoint id='org.eclipse.equinox.p2.osgi' version='1.0.0'/>
+    <touchpointData size='1'>
+      <instructions size='1'>
+        <instruction key='zipped'>
+          true
+        </instruction>
+      </instructions>
+    </touchpointData>
+  </unit>
+  <unit id='org.palladiosimulator.blockchainsystems.feature.core.source.feature.group' version='0.0.1.202512301000' singleton='false'>
+    <update id='org.palladiosimulator.blockchainsystems.feature.core.source.feature.group' range='[0.0.0,0.0.1.202512301000)' severity='0'/>
     <properties size='9'>
       <property name='org.eclipse.equinox.p2.name' value='Blockchain Simulator Core Developer Resources'/>
       <property name='org.eclipse.equinox.p2.description' value='A feature that installs the core components for Palladio-based blockchain simulators.'/>
@@ -71,14 +71,14 @@
       <property name='maven-type' value='eclipse-feature'/>
     </properties>
     <provides size='1'>
-      <provided namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.source.feature.group' version='0.0.1.202512271310'/>
+      <provided namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.source.feature.group' version='0.0.1.202512301000'/>
     </provides>
     <requires size='5'>
-      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.feature.group' range='[0.0.1.202512271310,0.0.1.202512271310]'/>
-      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.core.source' range='[0.0.1.202512271310,0.0.1.202512271310]'/>
-      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.loggers.source' range='[0.0.1.202512271310,0.0.1.202512271310]'/>
-      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.plugin.source' range='[0.0.1.202512271310,0.0.1.202512271310]'/>
-      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.source.feature.jar' range='[0.0.1.202512271310,0.0.1.202512271310]'>
+      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.feature.group' range='[0.0.1.202512301000,0.0.1.202512301000]'/>
+      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.core.source' range='[0.0.1.202512301000,0.0.1.202512301000]'/>
+      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.loggers.source' range='[0.0.1.202512301000,0.0.1.202512301000]'/>
+      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.plugin.source' range='[0.0.1.202512301000,0.0.1.202512301000]'/>
+      <required namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.source.feature.jar' range='[0.0.1.202512301000,0.0.1.202512301000]'>
         <filter>
           (org.eclipse.update.install.features=true)
         </filter>
@@ -86,7 +86,7 @@
     </requires>
     <touchpoint id='null' version='0.0.0'/>
   </unit>
-  <unit id='org.palladiosimulator.blockchainsystems.feature.core.source.feature.jar' version='0.0.1.202512271310'>
+  <unit id='org.palladiosimulator.blockchainsystems.feature.core.source.feature.jar' version='0.0.1.202512301000'>
     <properties size='8'>
       <property name='org.eclipse.equinox.p2.name' value='Blockchain Simulator Core Developer Resources'/>
       <property name='org.eclipse.equinox.p2.description' value='A feature that installs the core components for Palladio-based blockchain simulators.'/>
@@ -98,15 +98,15 @@
       <property name='maven-type' value='eclipse-feature'/>
     </properties>
     <provides size='3'>
-      <provided namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.source.feature.jar' version='0.0.1.202512271310'/>
+      <provided namespace='org.eclipse.equinox.p2.iu' name='org.palladiosimulator.blockchainsystems.feature.core.source.feature.jar' version='0.0.1.202512301000'/>
       <provided namespace='org.eclipse.equinox.p2.eclipse.type' name='feature' version='1.0.0'/>
-      <provided namespace='org.eclipse.update.feature' name='org.palladiosimulator.blockchainsystems.feature.core.source' version='0.0.1.202512271310'/>
+      <provided namespace='org.eclipse.update.feature' name='org.palladiosimulator.blockchainsystems.feature.core.source' version='0.0.1.202512301000'/>
     </provides>
     <filter>
       (org.eclipse.update.install.features=true)
     </filter>
     <artifacts size='1'>
-      <artifact classifier='org.eclipse.update.feature' id='org.palladiosimulator.blockchainsystems.feature.core.source' version='0.0.1.202512271310'/>
+      <artifact classifier='org.eclipse.update.feature' id='org.palladiosimulator.blockchainsystems.feature.core.source' version='0.0.1.202512301000'/>
     </artifacts>
     <touchpoint id='org.eclipse.equinox.p2.osgi' version='1.0.0'/>
     <touchpointData size='1'>
