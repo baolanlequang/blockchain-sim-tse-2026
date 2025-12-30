@@ -1,5 +1,9 @@
 package org.palladiosimulator.blockchainsystems.trilemma;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.Map;
 
 import org.apache.log4j.Logger;
@@ -57,8 +61,24 @@ public class BlockchainTrilemmaStandalone {
 		var serialization = new ThreesimSimulationResultSerializer(ThreesimSerializers.INSTANCE.getJson());
 		var jsonResult = serialization.serialize(result);
 		
-		System.out.println("result: " + result);
-		System.out.println("jsonResult: " + jsonResult);
+	    
+	    try {
+	    	String blockchainSystemModelFilePath = configuration.get("blockchainSystemModelFilePath");
+	    	String folderName = Paths.get(blockchainSystemModelFilePath).getParent().toString();
+	    	BufferedWriter writer = new BufferedWriter(new FileWriter(folderName + "_result.json"));
+			writer.write(jsonResult);
+			writer.close();
+			System.out.println("Simulation finished");
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			System.out.println("Simulation finished");
+		}
+	    
+	    
+		
+//		System.out.println("result: " + result);
+//		System.out.println("jsonResult: " + jsonResult);
 //		if (result instanceof ThreesimMonteCarloSimulationResult monteCarloSimulationResult) {
 //			System.out.println("final result monte-carlo: " + monteCarloSimulationResult.getSimulationRoundResults());
 //		} else if (result instanceof ThreesimSingleSimulationResult singleSimulationResult) {
