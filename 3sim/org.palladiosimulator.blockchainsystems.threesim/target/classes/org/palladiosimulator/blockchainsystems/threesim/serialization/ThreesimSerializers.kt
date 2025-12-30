@@ -37,6 +37,7 @@ import kotlinx.serialization.json.Json
 object ThreesimSerializers {
   val json = Json {
     prettyPrint = true
+    allowSpecialFloatingPointValues = true
     serializersModule = SerializersModule {
       polymorphic(SimulationParameters::class) {
         subclass(SingleSimulationParameters::class)
