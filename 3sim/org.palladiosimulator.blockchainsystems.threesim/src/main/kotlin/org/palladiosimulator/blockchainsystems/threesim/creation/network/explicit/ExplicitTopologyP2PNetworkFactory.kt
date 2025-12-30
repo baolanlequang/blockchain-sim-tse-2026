@@ -64,6 +64,7 @@ class ExplicitTopologyP2PNetworkFactory(
           P2PLink(
             latencyValueProvider,
             throughputValueProvider,
+            bandwidthValueProvider,
             fromP2PNode,
             toP2PNode
           )
