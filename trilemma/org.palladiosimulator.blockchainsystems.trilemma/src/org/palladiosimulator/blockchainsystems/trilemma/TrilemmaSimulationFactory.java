@@ -10,12 +10,14 @@ import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.Simu
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSingleSimulation;
 import org.palladiosimulator.blockchainsystems.threesim.creation.ThreesimBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.creation.network.connectedsubgraphs.ConnectedSubgraphNetworkBlockchainSystemFactory;
+import org.palladiosimulator.blockchainsystems.threesim.creation.network.explicit.ExplicitNetworkBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.serialization.ThreesimSerializers;
 
 import java.util.Map;
 
 import org.eclipse.core.runtime.CoreException;
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectedSubgraphsNetworkTopology;
+import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ExplicitNetworkTopology;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimMonteCarloSimulation;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSimulationParameters;
 
@@ -80,6 +82,9 @@ public class TrilemmaSimulationFactory implements Simulation {
 		
 		if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) { 
 			var blockchainFactory = new ConnectedSubgraphNetworkBlockchainSystemFactory(designBlockchainSystem, (ConnectedSubgraphsNetworkTopology) networkTopology);
+			return blockchainFactory;
+		} else if (networkTopology instanceof ExplicitNetworkTopology) { 
+			var blockchainFactory = new ExplicitNetworkBlockchainSystemFactory(designBlockchainSystem, (ExplicitNetworkTopology) networkTopology);
 			return blockchainFactory;
 		}
 		return null;
