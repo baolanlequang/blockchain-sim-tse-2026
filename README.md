@@ -17,7 +17,10 @@ Make sure the following prerequisites are installed:
   - `Blockchain Simulator Core`
   - `3SIM`
 
-3. Restart Eclipse and import `org.palladiosimulator.blockchainsystems.trilemma` project in `trilemma` folder.
+3. Open Eclipse, select Help > Install New Software...> Add..:
+  - Input `https://updatesite.mdsd.tools/library-standaloneinitialization/nightly/` into Location and install all supported libraries
+
+4. Restart Eclipse and import `org.palladiosimulator.blockchainsystems.trilemma` project in `trilemma` folder.
 
 ### Usage
 1. Edit `configuration.json` to change the configuation of the simulator in `testmodels` folder
