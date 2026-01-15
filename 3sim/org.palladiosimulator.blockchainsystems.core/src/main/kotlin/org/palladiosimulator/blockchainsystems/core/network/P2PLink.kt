@@ -96,7 +96,8 @@ class P2PLink(
 
       val bypms = bps.toDouble() / 8000 // Convert bit per second to bytes per millisecond
       
-      val transmissionDuration = ((latency + messageSize * 8 * 1000) / (bandwidth.toDouble() * 1000000)).roundToLong() // in ms
+      // val transmissionDuration = ((latency + messageSize * 8 * 1000) / (bandwidth.toDouble() * 1000000)).roundToLong() // in ms
+      val transmissionDuration = ((messageSize * 8 * 1000) / (bandwidth.toDouble() * 1000000)).roundToLong() // in ms
       // val transmissionDuration = (latency + messageSize / bypms).roundToLong()
 
       MessageReceivedEvent(
