@@ -68,6 +68,15 @@ public interface P2pnetworkFactory extends EFactory {
 	SubgraphSpecification createSubgraphSpecification();
 
 	/**
+	 * Returns a new object of class '<em>Connectivity Specification</em>'.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return a new object of class '<em>Connectivity Specification</em>'.
+	 * @generated
+	 */
+	ConnectivitySpecification createConnectivitySpecification();
+
+	/**
 	 * Returns a new object of class '<em>Subgraph Link</em>'.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->

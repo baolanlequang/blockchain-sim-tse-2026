@@ -20,6 +20,7 @@ import org.palladiosimulator.pcm.core.entity.Entity;
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphSpecification#getNodeTemplates <em>Node Templates</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphSpecification#getConnectivity <em>Connectivity</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphSpecification#getLinkAllocation <em>Link Allocation</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphSpecification#getConnectivitySpecification <em>Connectivity Specification</em>}</li>
  * </ul>
  *
  * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.P2pnetworkPackage#getSubgraphSpecification()
@@ -82,5 +83,27 @@ public interface SubgraphSpecification extends Entity {
 	 * @generated
 	 */
 	void setLinkAllocation(LinkAllocation value);
+
+	/**
+	 * Returns the value of the '<em><b>Connectivity Specification</b></em>' containment reference.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the value of the '<em>Connectivity Specification</em>' containment reference.
+	 * @see #setConnectivitySpecification(ConnectivitySpecification)
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.P2pnetworkPackage#getSubgraphSpecification_ConnectivitySpecification()
+	 * @model containment="true" required="true"
+	 * @generated
+	 */
+	ConnectivitySpecification getConnectivitySpecification();
+
+	/**
+	 * Sets the value of the '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphSpecification#getConnectivitySpecification <em>Connectivity Specification</em>}' containment reference.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @param value the new value of the '<em>Connectivity Specification</em>' containment reference.
+	 * @see #getConnectivitySpecification()
+	 * @generated
+	 */
+	void setConnectivitySpecification(ConnectivitySpecification value);
 
 } // SubgraphSpecification

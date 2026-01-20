@@ -19,6 +19,7 @@ import org.eclipse.emf.ecore.util.InternalEList;
 
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkAllocation;
 
+import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification;
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.P2pnetworkPackage;
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphNodeTemplate;
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphSpecification;
@@ -36,6 +37,7 @@ import org.palladiosimulator.pcm.core.entity.impl.EntityImpl;
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.SubgraphSpecificationImpl#getNodeTemplates <em>Node Templates</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.SubgraphSpecificationImpl#getConnectivity <em>Connectivity</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.SubgraphSpecificationImpl#getLinkAllocation <em>Link Allocation</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.SubgraphSpecificationImpl#getConnectivitySpecification <em>Connectivity Specification</em>}</li>
  * </ul>
  *
  * @generated
@@ -80,6 +82,16 @@ public class SubgraphSpecificationImpl extends EntityImpl implements SubgraphSpe
 	 * @ordered
 	 */
 	protected LinkAllocation linkAllocation;
+
+	/**
+	 * The cached value of the '{@link #getConnectivitySpecification() <em>Connectivity Specification</em>}' containment reference.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #getConnectivitySpecification()
+	 * @generated
+	 * @ordered
+	 */
+	protected ConnectivitySpecification connectivitySpecification;
 
 	/**
 	 * <!-- begin-user-doc -->
@@ -187,10 +199,69 @@ public class SubgraphSpecificationImpl extends EntityImpl implements SubgraphSpe
 	 * @generated
 	 */
 	@Override
+	public ConnectivitySpecification getConnectivitySpecification() {
+		return connectivitySpecification;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	public NotificationChain basicSetConnectivitySpecification(ConnectivitySpecification newConnectivitySpecification,
+			NotificationChain msgs) {
+		ConnectivitySpecification oldConnectivitySpecification = connectivitySpecification;
+		connectivitySpecification = newConnectivitySpecification;
+		if (eNotificationRequired()) {
+			ENotificationImpl notification = new ENotificationImpl(this, Notification.SET,
+					P2pnetworkPackage.SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION, oldConnectivitySpecification,
+					newConnectivitySpecification);
+			if (msgs == null)
+				msgs = notification;
+			else
+				msgs.add(notification);
+		}
+		return msgs;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public void setConnectivitySpecification(ConnectivitySpecification newConnectivitySpecification) {
+		if (newConnectivitySpecification != connectivitySpecification) {
+			NotificationChain msgs = null;
+			if (connectivitySpecification != null)
+				msgs = ((InternalEObject) connectivitySpecification).eInverseRemove(this,
+						EOPPOSITE_FEATURE_BASE - P2pnetworkPackage.SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION,
+						null, msgs);
+			if (newConnectivitySpecification != null)
+				msgs = ((InternalEObject) newConnectivitySpecification).eInverseAdd(this,
+						EOPPOSITE_FEATURE_BASE - P2pnetworkPackage.SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION,
+						null, msgs);
+			msgs = basicSetConnectivitySpecification(newConnectivitySpecification, msgs);
+			if (msgs != null)
+				msgs.dispatch();
+		} else if (eNotificationRequired())
+			eNotify(new ENotificationImpl(this, Notification.SET,
+					P2pnetworkPackage.SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION, newConnectivitySpecification,
+					newConnectivitySpecification));
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
 	public NotificationChain eInverseRemove(InternalEObject otherEnd, int featureID, NotificationChain msgs) {
 		switch (featureID) {
 		case P2pnetworkPackage.SUBGRAPH_SPECIFICATION__NODE_TEMPLATES:
 			return ((InternalEList<?>) getNodeTemplates()).basicRemove(otherEnd, msgs);
+		case P2pnetworkPackage.SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION:
+			return basicSetConnectivitySpecification(null, msgs);
 		}
 		return super.eInverseRemove(otherEnd, featureID, msgs);
 	}
@@ -211,6 +282,8 @@ public class SubgraphSpecificationImpl extends EntityImpl implements SubgraphSpe
 			if (resolve)
 				return getLinkAllocation();
 			return basicGetLinkAllocation();
+		case P2pnetworkPackage.SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION:
+			return getConnectivitySpecification();
 		}
 		return super.eGet(featureID, resolve, coreType);
 	}
@@ -234,6 +307,9 @@ public class SubgraphSpecificationImpl extends EntityImpl implements SubgraphSpe
 		case P2pnetworkPackage.SUBGRAPH_SPECIFICATION__LINK_ALLOCATION:
 			setLinkAllocation((LinkAllocation) newValue);
 			return;
+		case P2pnetworkPackage.SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION:
+			setConnectivitySpecification((ConnectivitySpecification) newValue);
+			return;
 		}
 		super.eSet(featureID, newValue);
 	}
@@ -255,6 +331,9 @@ public class SubgraphSpecificationImpl extends EntityImpl implements SubgraphSpe
 		case P2pnetworkPackage.SUBGRAPH_SPECIFICATION__LINK_ALLOCATION:
 			setLinkAllocation((LinkAllocation) null);
 			return;
+		case P2pnetworkPackage.SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION:
+			setConnectivitySpecification((ConnectivitySpecification) null);
+			return;
 		}
 		super.eUnset(featureID);
 	}
@@ -273,6 +352,8 @@ public class SubgraphSpecificationImpl extends EntityImpl implements SubgraphSpe
 			return connectivity != CONNECTIVITY_EDEFAULT;
 		case P2pnetworkPackage.SUBGRAPH_SPECIFICATION__LINK_ALLOCATION:
 			return linkAllocation != null;
+		case P2pnetworkPackage.SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION:
+			return connectivitySpecification != null;
 		}
 		return super.eIsSet(featureID);
 	}
