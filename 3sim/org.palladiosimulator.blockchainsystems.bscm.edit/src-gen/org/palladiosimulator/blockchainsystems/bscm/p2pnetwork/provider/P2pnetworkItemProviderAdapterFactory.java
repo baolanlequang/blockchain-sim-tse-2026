@@ -188,6 +188,29 @@ public class P2pnetworkItemProviderAdapterFactory extends P2pnetworkAdapterFacto
 	}
 
 	/**
+	 * This keeps track of the one adapter used for all {@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification} instances.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	protected ConnectivitySpecificationItemProvider connectivitySpecificationItemProvider;
+
+	/**
+	 * This creates an adapter for a {@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification}.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public Adapter createConnectivitySpecificationAdapter() {
+		if (connectivitySpecificationItemProvider == null) {
+			connectivitySpecificationItemProvider = new ConnectivitySpecificationItemProvider(this);
+		}
+
+		return connectivitySpecificationItemProvider;
+	}
+
+	/**
 	 * This keeps track of the one adapter used for all {@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphLink} instances.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
@@ -394,6 +417,8 @@ public class P2pnetworkItemProviderAdapterFactory extends P2pnetworkAdapterFacto
 			connectedSubgraphsNetworkTopologyItemProvider.dispose();
 		if (subgraphSpecificationItemProvider != null)
 			subgraphSpecificationItemProvider.dispose();
+		if (connectivitySpecificationItemProvider != null)
+			connectivitySpecificationItemProvider.dispose();
 		if (subgraphLinkItemProvider != null)
 			subgraphLinkItemProvider.dispose();
 		if (subgraphNodeTemplateItemProvider != null)

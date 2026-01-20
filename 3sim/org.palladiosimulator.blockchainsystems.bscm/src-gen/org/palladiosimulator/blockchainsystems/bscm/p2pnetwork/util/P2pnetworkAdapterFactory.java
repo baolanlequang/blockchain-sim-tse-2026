@@ -115,6 +115,11 @@ public class P2pnetworkAdapterFactory extends AdapterFactoryImpl {
 		}
 
 		@Override
+		public Adapter caseConnectivitySpecification(ConnectivitySpecification object) {
+			return createConnectivitySpecificationAdapter();
+		}
+
+		@Override
 		public Adapter caseSubgraphLink(SubgraphLink object) {
 			return createSubgraphLinkAdapter();
 		}
@@ -287,6 +292,20 @@ public class P2pnetworkAdapterFactory extends AdapterFactoryImpl {
 	 * @generated
 	 */
 	public Adapter createSubgraphSpecificationAdapter() {
+		return null;
+	}
+
+	/**
+	 * Creates a new adapter for an object of class '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification <em>Connectivity Specification</em>}'.
+	 * <!-- begin-user-doc -->
+	 * This default implementation returns null so that we can easily ignore cases;
+	 * it's useful to ignore a case when inheritance will catch all the cases anyway.
+	 * <!-- end-user-doc -->
+	 * @return the new adapter.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification
+	 * @generated
+	 */
+	public Adapter createConnectivitySpecificationAdapter() {
 		return null;
 	}
 

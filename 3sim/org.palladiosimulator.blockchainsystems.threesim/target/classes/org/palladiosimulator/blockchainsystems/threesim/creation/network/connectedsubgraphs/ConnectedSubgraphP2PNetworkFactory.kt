@@ -56,18 +56,42 @@ class ConnectedSubgraphP2PNetworkFactory(
       val initialDegrees = CounterMap<P2PNode>()
       val subgraphSpec = subGraphIdToLinkSpecificationMapping.get(subgraphId) ?: return@forEach
 
-      // Add vertices of subgraph
-      subgraphNodes.forEach { node ->
-        networkGraph.addVertex(node)
-        initialDegrees.put(node, subgraphSpec.connectivity)
-      }
+//      // Add vertices of subgraph
+//      subgraphNodes.forEach { node ->
+//        networkGraph.addVertex(node)
+//        initialDegrees.put(node, subgraphSpec.connectivity)
+//      }
 
       // Get link allocation for subgraph internal links
       val subgraphLinkSpecification = subgraphSpec.linkAllocation
 
-      val latencyValueProvider = createLatencyValueProvider(subgraphLinkSpecification.latencySpecification)
-      val throughputValueProvider = createThroughputValueProvider(subgraphLinkSpecification.throughputSpecification)
-      val bandwidthValueProvider = createBandwidthValueProvider(subgraphLinkSpecification.bandwidthSpecification)
+      // Get connectivity specification for this subgraph
+      val subgraphConnectivitySpecification = subgraphSpec.connectivitySpecification
+
+      val inBoundLinkAllocationSpecification = subgraphConnectivitySpecification.inBoundLinkAllocationSpecification
+      val outBoundLinkAllocationSpecification = subgraphConnectivitySpecification.outBoundLinkAllocationSpecification
+
+      val numberOfInbound = subgraphConnectivitySpecification.numberOfInbound
+      val numberOfOutBound = subgraphConnectivitySpecification.numberOfOutBound
+
+      subgraphNodes.forEach { node ->
+        networkGraph.addVertex(node)
+        initialDegrees.put(node, numberOfInbound + numberOfOutBound)
+      }
+
+//      var latencyValueProvider = createLatencyValueProvider(subgraphLinkSpecification.latencySpecification)
+//      var throughputValueProvider = createThroughputValueProvider(subgraphLinkSpecification.throughputSpecification)
+//      var bandwidthValueProvider = createBandwidthValueProvider(subgraphLinkSpecification.bandwidthSpecification)
+
+      // outbound connection specification
+      val latencyValueProvider = createLatencyValueProvider(outBoundLinkAllocationSpecification.latencySpecification)
+      val throughputValueProvider = createThroughputValueProvider(outBoundLinkAllocationSpecification.throughputSpecification)
+      val bandwidthValueProvider = createBandwidthValueProvider(outBoundLinkAllocationSpecification.bandwidthSpecification)
+
+      // in bound connection specification
+      val inBoundLatencyValueProvider = createLatencyValueProvider(inBoundLinkAllocationSpecification.latencySpecification)
+      val inBoundThroughputValueProvider = createThroughputValueProvider(inBoundLinkAllocationSpecification.throughputSpecification)
+      val inBoundBandwidthValueProvider = createBandwidthValueProvider(inBoundLinkAllocationSpecification.bandwidthSpecification)
 
       // Create a bidirectional spanning tree in subgraph
       subgraphNodes
@@ -93,7 +117,8 @@ class ConnectedSubgraphP2PNetworkFactory(
       val nodesToEnhance = initialDegrees.keys.toTypedArray()
 
       nodesToEnhance.forEach { currentNode ->
-        while (initialDegrees.get(currentNode) > 0) {
+        // create outbound connection
+        while (initialDegrees.get(currentNode) > numberOfInbound) {
           val potentialNodes = initialDegrees.keys
             .filterNot {
               it == currentNode
@@ -125,7 +150,45 @@ class ConnectedSubgraphP2PNetworkFactory(
           initialDegrees.decrement(currentNode)
           initialDegrees.decrement(selectedNode)
         }
+
+        // create inbound connection
+        while (initialDegrees.get(currentNode) > 0) {
+          val potentialNodes = initialDegrees.keys
+            .filterNot {
+              it == currentNode
+                      || networkGraph.containsEdge(it, currentNode)
+                      || networkGraph.containsEdge(currentNode, it)
+            }
+
+          if (potentialNodes.isEmpty()) {
+            // Sometimes each node except for the last one has reached the maximum degree
+            // The strategy here is to neglect the range parameters for the last node
+            initialDegrees.decrement(currentNode)
+            continue
+          }
+
+          val selectedNode = potentialNodes.random()
+
+          networkGraph.addBidirectionalEdge(
+            selectedNode,
+            currentNode,
+            fun(fromVertex: P2PNode, toVertex: P2PNode) = P2PLink(
+              inBoundLatencyValueProvider,
+              inBoundThroughputValueProvider,
+              inBoundBandwidthValueProvider,
+              fromVertex,
+              toVertex
+            )
+          )
+
+          initialDegrees.decrement(currentNode)
+          initialDegrees.decrement(selectedNode)
+        }
       }
+
+//      println("====")
+//      println(initialDegrees.getAll().size)
+//      println(initialDegrees.getAll())
     }
 
     // Add connections between the proxies of the subgraph

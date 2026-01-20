@@ -103,6 +103,16 @@
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//p2pnetwork/SubgraphSpecification/Connectivity"/>
         <genFeatures notify="false" createChild="false" propertySortChoices="true"
             ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/SubgraphSpecification/LinkAllocation"/>
+        <genFeatures property="None" children="true" createChild="true" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/SubgraphSpecification/ConnectivitySpecification"/>
+      </genClasses>
+      <genClasses ecoreClass="bscm.ecore#//p2pnetwork/ConnectivitySpecification">
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/ConnectivitySpecification/InBoundLinkAllocationSpecification"/>
+        <genFeatures notify="false" createChild="false" propertySortChoices="true"
+            ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/ConnectivitySpecification/OutBoundLinkAllocationSpecification"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//p2pnetwork/ConnectivitySpecification/NumberOfInbound"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//p2pnetwork/ConnectivitySpecification/NumberOfOutBound"/>
       </genClasses>
       <genClasses ecoreClass="bscm.ecore#//p2pnetwork/SubgraphLink">
         <genFeatures notify="false" createChild="false" propertySortChoices="true"

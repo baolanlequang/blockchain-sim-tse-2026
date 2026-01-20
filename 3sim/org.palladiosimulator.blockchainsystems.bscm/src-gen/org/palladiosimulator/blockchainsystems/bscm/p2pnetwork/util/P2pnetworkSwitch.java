@@ -218,6 +218,23 @@ public class P2pnetworkSwitch<T> extends Switch<T> {
 				result = defaultCase(theEObject);
 			return result;
 		}
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION: {
+			ConnectivitySpecification connectivitySpecification = (ConnectivitySpecification) theEObject;
+			T result = caseConnectivitySpecification(connectivitySpecification);
+			if (result == null)
+				result = caseEntity(connectivitySpecification);
+			if (result == null)
+				result = caseIdentifier(connectivitySpecification);
+			if (result == null)
+				result = caseNamedElement(connectivitySpecification);
+			if (result == null)
+				result = casePCMBaseClass(connectivitySpecification);
+			if (result == null)
+				result = casePCMClass(connectivitySpecification);
+			if (result == null)
+				result = defaultCase(theEObject);
+			return result;
+		}
 		case P2pnetworkPackage.SUBGRAPH_LINK: {
 			SubgraphLink subgraphLink = (SubgraphLink) theEObject;
 			T result = caseSubgraphLink(subgraphLink);
@@ -412,6 +429,21 @@ public class P2pnetworkSwitch<T> extends Switch<T> {
 	 * @generated
 	 */
 	public T caseSubgraphSpecification(SubgraphSpecification object) {
+		return null;
+	}
+
+	/**
+	 * Returns the result of interpreting the object as an instance of '<em>Connectivity Specification</em>'.
+	 * <!-- begin-user-doc -->
+	 * This implementation returns null;
+	 * returning a non-null result will terminate the switch.
+	 * <!-- end-user-doc -->
+	 * @param object the target of the switch.
+	 * @return the result of interpreting the object as an instance of '<em>Connectivity Specification</em>'.
+	 * @see #doSwitch(org.eclipse.emf.ecore.EObject) doSwitch(EObject)
+	 * @generated
+	 */
+	public T caseConnectivitySpecification(ConnectivitySpecification object) {
 		return null;
 	}
 

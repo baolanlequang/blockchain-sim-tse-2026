@@ -436,13 +436,95 @@ public interface P2pnetworkPackage extends EPackage {
 	int SUBGRAPH_SPECIFICATION__LINK_ALLOCATION = EntityPackage.ENTITY_FEATURE_COUNT + 2;
 
 	/**
+	 * The feature id for the '<em><b>Connectivity Specification</b></em>' containment reference.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION = EntityPackage.ENTITY_FEATURE_COUNT + 3;
+
+	/**
 	 * The number of structural features of the '<em>Subgraph Specification</em>' class.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
 	 * @generated
 	 * @ordered
 	 */
-	int SUBGRAPH_SPECIFICATION_FEATURE_COUNT = EntityPackage.ENTITY_FEATURE_COUNT + 3;
+	int SUBGRAPH_SPECIFICATION_FEATURE_COUNT = EntityPackage.ENTITY_FEATURE_COUNT + 4;
+
+	/**
+	 * The meta object id for the '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.ConnectivitySpecificationImpl <em>Connectivity Specification</em>}' class.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.ConnectivitySpecificationImpl
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.P2pnetworkPackageImpl#getConnectivitySpecification()
+	 * @generated
+	 */
+	int CONNECTIVITY_SPECIFICATION = 8;
+
+	/**
+	 * The feature id for the '<em><b>Id</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int CONNECTIVITY_SPECIFICATION__ID = EntityPackage.ENTITY__ID;
+
+	/**
+	 * The feature id for the '<em><b>Entity Name</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int CONNECTIVITY_SPECIFICATION__ENTITY_NAME = EntityPackage.ENTITY__ENTITY_NAME;
+
+	/**
+	 * The feature id for the '<em><b>In Bound Link Allocation Specification</b></em>' reference.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int CONNECTIVITY_SPECIFICATION__IN_BOUND_LINK_ALLOCATION_SPECIFICATION = EntityPackage.ENTITY_FEATURE_COUNT + 0;
+
+	/**
+	 * The feature id for the '<em><b>Out Bound Link Allocation Specification</b></em>' reference.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int CONNECTIVITY_SPECIFICATION__OUT_BOUND_LINK_ALLOCATION_SPECIFICATION = EntityPackage.ENTITY_FEATURE_COUNT + 1;
+
+	/**
+	 * The feature id for the '<em><b>Number Of Inbound</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int CONNECTIVITY_SPECIFICATION__NUMBER_OF_INBOUND = EntityPackage.ENTITY_FEATURE_COUNT + 2;
+
+	/**
+	 * The feature id for the '<em><b>Number Of Out Bound</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int CONNECTIVITY_SPECIFICATION__NUMBER_OF_OUT_BOUND = EntityPackage.ENTITY_FEATURE_COUNT + 3;
+
+	/**
+	 * The number of structural features of the '<em>Connectivity Specification</em>' class.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int CONNECTIVITY_SPECIFICATION_FEATURE_COUNT = EntityPackage.ENTITY_FEATURE_COUNT + 4;
 
 	/**
 	 * The meta object id for the '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.SubgraphLinkImpl <em>Subgraph Link</em>}' class.
@@ -452,7 +534,7 @@ public interface P2pnetworkPackage extends EPackage {
 	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.P2pnetworkPackageImpl#getSubgraphLink()
 	 * @generated
 	 */
-	int SUBGRAPH_LINK = 8;
+	int SUBGRAPH_LINK = 9;
 
 	/**
 	 * The feature id for the '<em><b>Id</b></em>' attribute.
@@ -507,7 +589,7 @@ public interface P2pnetworkPackage extends EPackage {
 	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.P2pnetworkPackageImpl#getSubgraphNodeTemplate()
 	 * @generated
 	 */
-	int SUBGRAPH_NODE_TEMPLATE = 9;
+	int SUBGRAPH_NODE_TEMPLATE = 10;
 
 	/**
 	 * The feature id for the '<em><b>Id</b></em>' attribute.
@@ -571,7 +653,7 @@ public interface P2pnetworkPackage extends EPackage {
 	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.P2pnetworkPackageImpl#getBidirectionalLink()
 	 * @generated
 	 */
-	int BIDIRECTIONAL_LINK = 10;
+	int BIDIRECTIONAL_LINK = 11;
 
 	/**
 	 * The feature id for the '<em><b>Id</b></em>' attribute.
@@ -626,7 +708,7 @@ public interface P2pnetworkPackage extends EPackage {
 	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.P2pnetworkPackageImpl#getUnidirectionalLink()
 	 * @generated
 	 */
-	int UNIDIRECTIONAL_LINK = 11;
+	int UNIDIRECTIONAL_LINK = 12;
 
 	/**
 	 * The feature id for the '<em><b>Id</b></em>' attribute.
@@ -871,6 +953,71 @@ public interface P2pnetworkPackage extends EPackage {
 	 * @generated
 	 */
 	EReference getSubgraphSpecification_LinkAllocation();
+
+	/**
+	 * Returns the meta object for the containment reference '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphSpecification#getConnectivitySpecification <em>Connectivity Specification</em>}'.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the meta object for the containment reference '<em>Connectivity Specification</em>'.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphSpecification#getConnectivitySpecification()
+	 * @see #getSubgraphSpecification()
+	 * @generated
+	 */
+	EReference getSubgraphSpecification_ConnectivitySpecification();
+
+	/**
+	 * Returns the meta object for class '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification <em>Connectivity Specification</em>}'.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the meta object for class '<em>Connectivity Specification</em>'.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification
+	 * @generated
+	 */
+	EClass getConnectivitySpecification();
+
+	/**
+	 * Returns the meta object for the reference '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getInBoundLinkAllocationSpecification <em>In Bound Link Allocation Specification</em>}'.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the meta object for the reference '<em>In Bound Link Allocation Specification</em>'.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getInBoundLinkAllocationSpecification()
+	 * @see #getConnectivitySpecification()
+	 * @generated
+	 */
+	EReference getConnectivitySpecification_InBoundLinkAllocationSpecification();
+
+	/**
+	 * Returns the meta object for the reference '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getOutBoundLinkAllocationSpecification <em>Out Bound Link Allocation Specification</em>}'.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the meta object for the reference '<em>Out Bound Link Allocation Specification</em>'.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getOutBoundLinkAllocationSpecification()
+	 * @see #getConnectivitySpecification()
+	 * @generated
+	 */
+	EReference getConnectivitySpecification_OutBoundLinkAllocationSpecification();
+
+	/**
+	 * Returns the meta object for the attribute '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getNumberOfInbound <em>Number Of Inbound</em>}'.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the meta object for the attribute '<em>Number Of Inbound</em>'.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getNumberOfInbound()
+	 * @see #getConnectivitySpecification()
+	 * @generated
+	 */
+	EAttribute getConnectivitySpecification_NumberOfInbound();
+
+	/**
+	 * Returns the meta object for the attribute '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getNumberOfOutBound <em>Number Of Out Bound</em>}'.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the meta object for the attribute '<em>Number Of Out Bound</em>'.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getNumberOfOutBound()
+	 * @see #getConnectivitySpecification()
+	 * @generated
+	 */
+	EAttribute getConnectivitySpecification_NumberOfOutBound();
 
 	/**
 	 * Returns the meta object for class '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphLink <em>Subgraph Link</em>}'.
@@ -1183,6 +1330,61 @@ public interface P2pnetworkPackage extends EPackage {
 		 * @generated
 		 */
 		EReference SUBGRAPH_SPECIFICATION__LINK_ALLOCATION = eINSTANCE.getSubgraphSpecification_LinkAllocation();
+
+		/**
+		 * The meta object literal for the '<em><b>Connectivity Specification</b></em>' containment reference feature.
+		 * <!-- begin-user-doc -->
+		 * <!-- end-user-doc -->
+		 * @generated
+		 */
+		EReference SUBGRAPH_SPECIFICATION__CONNECTIVITY_SPECIFICATION = eINSTANCE
+				.getSubgraphSpecification_ConnectivitySpecification();
+
+		/**
+		 * The meta object literal for the '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.ConnectivitySpecificationImpl <em>Connectivity Specification</em>}' class.
+		 * <!-- begin-user-doc -->
+		 * <!-- end-user-doc -->
+		 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.ConnectivitySpecificationImpl
+		 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.P2pnetworkPackageImpl#getConnectivitySpecification()
+		 * @generated
+		 */
+		EClass CONNECTIVITY_SPECIFICATION = eINSTANCE.getConnectivitySpecification();
+
+		/**
+		 * The meta object literal for the '<em><b>In Bound Link Allocation Specification</b></em>' reference feature.
+		 * <!-- begin-user-doc -->
+		 * <!-- end-user-doc -->
+		 * @generated
+		 */
+		EReference CONNECTIVITY_SPECIFICATION__IN_BOUND_LINK_ALLOCATION_SPECIFICATION = eINSTANCE
+				.getConnectivitySpecification_InBoundLinkAllocationSpecification();
+
+		/**
+		 * The meta object literal for the '<em><b>Out Bound Link Allocation Specification</b></em>' reference feature.
+		 * <!-- begin-user-doc -->
+		 * <!-- end-user-doc -->
+		 * @generated
+		 */
+		EReference CONNECTIVITY_SPECIFICATION__OUT_BOUND_LINK_ALLOCATION_SPECIFICATION = eINSTANCE
+				.getConnectivitySpecification_OutBoundLinkAllocationSpecification();
+
+		/**
+		 * The meta object literal for the '<em><b>Number Of Inbound</b></em>' attribute feature.
+		 * <!-- begin-user-doc -->
+		 * <!-- end-user-doc -->
+		 * @generated
+		 */
+		EAttribute CONNECTIVITY_SPECIFICATION__NUMBER_OF_INBOUND = eINSTANCE
+				.getConnectivitySpecification_NumberOfInbound();
+
+		/**
+		 * The meta object literal for the '<em><b>Number Of Out Bound</b></em>' attribute feature.
+		 * <!-- begin-user-doc -->
+		 * <!-- end-user-doc -->
+		 * @generated
+		 */
+		EAttribute CONNECTIVITY_SPECIFICATION__NUMBER_OF_OUT_BOUND = eINSTANCE
+				.getConnectivitySpecification_NumberOfOutBound();
 
 		/**
 		 * The meta object literal for the '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.SubgraphLinkImpl <em>Subgraph Link</em>}' class.
