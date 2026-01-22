@@ -188,7 +188,9 @@ public class TrilemmaSimulator {
                 "block_creation_interval",
                 "hashing_power",
                 "max_block_size",
-                "peer_connectivity",
+                //"peer_connectivity",
+				"inbound_connectivity",
+                "outbound_connectivity",
                 "crashed_validators",
                 "validator_count",
                 "workload"
@@ -261,3 +263,4 @@ public class TrilemmaSimulator {
                 "No usable model file found in testmodels/");
     }
 }
+
