@@ -112,7 +112,10 @@ public class BlockchainSystemModelLoader {
         putIfPresent(desired, "validator_count", cfg);
         putIfPresent(desired, "workload", cfg);
         putIfPresent(desired, "crashed_validators", cfg);
-        putIfPresent(desired, "peer_connectivity", cfg);
+        //putIfPresent(desired, "peer_connectivity", cfg);
+        // NEW: split connectivity parameters
+        putIfPresent(desired, "inbound_connectivity", cfg);
+        putIfPresent(desired, "outbound_connectivity", cfg);
 
         if (desired.isEmpty()) return 0;
 
