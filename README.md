@@ -26,3 +26,12 @@ Make sure the following prerequisites are installed:
 1. Edit `configuration.json` to change the configuation of the simulator in `testmodels` folder
 2. Run `TrilemmaSimulator` as Java Application
 3. Depending the blockchain system file path is defined at `blockchainSystemModelFilePath`, the result will be written as the corresponding json file.
+
+
+#### What to change when the configuration of parameters changes
+
+1. Update the following CSV file containing the configuration of parameters:
+- optimized_deterministic_lhs_configurations.csv
+2. Update Bach runner validation in TrilemmaSimulator.java. Locate validateCsvColumns(...) and update the required list. This is to prevent simulations with missing or inconsistent parameters.
+3. Update model override logic
+- In BlockchainSystemModelLoader, in ApplyConfigurationOverrides(), add or remove parameters as required.
