@@ -12,10 +12,15 @@
 package org.palladiosimulator.blockchainsystems.trilemma;
 
 import java.util.Map;
-
+// fix "BlockchainSystemLoader" cannot be resolved to a type
+import org.palladiosimulator.blockchainsystems.trilemma.BlockchainSystemModelLoader;
+// end fix
 import org.eclipse.core.runtime.CoreException;
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectedSubgraphsNetworkTopology;
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ExplicitNetworkTopology;
+// fix the error:The method getNetwork() is undefined for the type Object
+import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystem;
+// end fix
 import org.palladiosimulator.blockchainsystems.core.simulation.MonteCarloSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.SingleSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.Simulation;
@@ -148,25 +153,58 @@ public class TrilemmaSimulationFactory implements Simulation {
                 new BlockchainSystemModelLoader();
 
         // === IMPORTANT FIX: pass configuration so model overrides are applied ===
-        final var designBlockchainSystem =
-                designModelLoader.load(
-                        simulationParameters.getBlockchainSystemModelFilePath(),
-                        configuration);
+       // final var designBlockchainSystem =
+         //       designModelLoader.load(
+         //               simulationParameters.getBlockchainSystemModelFilePath(),
+          //              configuration);
 
-        final var networkTopology =
-                designBlockchainSystem.getNetwork().getTopology();
+		// Fix the error: The method getNetwork() is undefined for the type object
+		final BlockchainSystem designBlockchainSystem =
+        designModelLoader.load(
+                simulationParameters.getBlockchainSystemModelFilePath(),
+                configuration);
+		// end fix
 
-        if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) {
-            return new ConnectedSubgraphNetworkBlockchainSystemFactory(
-                    designBlockchainSystem,
-                    (ConnectedSubgraphsNetworkTopology) networkTopology);
-        }
+        //final var networkTopology =
+        //        designBlockchainSystem.getNetwork().getTopology();
+		//
+        // if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) {
+        //    return new ConnectedSubgraphNetworkBlockchainSystemFactory(
+        //           designBlockchainSystem,
+        //            (ConnectedSubgraphsNetworkTopology) networkTopology);
+        //}
 
-        if (networkTopology instanceof ExplicitNetworkTopology) {
-            return new ExplicitNetworkBlockchainSystemFactory(
-                    designBlockchainSystem,
-                    (ExplicitNetworkTopology) networkTopology);
-        }
+        //if (networkTopology instanceof ExplicitNetworkTopology) {
+        //    return new ExplicitNetworkBlockchainSystemFactory(
+        //           designBlockchainSystem,
+        //           (ExplicitNetworkTopology) networkTopology);
+        //}
+
+		// Fix ConnectedSubgraphNetworkBlockchainSystemFactory(...) is undefined and ExplicitNetworkBlockchainSystemFactory(...) is undefined
+				if (networkTopology instanceof ConnectedSubgraphsNetworkTopology topology) {
+		
+		    ConnectedSubgraphNetworkBlockchainSystemFactory factory =
+		            new ConnectedSubgraphNetworkBlockchainSystemFactory();
+		
+		    factory.setBlockchainSystem(designBlockchainSystem);
+		    factory.setNetworkTopology(topology);
+		
+		    return factory;
+		}
+		
+		if (networkTopology instanceof ExplicitNetworkTopology topology) {
+		
+		    ExplicitNetworkBlockchainSystemFactory factory =
+		            new ExplicitNetworkBlockchainSystemFactory();
+		
+		    factory.setBlockchainSystem(designBlockchainSystem);
+		    factory.setNetworkTopology(topology);
+		
+		    return factory;
+		}
+
+		
+		// End fix
 
         throw new IllegalStateException(
                 "Unsupported network topology: "
