@@ -20,6 +20,7 @@ import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 
 import com.google.gson.Gson;
@@ -30,6 +31,17 @@ public class TrilemmaSimulator {
     // ----------------------------------------------------
     // DEFAULT LOCATIONS (can be overridden via CLI args)
     // ----------------------------------------------------
+
+    private static final Path SIMULATION_SKIPPED_LOG =
+            Paths.get("skipped_during_simulation.csv");
+
+    // === NEW ===
+    // Base directory where all simulation results will be stored.
+    // Each configuration gets its own subfolder:
+    // simulation-results/config-<config_id>/
+    private static final Path RESULTS_BASE_DIR =
+            Paths.get("simulation-results");
+
     private static final Path DEFAULT_TESTMODELS_DIR =
             Paths.get("testmodels");
 
@@ -49,6 +61,24 @@ public class TrilemmaSimulator {
                 new BlockchainTrilemmaStandalone(
                         "org.palladiosimulator.blockchainsystems.trilemma",
                         Activator.class);
+
+        // Initialize simulation-skipped log
+        try {
+            if (!Files.exists(SIMULATION_SKIPPED_LOG)) {
+                Files.writeString(
+                        SIMULATION_SKIPPED_LOG,
+                        "config_id,reason\n",
+                        StandardOpenOption.CREATE
+                );
+            }
+
+            // === NEW ===
+            // Ensure base results directory exists
+            Files.createDirectories(RESULTS_BASE_DIR);
+
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to initialize logging infrastructure", e);
+        }
 
         if (!simulator.initAnalysis()) {
             System.err.println("❌ Unable to initialize simulator");
@@ -83,35 +113,57 @@ public class TrilemmaSimulator {
                 config.putAll(row);
 
                 // ----------------------------------------------------
-                // Revised to take into account 50 blockchain system models: deterministic model selection
+                // Deterministic model selection:
                 // config_id = N → testmodels/threesim-N/Net.blockchainsystem
                 // ----------------------------------------------------
                 Path modelPath = pickModelPath(testmodelsDir, configId);
                 config.put("blockchainSystemModelFilePath", modelPath.toString());
+
                 // ----------------------------------------------------
+                // === NEW ===
+                // Create a dedicated results directory for this configuration
+                // All outputs of this run will be written here.
+                // ----------------------------------------------------
+                Path runResultsDir =
+                        RESULTS_BASE_DIR.resolve("config-" + configId);
+                Files.createDirectories(runResultsDir);
+
+                // Pass result directory to Threesim via system property
+                // This is the supported way to control output location
+                System.setProperty(
+                        "threesim.results.dir",
+                        runResultsDir.toAbsolutePath().toString()
+                );
 
                 System.out.println("\n▶ Run " + runId + " | config_id=" + configId);
                 System.out.println("   Using model: " + modelPath.toAbsolutePath());
+                System.out.println("   Results dir: " + runResultsDir.toAbsolutePath());
                 System.out.println("   Monte-Carlo rounds = "
                         + config.getOrDefault("numberOfMonteCarloRounds", "?"));
 
-                //simulator.runSimulation(config, runId);
-                // ADDRESS NONCOMPLIANT CONFIGURATIONS
+                // ADDRESS NONCOMPATIBLE / UNSTABLE CONFIGURATIONS
                 try {
                     simulator.runSimulation(config, runId);
+
                 } catch (IllegalStateException e) {
 
-                    // Threesim throws this when metrics become negative
-                    // (e.g., unstable parameter combinations)
+                    // Threesim throws this when metrics become invalid
                     System.err.println(
-                        "[SKIP] Simulation failed for config_id=" + configId +
-                        " due to unstable metrics: " + e.getMessage()
+                            "[SKIP][SIMULATION] config_id=" + configId +
+                            " | reason=" + e.getMessage()
+                    );
+
+                    // Persist skip for later analysis
+                    Files.writeString(
+                            SIMULATION_SKIPPED_LOG,
+                            configId + ",\"" + e.getMessage().replace("\"", "'") + "\"\n",
+                            StandardOpenOption.APPEND
                     );
 
                     // IMPORTANT:
-                    // We intentionally skip this configuration and continue
-                    // with the next one to preserve batch execution.
+                    // Skip this configuration and continue batch execution
                 }
+
                 runId++;
             }
 
@@ -217,12 +269,10 @@ public class TrilemmaSimulator {
     }
 
     // ----------------------------------------------------
-    // Revised to take into account 50 blockchain system models: deterministic model resolver
+    // Deterministic model resolver for 50 configurations
     // ----------------------------------------------------
     private static Path pickModelPath(Path testmodelsDir, String configId) {
 
-        // Each configuration has exactly one model folder:
-        // testmodels/threesim-<config_id>/
         Path modelPath =
                 testmodelsDir
                         .resolve("threesim-" + configId)
@@ -238,6 +288,3 @@ public class TrilemmaSimulator {
         return modelPath;
     }
 }
-
-
-
