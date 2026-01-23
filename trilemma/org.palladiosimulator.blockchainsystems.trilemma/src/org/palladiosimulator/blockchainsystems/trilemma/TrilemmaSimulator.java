@@ -83,7 +83,7 @@ public class TrilemmaSimulator {
                 config.putAll(row);
 
                 // ----------------------------------------------------
-                // Revised to take into account 50 configurations of parameters: deterministic model selection
+                // Revised to take into account 50 blockchain system models: deterministic model selection
                 // config_id = N → testmodels/threesim-N/Net.blockchainsystem
                 // ----------------------------------------------------
                 Path modelPath = pickModelPath(testmodelsDir, configId);
@@ -201,7 +201,7 @@ public class TrilemmaSimulator {
     }
 
     // ----------------------------------------------------
-    // Revised to take into account 50 configurations of parameters: deterministic model resolver
+    // Revised to take into account 50 blockchain system models: deterministic model resolver
     // ----------------------------------------------------
     private static Path pickModelPath(Path testmodelsDir, String configId) {
 
@@ -222,3 +222,4 @@ public class TrilemmaSimulator {
         return modelPath;
     }
 }
+
