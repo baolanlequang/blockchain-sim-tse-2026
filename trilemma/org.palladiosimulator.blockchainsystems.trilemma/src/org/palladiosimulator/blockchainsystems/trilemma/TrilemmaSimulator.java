@@ -247,7 +247,7 @@ public class TrilemmaSimulator {
         }
 
         Path fallbackNet =
-                testmodelsDir.resolve("threesim-net-2")
+                testmodelsDir.resolve("threesim-")
                         .resolve("Net.blockchainsystem");
 
         Path fallbackRing =
@@ -263,5 +263,6 @@ public class TrilemmaSimulator {
                 "No usable model file found in testmodels/");
     }
 }
+
 
 
