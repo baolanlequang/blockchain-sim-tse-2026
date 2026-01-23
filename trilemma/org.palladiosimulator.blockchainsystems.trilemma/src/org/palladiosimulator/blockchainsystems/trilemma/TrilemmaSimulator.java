@@ -95,7 +95,23 @@ public class TrilemmaSimulator {
                 System.out.println("   Monte-Carlo rounds = "
                         + config.getOrDefault("numberOfMonteCarloRounds", "?"));
 
-                simulator.runSimulation(config, runId);
+                //simulator.runSimulation(config, runId);
+                // ADDRESS NONCOMPTIBLE CONFIGURATIONS
+                try {
+                    simulator.runSimulation(config, runId);
+                } catch (IllegalStateException e) {
+
+                    // Threesim throws this when metrics become negative
+                    // (e.g., unstable parameter combinations)
+                    System.err.println(
+                        "[SKIP] Simulation failed for config_id=" + configId +
+                        " due to unstable metrics: " + e.getMessage()
+                    );
+
+                    // IMPORTANT:
+                    // We intentionally skip this configuration and continue
+                    // with the next one to preserve batch execution.
+                }
                 runId++;
             }
 
@@ -222,4 +238,5 @@ public class TrilemmaSimulator {
         return modelPath;
     }
 }
+
 
