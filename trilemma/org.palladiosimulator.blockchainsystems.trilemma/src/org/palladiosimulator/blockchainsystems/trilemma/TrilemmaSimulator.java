@@ -223,11 +223,11 @@ public class TrilemmaSimulator {
                         .toLowerCase(Locale.ROOT);
 
         Path netCandidate =
-                testmodelsDir.resolve("threesim-net-" + id)
+                testmodelsDir.resolve("threesim-" + id)
                         .resolve("Net.blockchainsystem");
 
         Path ringCandidate =
-                testmodelsDir.resolve("threesim-ring-" + id)
+                testmodelsDir.resolve("threesim-" + id)
                         .resolve("Ring.blockchainsystem");
 
         if (topology.contains("ring") && Files.exists(ringCandidate))
@@ -263,4 +263,5 @@ public class TrilemmaSimulator {
                 "No usable model file found in testmodels/");
     }
 }
+
 
