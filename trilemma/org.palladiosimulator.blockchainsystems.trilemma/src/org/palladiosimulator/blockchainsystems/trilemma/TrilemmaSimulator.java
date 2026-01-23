@@ -7,7 +7,7 @@
  * KEY IMPROVEMENTS:
  * - Keeps the CSV structure exactly as provided by the user.
  * - Validates that all required columns are present before each run.
- * - Selects the correct model from testmodels/ without changing the folder structure.
+ * - Selects the correct model from testmodels/ using config_id → threesim-config_id.
  * - Ensures consistent and reproducible execution across all configurations.
  */
 
@@ -77,23 +77,25 @@ public class TrilemmaSimulator {
                 // Preserve config_id from CSV if present, else use run counter
                 String configId = row.getOrDefault("config_id", String.valueOf(runId));
                 config.put("config_id", configId);
-                config.put("id", configId); // keep your existing key too
+                config.put("id", configId);
 
-                // Copy CSV parameters as-is (your structure is already canonical)
+                // Copy CSV parameters as-is
                 config.putAll(row);
 
-                // Pick correct model file from testmodels/
-                Path modelPath = pickModelPath(testmodelsDir, config, configId);
+                // ----------------------------------------------------
+                // Revised to take into account 50 blockchain system models: deterministic model selection
+                // config_id = N → testmodels/threesim-N/Net.blockchainsystem
+                // ----------------------------------------------------
+                Path modelPath = pickModelPath(testmodelsDir, configId);
                 config.put("blockchainSystemModelFilePath", modelPath.toString());
+                // ----------------------------------------------------
 
                 System.out.println("\n▶ Run " + runId + " | config_id=" + configId);
                 System.out.println("   Using model: " + modelPath.toAbsolutePath());
                 System.out.println("   Monte-Carlo rounds = "
                         + config.getOrDefault("numberOfMonteCarloRounds", "?"));
 
-                // ✅ IMPORTANT FIX: pass runId as second argument
                 simulator.runSimulation(config, runId);
-
                 runId++;
             }
 
@@ -172,14 +174,8 @@ public class TrilemmaSimulator {
     }
 
     // ----------------------------------------------------
-    // VALIDATION: ensure all required CSV columns exist
+    // CSV validation
     // ----------------------------------------------------
-	
-	/**
- * Fail-fast validation: prevents running partially specified or invalid experiments.
- * Ensures every run has a complete and scientifically defensible parameter set.
- */
-
     private static void validateCsvColumns(Map<String, String> row) {
 
         List<String> required = List.of(
@@ -188,7 +184,8 @@ public class TrilemmaSimulator {
                 "block_creation_interval",
                 "hashing_power",
                 "max_block_size",
-                "peer_connectivity",
+                "inbound_connectivity",
+                "outbound_connectivity",
                 "crashed_validators",
                 "validator_count",
                 "workload"
@@ -204,60 +201,25 @@ public class TrilemmaSimulator {
     }
 
     // ----------------------------------------------------
-    // Choose correct model file in testmodels/
+    // Revised to take into account 50 blockchain system models: deterministic model resolver
     // ----------------------------------------------------
-	
-	/**
- * Deterministic model selection strategy that respects the existing testmodels/ layout.
- * Prefers per-run folders if present, otherwise falls back to base net/ring models.
- */
+    private static Path pickModelPath(Path testmodelsDir, String configId) {
 
-    private static Path pickModelPath(Path testmodelsDir,
-                                     Map<String, String> config,
-                                     String id) {
-
-        String topology =
-                config.getOrDefault("topology", "net")
-                        .toLowerCase(Locale.ROOT);
-
-        Path netCandidate =
-                testmodelsDir.resolve("threesim-net-" + id)
+        // Each configuration has exactly one model folder:
+        // testmodels/threesim-<config_id>/
+        Path modelPath =
+                testmodelsDir
+                        .resolve("threesim-" + configId)
                         .resolve("Net.blockchainsystem");
 
-        Path ringCandidate =
-                testmodelsDir.resolve("threesim-ring-" + id)
-                        .resolve("Ring.blockchainsystem");
-
-        if (topology.contains("ring") && Files.exists(ringCandidate))
-            return ringCandidate;
-
-        if (!topology.contains("ring") && Files.exists(netCandidate))
-            return netCandidate;
-
-        String baseModelPath = config.get("blockchainSystemModelFilePath");
-        if (baseModelPath != null && !baseModelPath.isBlank()) {
-            Path p = Paths.get(baseModelPath);
-            if (Files.exists(p)) return p;
-
-            Path relativeTry =
-                    testmodelsDir.resolve(p.getFileName().toString());
-            if (Files.exists(relativeTry)) return relativeTry;
+        // Fail fast if the model is missing or misconfigured
+        if (!Files.exists(modelPath)) {
+            throw new IllegalArgumentException(
+                    "❌ Model not found for config_id=" + configId +
+                    " at " + modelPath.toAbsolutePath());
         }
 
-        Path fallbackNet =
-                testmodelsDir.resolve("threesim-net-2")
-                        .resolve("Net.blockchainsystem");
-
-        Path fallbackRing =
-                testmodelsDir.resolve("threesim-ring-base")
-                        .resolve("Ring.blockchainsystem");
-
-        if (topology.contains("ring") && Files.exists(fallbackRing))
-            return fallbackRing;
-
-        if (Files.exists(fallbackNet)) return fallbackNet;
-
-        throw new IllegalArgumentException(
-                "No usable model file found in testmodels/");
+        return modelPath;
     }
 }
+
