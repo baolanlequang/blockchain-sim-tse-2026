@@ -96,7 +96,7 @@ public class TrilemmaSimulator {
                         + config.getOrDefault("numberOfMonteCarloRounds", "?"));
 
                 //simulator.runSimulation(config, runId);
-                // ADDRESS NONCOMPTIBLE CONFIGURATIONS
+                // ADDRESS NONCOMPLIANT CONFIGURATIONS
                 try {
                     simulator.runSimulation(config, runId);
                 } catch (IllegalStateException e) {
@@ -238,5 +238,6 @@ public class TrilemmaSimulator {
         return modelPath;
     }
 }
+
 
 
