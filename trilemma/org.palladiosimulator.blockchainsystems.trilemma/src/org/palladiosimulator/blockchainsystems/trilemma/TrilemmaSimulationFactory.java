@@ -119,10 +119,25 @@ public class TrilemmaSimulationFactory implements Simulation {
         BlockchainSystemModelLoader loader =
                 new BlockchainSystemModelLoader();
 
-        BlockchainSystem designBlockchainSystem =
-                loader.load(
-                        simulationParameters.getBlockchainSystemModelFilePath(),
-                        configuration);
+        //BlockchainSystem designBlockchainSystem =
+                //loader.load(
+                        //simulationParameters.getBlockchainSystemModelFilePath(),
+                        //configuration);
+        
+	     // IMPORTANT CHANGE:
+	     // We no longer pass the configuration map into the model loader.
+	     //
+	     // Reason:
+	     // - Each simulation already uses a fully materialized EMF model
+	     //   located at testmodels/threesim-<config_id>/Net.blockchainsystem
+	     // - All CSV-based parameter variation has already been applied
+	     //   offline by the Python model generator.
+	     // - Passing configuration here incorrectly suggests runtime model mutation,
+	     //   which is NOT how Threesim is designed to work.
+	     BlockchainSystem designBlockchainSystem =
+	             loader.load(
+	                     simulationParameters.getBlockchainSystemModelFilePath());
+
 
         var networkTopology =
                 designBlockchainSystem.getNetwork().getTopology();
