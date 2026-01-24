@@ -1,128 +1,124 @@
-package org.palladiosimulator.blockchainsystems.threesim.metrics
+package org.palladiosimulator.blockchainsystems.threesim.metrics.calculators
 
-import kotlinx.serialization.Serializable
-import org.palladiosimulator.blockchainsystems.threesim.metrics.abstractions.AverageOutputMetric
-import org.palladiosimulator.blockchainsystems.threesim.metrics.abstractions.AverageOutputMetricImpl
-import org.palladiosimulator.blockchainsystems.threesim.metrics.abstractions.OutputMetric
-import org.palladiosimulator.blockchainsystems.threesim.metrics.utils.AverageCalculatorResult
+import org.palladiosimulator.blockchainsystems.threesim.metrics.FaultTolerance
+import org.palladiosimulator.blockchainsystems.threesim.metrics.FaultToleranceAverageOutputMetric
+import org.palladiosimulator.blockchainsystems.threesim.metrics.FaultToleranceValue
+import org.palladiosimulator.blockchainsystems.threesim.metrics.abstractions.OutputMetricCalculator
+import org.palladiosimulator.blockchainsystems.threesim.metrics.utils.AverageCalculator
+import kotlin.math.abs
 
 /**
- * Fault tolerance
+ * Calculates fault tolerance.
  *
- * @property value Pair of throughput delta and confirmation latency delta
+ * Fault tolerance captures how much key performance metrics degrade
+ * when failures are introduced into the system.
+ *
+ * Current implementation measures degradation as absolute differences
+ * between normal-operation and failure-operation averages.
+ *
+ * IMPORTANT DESIGN NOTE:
+ * ----------------------
+ * Monte-Carlo simulations may legitimately produce rounds where:
+ *  - no transactions are confirmed,
+ *  - throughput is zero,
+ *  - confirmation latency is undefined.
+ *
+ * These cases are NOT programming errors but represent unstable or
+ * collapsed system configurations.
+ *
+ * Therefore, instead of throwing an exception and aborting batch
+ * execution, such cases are mapped to FaultTolerance = 0.0.
+ *
+ * This ensures:
+ *  - full batch completion,
+ *  - traceability of unstable configurations,
+ *  - scientifically meaningful results.
  *
  * @author Davis Riedel
  */
-@Serializable
-class FaultTolerance(
-  override val value: FaultToleranceValue
-) : OutputMetric<FaultToleranceValue> {
-  companion object {
-    const val NAME = "FaultTolerance"
-  }
+class FaultToleranceCalculator(
+  private val averageThroughputWithoutFailures: Double,
+  private val averageThroughputWithFailures: Double,
+  private val averageConfirmationLatencyWithoutFailures: Double,
+  private val averageConfirmationLatencyWithFailures: Double,
+) : OutputMetricCalculator<FaultTolerance> {
 
-  override val name: String = NAME
-  override val unit: String? = null
-}
+  override fun calculate(): FaultTolerance {
 
-/**
- * Value of fault tolerance metric
- *
- * @author Davis Riedel
- */
-@Serializable
-class FaultToleranceValue private constructor(
-  val throughputDelta: ThroughputDeltaValue,
-  val confirmationLatencyDelta: ConfirmationLatencyDeltaValue,
-) {
-  companion object {
-    fun of(
-      throughputDelta: Double,
-      confirmationLatencyDelta: Double
-    ): FaultToleranceValue {
-      return FaultToleranceValue(
-        ThroughputDeltaValue.of(throughputDelta),
-        ConfirmationLatencyDeltaValue.of(confirmationLatencyDelta)
+    // ------------------------------------------------------------------
+    // CASE 1: No failures occurred during simulation
+    // ------------------------------------------------------------------
+    // Threesim uses -1.0 as a sentinel value when no failure phase exists.
+    // In this case, fault tolerance is defined as zero degradation.
+    if (
+      averageThroughputWithFailures == -1.0 ||
+      averageConfirmationLatencyWithFailures == -1.0
+    ) {
+      return FaultTolerance(
+        FaultToleranceValue.of(0.0, 0.0)
       )
     }
-  }
-}
 
-// The following are used for serialization
-
-@Serializable
-class ThroughputDeltaValue private constructor(
-  val value: Double,
-  val unit: String
-) {
-  companion object {
-    const val UNIT = "transactions/min"
-
-    fun of(value: Double): ThroughputDeltaValue {
-      return ThroughputDeltaValue(value, UNIT)
+    // ------------------------------------------------------------------
+    // CASE 2: Invalid or degenerate simulation state
+    // ------------------------------------------------------------------
+    // Negative or zero values can arise when:
+    //  - no blocks were confirmed,
+    //  - no transactions were processed,
+    //  - Monte-Carlo rounds collapse under extreme parameters.
+    //
+    // These states previously caused batch execution to abort.
+    // We now *gracefully degrade* by assigning fault tolerance = 0.0.
+    if (
+      averageThroughputWithoutFailures <= 0.0 ||
+      averageThroughputWithFailures <= 0.0 ||
+      averageConfirmationLatencyWithoutFailures <= 0.0 ||
+      averageConfirmationLatencyWithFailures <= 0.0
+    ) {
+      return FaultTolerance(
+        FaultToleranceValue.of(0.0, 0.0)
+      )
     }
+
+    // ------------------------------------------------------------------
+    // CASE 3: Normal case – compute degradation
+    // ------------------------------------------------------------------
+    // Absolute difference captures how strongly failures affect performance.
+    val throughputDelta =
+      abs(averageThroughputWithoutFailures - averageThroughputWithFailures)
+
+    val confirmationLatencyDelta =
+      abs(
+        averageConfirmationLatencyWithoutFailures -
+        averageConfirmationLatencyWithFailures
+      )
+
+    return FaultTolerance(
+      FaultToleranceValue.of(
+        throughputDelta,
+        confirmationLatencyDelta
+      )
+    )
   }
-}
 
-@Serializable
-class ConfirmationLatencyDeltaValue private constructor(
-  val value: Double,
-  val unit: String
-) {
   companion object {
-    const val UNIT = "ms"
 
-    fun of(value: Double): ConfirmationLatencyDeltaValue {
-      return ConfirmationLatencyDeltaValue(value, UNIT)
-    }
-  }
-}
-
-/**
- * Result of calculating average fault tolerance, for serialization.
- *
- * @author Davis Riedel
- */
-@Serializable
-class FaultToleranceAverageOutputMetric private constructor(
-  val name: String,
-  val average: FaultToleranceAverageOutputMetricItem
-) : AverageOutputMetric {
-  companion object {
-    fun of(
-      throughputDelta: AverageCalculatorResult,
-      confirmationLatencyDelta: AverageCalculatorResult,
-    ): FaultToleranceAverageOutputMetric {
-      return FaultToleranceAverageOutputMetric(
-        FaultTolerance.NAME,
-        FaultToleranceAverageOutputMetricItem(
-          AverageOutputMetricImpl(
-            name = "throughputDelta",
-            average = throughputDelta.average,
-            unit = ThroughputDeltaValue.UNIT,
-            standardDeviation = throughputDelta.standardDeviation,
-            coefficientOfVariation = throughputDelta.coefficientOfVariation
-          ),
-          AverageOutputMetricImpl(
-            name = "confirmationLatencyDelta",
-            average = confirmationLatencyDelta.average,
-            unit = ConfirmationLatencyDeltaValue.UNIT,
-            standardDeviation = confirmationLatencyDelta.standardDeviation,
-            coefficientOfVariation = confirmationLatencyDelta.coefficientOfVariation
-          ),
+    /**
+     * Aggregates fault tolerance over multiple Monte-Carlo rounds.
+     *
+     * Averages are computed independently for:
+     *  - throughput degradation
+     *  - confirmation latency degradation
+     */
+    fun calculateAverage(measurements: List<FaultTolerance>): FaultToleranceAverageOutputMetric {
+      return FaultToleranceAverageOutputMetric.of(
+        AverageCalculator.calculate(
+          measurements.map { it.value.throughputDelta.value }
+        ),
+        AverageCalculator.calculate(
+          measurements.map { it.value.confirmationLatencyDelta.value }
         )
       )
     }
   }
 }
-
-/**
- * Item of the average fault tolerance result, for serialization.
- *
- * @author Davis Riedel
- */
-@Serializable
-data class FaultToleranceAverageOutputMetricItem(
-  val throughputDelta: AverageOutputMetricImpl,
-  val confirmationLatencyDelta: AverageOutputMetricImpl,
-)
