@@ -8,38 +8,66 @@ import org.palladiosimulator.blockchainsystems.threesim.metrics.utils.AverageCal
 import kotlin.math.abs
 
 /**
- * Calculates fault tolerance
+ * Calculates fault tolerance based on super-CDF distance:
  *
- * @author Davis Riedel
+ *   FT = | S_N(b_N) − S_F(b_F) |
+ *
+ * where S(x) is the empirical super-cumulative distribution function.
+ *
+ * This implementation follows the revised metric definition used in the paper.
  */
 class FaultToleranceCalculator(
-  private val averageThroughputWithoutFailures: Double,
-  private val averageThroughputWithFailures: Double,
-  private val averageConfirmationLatencyWithoutFailures: Double,
-  private val averageConfirmationLatencyWithFailures: Double,
+  private val normalMeasurements: List<Double>,
+  private val faultyMeasurements: List<Double>
 ) : OutputMetricCalculator<FaultTolerance> {
+
   override fun calculate(): FaultTolerance {
-    if (averageThroughputWithFailures == -1.0 || averageConfirmationLatencyWithFailures == -1.0) { // no failures occurred
-      return FaultTolerance(
-        FaultToleranceValue.of(0.0, 0.0)
-      )
-    }
-    if (
-      averageThroughputWithoutFailures < 0.0
-      || averageThroughputWithFailures < 0.0
-      || averageConfirmationLatencyWithoutFailures < 0.0
-      || averageConfirmationLatencyWithFailures < 0.0
-    ) {
-      throw IllegalStateException("Average throughput and average confirmation latency must not be negative when calculating fault tolerance.")
+
+    // If no faults occurred, fault tolerance is zero by definition
+    if (faultyMeasurements.isEmpty()) {
+      return FaultTolerance(FaultToleranceValue.of(0.0, 0.0))
     }
 
-    val throughputDelta = abs(averageThroughputWithoutFailures - averageThroughputWithFailures)
-    val confirmationLatencyDelta =
-      abs(averageConfirmationLatencyWithoutFailures - averageConfirmationLatencyWithFailures)
+    // Filter invalid values defensively
+    val normal = normalMeasurements.filter { it >= 0.0 }
+    val faulty = faultyMeasurements.filter { it >= 0.0 }
 
+    if (normal.isEmpty() || faulty.isEmpty()) {
+      return FaultTolerance(FaultToleranceValue.of(0.0, 0.0))
+    }
+
+    val sN = superCdf(normal)
+    val sF = superCdf(faulty)
+
+    val bN = normal.maxOrNull()!!
+    val bF = faulty.maxOrNull()!!
+
+    val ftValue = abs(sN(bN) - sF(bF))
+
+    // Second value kept for compatibility; set to same FT or 0.0
     return FaultTolerance(
-      FaultToleranceValue.of(throughputDelta, confirmationLatencyDelta)
+      FaultToleranceValue.of(ftValue, 0.0)
     )
+  }
+
+  /**
+   * Builds the empirical super-CDF function S(x).
+   */
+  private fun superCdf(samples: List<Double>): (Double) -> Double {
+
+    val sorted = samples.sorted()
+    val n = sorted.size.toDouble()
+
+    // Empirical CDF
+    fun cdf(x: Double): Double =
+      sorted.count { it <= x } / n
+
+    // Super-CDF: sum of CDF values up to x
+    return { x ->
+      sorted
+        .filter { it <= x }
+        .sumOf { t -> cdf(t) }
+    }
   }
 
   companion object {
