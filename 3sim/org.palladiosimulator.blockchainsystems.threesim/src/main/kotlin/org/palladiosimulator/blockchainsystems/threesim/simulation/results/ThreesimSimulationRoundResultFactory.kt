@@ -65,6 +65,11 @@ class ThreesimSimulationRoundResultFactory(
           blockProposalTimeAndConfirmationTimePerConfirmedBlock = state.blockProposalTimeAndConfirmationTimePerConfirmedBlock
         ).calculate(),
 
+        ConfirmationLatencyCalculator(
+		     state.blockProposalTimeAndConfirmationTimePerConfirmedBlock
+		    ).calculate(),
+
+
         FaultToleranceCalculator(
           averageThroughputWithoutFailures = state.averageThroughputDuringNormalOperation,
           averageThroughputWithFailures = state.averageThroughputDuringFailure,
