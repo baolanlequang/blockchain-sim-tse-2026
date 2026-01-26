@@ -14,99 +14,57 @@ import org.eclipse.emf.ecore.resource.ResourceSet;
 import org.eclipse.emf.ecore.resource.impl.ResourceSetImpl;
 import org.eclipse.emf.ecore.util.EcoreUtil;
 
-/**
- * RESPONSIBILITY:
- * - Loads a fully materialized EMF BlockchainSystem model from testmodels/.
- *
- * IMPORTANT DESIGN DECISION:
- * - This loader DOES NOT apply runtime configuration overrides.
- * - There is NO "base model" during simulation.
- * - All parameter variability is applied OFFLINE by the Python model generator.
- *
- * ASSUMPTIONS:
- * - Each configuration has its own complete model folder:
- *   testmodels/threesim-<config_id>/
- * - All related EMF files (.blockchainsystem, .p2pnetwork, etc.) exist there.
- *
- * WHY THIS IS SAFE:
- * - Avoids runtime mutation of EMF models.
- * - Ensures full reproducibility of simulation results.
- * - Eliminates CSV/JSON → EMF impedance mismatches at runtime.
- */
-public class BlockchainSystemModelLoader {
+public class BlockchainSystemModelLoader  {
+	
+	private ResourceSet resourceSet = new ResourceSetImpl();
+	
+	public BlockchainSystem load(String uri) {
+		// TODO: need to be implement
+		BlockchainsystemPackage.eINSTANCE.eClass();
+		
+		String folderName = Paths.get(uri).getParent().getFileName().toString();
+		String blockChainSystemFileName = Paths.get(uri).getFileName().toString();
+		String nameWithoutExtension = Files.getNameWithoutExtension(blockChainSystemFileName);
+		
+//		Files.getNameWithoutExtension("blockChainSystemFileName.blockchainsystem");
 
-    /**
-     * Single ResourceSet reused for loading all related EMF resources
-     * belonging to one blockchain system model.
-     */
-    private final ResourceSet resourceSet = new ResourceSetImpl();
+	    // Get the resource
+		var blockchainsystem = resourceSet.getResource(createRelativePluginURI(folderName, blockChainSystemFileName), true);
+	    var networkResource = resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".p2pnetwork"), true);
+	    resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".nodeallocation"), true);
+	    resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".blockchainsystemComponentRepository"), true);
+//	    resourceSet.getResource(createRelativePluginURI("Net.nodesystem"), true);
+//	    resourceSet.getResource(createRelativePluginURI("Net.nodeenvironment"), true);
+	    resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".geographicalregions"), true);
+	    resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".linkallocation"), true);
+	    var transactionResource = resourceSet.getResource(createRelativePluginURI(folderName, nameWithoutExtension + ".transactions"), true);
+	    
+	    
+	    ArrayList<Resource> currentResources = null;
 
-    /**
-     * Loads a complete BlockchainSystem model from the given URI.
-     *
-     * @param uri Absolute or plugin-relative path to Net.blockchainsystem
-     * @return Fully resolved BlockchainSystem instance
-     */
-    public BlockchainSystem load(String uri) {
-
-        // Ensure EMF package is registered
-        BlockchainsystemPackage.eINSTANCE.eClass();
-
-        // Extract folder and base filenames
-        String folderName = Paths.get(uri).getParent().getFileName().toString();
-        String fileName = Paths.get(uri).getFileName().toString();
-        String baseName = Files.getNameWithoutExtension(fileName);
-
-        /*
-         * Load all EMF resources that together form one blockchain system.
-         * These files are generated beforehand by the Python pipeline.
-         */
-        resourceSet.getResource(createRelativePluginURI(folderName, fileName), true);
-        resourceSet.getResource(createRelativePluginURI(folderName, baseName + ".p2pnetwork"), true);
-        resourceSet.getResource(createRelativePluginURI(folderName, baseName + ".nodeallocation"), true);
-        resourceSet.getResource(createRelativePluginURI(folderName, baseName + ".blockchainsystemComponentRepository"), true);
-        resourceSet.getResource(createRelativePluginURI(folderName, baseName + ".geographicalregions"), true);
-        resourceSet.getResource(createRelativePluginURI(folderName, baseName + ".linkallocation"), true);
-        resourceSet.getResource(createRelativePluginURI(folderName, baseName + ".transactions"), true);
-
-        /*
-         * Resolve all cross-resource EMF references.
-         * Loop until no new resources are added during resolution.
-         */
-        ArrayList<Resource> currentResources;
         do {
-            currentResources = new ArrayList<>(resourceSet.getResources());
-            for (Resource r : currentResources) {
+            currentResources = new ArrayList<Resource>(resourceSet.getResources());
+            for (final Resource r : currentResources) {
                 EcoreUtil.resolveAll(r);
             }
-        } while (currentResources.size() != resourceSet.getResources().size());
+        } while (currentResources.size() != resourceSet.getResources()
+            .size());
+        
+//        System.out.println("currentResources " + (currentResources.size()));
+//        System.out.println("currentResources " + ((P2PNetwork)currentResources.get(1).getContents().getFirst()).getTopology());
+//        System.out.println("currentResources " + ((BlockchainSystem) currentResources.get(0).getContents().get(0)).getNetwork().getTopology());
+        
+        
+//        initEMFProfiles();
+        
+        
 
-        // The first resource always contains the BlockchainSystem root
-        return (BlockchainSystem) currentResources
-                .get(0)
-                .getContents()
-                .getFirst();
-    }
+	    return (BlockchainSystem) currentResources.get(0).getContents().getFirst();
+	}
+	
+	private URI createRelativePluginURI(String folder, String relativePath) {
+		String path = Paths.get("org.palladiosimulator.blockchainsystems.trilemma/testmodels/" + folder, relativePath).toString();
+		return URI.createPlatformPluginURI(path, false);
+	}
 
-    /*
-     * NOTE:
-     * Runtime configuration overrides were intentionally REMOVED.
-     * All parameter variation happens BEFORE simulation via Python-generated models.
-     */
-
-    /**
-     * Creates a plugin-relative URI for EMF resource loading.
-     *
-     * NOTE:
-     * - We intentionally use platform:/plugin URIs because the simulator
-     *   is executed inside an Eclipse/PDE environment.
-     */
-    private URI createRelativePluginURI(String folder, String relativePath) {
-        String path =
-                Paths.get(
-                        "org.palladiosimulator.blockchainsystems.trilemma/testmodels/" + folder,
-                        relativePath
-                ).toString();
-        return URI.createPlatformPluginURI(path, false);
-    }
 }
