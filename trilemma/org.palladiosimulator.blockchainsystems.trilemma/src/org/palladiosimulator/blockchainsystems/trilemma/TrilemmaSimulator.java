@@ -1,36 +1,78 @@
 package org.palladiosimulator.blockchainsystems.trilemma;
 
+import java.io.Reader;
+import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
 /**
  * Batch runner for pre-generated Threesim blockchain system models.
  *
- * IMPORTANT:
- * - Each folder (threesim-X) contains ONE fully parameterized blockchain system.
- * - All parameters are already baked into the EMF models.
- * - This class only iterates over model folders and runs simulations.
+ * FIXES (your two requirements):
+ * 1) Monte-Carlo settings are actually applied:
+ *    - We load testmodels/configuration.json ONCE
+ *    - Then merge its keys into each run configuration map
  *
- * This is the ONLY file that needs modification for batch execution.
+ * 2) Results go into ONE folder (flat output):
+ *    - outputDirectory = resultsRoot (same for all models)
+ *    - files = result_run_1.json, result_run_2.json, ...
+ *
+ * IMPORTANT:
+ * - We do NOT parse CSV parameters.
+ * - We do NOT modify models.
+ * - Parameters embedded in threesim-X models remain the single source of truth.
  */
 public class TrilemmaSimulator {
 
+    private static final Pattern THREESIM_PATTERN =
+            Pattern.compile("^threesim-(\\d+)$");
+
+    private static int extractId(Path dir) {
+        Matcher m = THREESIM_PATTERN.matcher(dir.getFileName().toString());
+        return m.matches() ? Integer.parseInt(m.group(1)) : Integer.MAX_VALUE;
+    }
+
+    private static Map<String, String> loadJsonConfig(Path jsonPath) throws Exception {
+        if (!Files.exists(jsonPath)) {
+            throw new IllegalArgumentException(
+                    "configuration.json not found: " + jsonPath.toAbsolutePath());
+        }
+
+        Gson gson = new Gson();
+        Type type = new TypeToken<Map<String, String>>() {}.getType();
+
+        try (Reader r = Files.newBufferedReader(jsonPath)) {
+            Map<String, String> m = gson.fromJson(r, type);
+            if (m == null) m = new HashMap<>();
+            return m;
+        }
+    }
+
     public static void main(String[] args) {
 
-        // ------------------------------------------------------------
         // Root directory containing threesim-1 ... threesim-N folders
-        // ------------------------------------------------------------
         Path testmodelsDir = Paths.get(
             "C:/Users/hk1012/Desktop/MetaModeling/blockchain-sim-tse-2026/"
           + "trilemma/org.palladiosimulator.blockchainsystems.trilemma/testmodels"
         );
 
-        // ------------------------------------------------------------
-        // Initialize simulator ONCE (required for PDE / Palladio)
-        // ------------------------------------------------------------
+        // ✅ ONE shared results folder (flat output)
+        Path resultsRoot = Paths.get(
+            "C:/Users/hk1012/Desktop/MetaModeling/blockchain-sim-tse-2026-results"
+        );
+
+        // Base simulation configuration (Monte-Carlo settings + thresholds)
+        Path baseConfigJson = testmodelsDir.resolve("configuration.json");
+
         BlockchainTrilemmaStandalone simulator =
             new BlockchainTrilemmaStandalone(
                 "org.palladiosimulator.blockchainsystems.trilemma",
@@ -43,56 +85,50 @@ public class TrilemmaSimulator {
         }
 
         System.out.println("✔ Simulator initialized");
-        System.out.println("Models root: " + testmodelsDir.toAbsolutePath());
+        System.out.println("Models root : " + testmodelsDir.toAbsolutePath());
+        System.out.println("Config JSON : " + baseConfigJson.toAbsolutePath());
+        System.out.println("Results dir : " + resultsRoot.toAbsolutePath());
 
-        // ------------------------------------------------------------
-        // One simulation per threesim-X model
-        // ------------------------------------------------------------
-        int runId = 1;
+        try {
+            Files.createDirectories(resultsRoot);
 
-        try (var paths = Files.list(testmodelsDir)) {
+            // ✅ Load config once (Monte-Carlo rounds etc.)
+            Map<String, String> baseConfig = loadJsonConfig(baseConfigJson);
 
-            for (Path modelDir : (Iterable<Path>) paths::iterator) {
+            int runIndex = 1;
 
-                // Only consider directories (threesim-1, threesim-2, ...)
-                if (!Files.isDirectory(modelDir)) {
-                    continue;
+            try (var paths = Files.list(testmodelsDir)) {
+
+                for (Path modelDir : (Iterable<Path>) paths
+                        .filter(Files::isDirectory)
+                        .sorted(Comparator.comparingInt(TrilemmaSimulator::extractId))
+                        ::iterator) {
+
+                    Path modelFile = modelDir.resolve("Net.blockchainsystem");
+                    if (!Files.exists(modelFile)) {
+                        continue;
+                    }
+
+                    System.out.println("\n▶ Run " + runIndex);
+                    System.out.println("   Model: " + modelFile.toAbsolutePath());
+
+                    // ✅ Merge base config (Monte-Carlo settings) + per-model settings
+                    Map<String, String> config = new HashMap<>(baseConfig);
+
+                    config.put("blockchainSystemModelFilePath", modelFile.toAbsolutePath().toString());
+
+                    // ✅ One shared folder for all results (NO per-model folders)
+                    config.put("outputDirectory", resultsRoot.toAbsolutePath().toString());
+
+                    // ✅ Used by standalone to name output file result_run_X.json
+                    config.put("run_index", String.valueOf(runIndex));
+
+                    // Optional: keep traceability
+                    config.put("config_id", modelDir.getFileName().toString());
+
+                    simulator.runSimulation(config);
+                    runIndex++;
                 }
-
-                // Entry point of a Threesim model
-                Path modelFile = modelDir.resolve("Net.blockchainsystem");
-                if (!Files.exists(modelFile)) {
-                    continue; // skip folders without a model
-                }
-
-                System.out.println("\n▶ Run " + runId);
-                System.out.println("   Model: " + modelFile.toAbsolutePath());
-
-                // ----------------------------------------------------
-                // Minimal configuration map
-                // ----------------------------------------------------
-                // The model already contains ALL system parameters.
-                Map<String, String> config = new HashMap<>();
-                config.put(
-                    "blockchainSystemModelFilePath",
-                    modelFile.toAbsolutePath().toString()
-                );
-
-                // Optional identifier (useful for logging/results)
-                config.put("config_id", String.valueOf(runId));
-
-                // ----------------------------------------------------
-                // Execute ONE simulation for this model
-                // ----------------------------------------------------
-                //simulator.runSimulation(config, runId);
-				// Execute the simulation for this model.
-				// Note: BlockchainTrilemmaStandalone only accepts a single Map<String, String>
-				// argument. Run identification and result separation are handled via the
-				// configuration entries (e.g., config_id, outputDirectory), not via a method parameter.
-				simulator.runSimulation(config);
-
-
-                runId++;
             }
 
         } catch (Exception e) {
