@@ -35,7 +35,7 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 	 * @generated
 	 * @ordered
 	 */
-	protected static final long BANDWIDTH_EDEFAULT = 0L;
+	protected static final double BANDWIDTH_EDEFAULT = 0.0;
 
 	/**
 	 * The cached value of the '{@link #getBandwidth() <em>Bandwidth</em>}' attribute.
@@ -45,7 +45,7 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 	 * @generated
 	 * @ordered
 	 */
-	protected long bandwidth = BANDWIDTH_EDEFAULT;
+	protected double bandwidth = BANDWIDTH_EDEFAULT;
 
 	/**
 	 * <!-- begin-user-doc -->
@@ -72,7 +72,7 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 	 * @generated
 	 */
 	@Override
-	public long getBandwidth() {
+	public double getBandwidth() {
 		return bandwidth;
 	}
 
@@ -82,8 +82,8 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 	 * @generated
 	 */
 	@Override
-	public void setBandwidth(long newBandwidth) {
-		long oldBandwidth = bandwidth;
+	public void setBandwidth(double newBandwidth) {
+		double oldBandwidth = bandwidth;
 		bandwidth = newBandwidth;
 		if (eNotificationRequired())
 			eNotify(new ENotificationImpl(this, Notification.SET,
@@ -113,7 +113,7 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 	public void eSet(int featureID, Object newValue) {
 		switch (featureID) {
 		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__BANDWIDTH:
-			setBandwidth((Long) newValue);
+			setBandwidth((Double) newValue);
 			return;
 		}
 		super.eSet(featureID, newValue);

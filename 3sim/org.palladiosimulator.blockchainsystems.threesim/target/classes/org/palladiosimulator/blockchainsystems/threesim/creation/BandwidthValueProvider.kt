@@ -5,9 +5,9 @@ import org.palladiosimulator.blockchainsystems.core.common.abstractions.Simulati
 
 
 class BandwidthValueProvider(
-  private val bandwidth: Long
-) : SimulationLifecycleAwareValueProvider<Long> {
-  override fun getValue(): Long? {
+  private val bandwidth: Double
+) : SimulationLifecycleAwareValueProvider<Double> {
+  override fun getValue(): Double? {
     return bandwidth
   }
 

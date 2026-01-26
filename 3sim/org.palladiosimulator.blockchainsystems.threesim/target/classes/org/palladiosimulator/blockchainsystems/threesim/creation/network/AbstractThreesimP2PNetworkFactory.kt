@@ -71,7 +71,7 @@ abstract class AbstractThreesimP2PNetworkFactory() : P2PNetworkFactory {
 
   protected fun createBandwidthValueProvider(
     bandwidthSpecification: BandwidthSpecification
-  ): SimulationLifecycleAwareValueProvider<Long> {
+  ): SimulationLifecycleAwareValueProvider<Double> {
     return when (bandwidthSpecification) {
       is BandwidthSpecification -> {
         BandwidthValueProvider(bandwidthSpecification.bandwidth)

@@ -26,12 +26,12 @@ public interface BandwidthSpecification extends Entity {
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
 	 * @return the value of the '<em>Bandwidth</em>' attribute.
-	 * @see #setBandwidth(long)
+	 * @see #setBandwidth(double)
 	 * @see org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkallocationPackage#getBandwidthSpecification_Bandwidth()
 	 * @model
 	 * @generated
 	 */
-	long getBandwidth();
+	double getBandwidth();
 
 	/**
 	 * Sets the value of the '{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification#getBandwidth <em>Bandwidth</em>}' attribute.
@@ -41,6 +41,6 @@ public interface BandwidthSpecification extends Entity {
 	 * @see #getBandwidth()
 	 * @generated
 	 */
-	void setBandwidth(long value);
+	void setBandwidth(double value);
 
 } // BandwidthSpecification
