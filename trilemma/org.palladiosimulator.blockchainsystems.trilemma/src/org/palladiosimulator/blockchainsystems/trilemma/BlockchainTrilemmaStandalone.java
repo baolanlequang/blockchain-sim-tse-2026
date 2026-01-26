@@ -1,27 +1,10 @@
-/**
- * RESPONSIBILITY:
- * - Initializes the standalone Palladio/Threesim environment.
- * - Executes a single simulation run and serializes the result to JSON.
- *
- * KEY CHANGE:
- * - Each experiment now produces its own result file containing:
- *   (1) config_id,
- *   (2) full input configuration,
- *   (3) raw simulation results.
- *
- * WHY THIS WAS NECESSARY:
- * - Guarantees traceability and reproducibility of every experiment.
- */
-
 
 package org.palladiosimulator.blockchainsystems.trilemma;
 
 import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.apache.log4j.Logger;
@@ -33,137 +16,120 @@ import tools.mdsd.library.standalone.initialization.StandaloneInitializerBuilder
 
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationParameters;
 import org.palladiosimulator.blockchainsystems.threesim.serialization.ThreesimSerializers;
+import org.palladiosimulator.blockchainsystems.threesim.simulation.results.ThreesimMonteCarloSimulationResult;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.results.ThreesimSimulationResultSerializer;
+import org.palladiosimulator.blockchainsystems.threesim.simulation.results.ThreesimSingleSimulationResult;
 import org.palladiosimulator.blockchainsystems.core.simulation.MonteCarloSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.SimulationType;
 import org.palladiosimulator.blockchainsystems.core.simulation.SingleSimulationParameters;
 
 public class BlockchainTrilemmaStandalone {
-
-    private final Logger logger =
-            Logger.getLogger(BlockchainTrilemmaStandalone.class);
-
-    private String modelProjectName;
+	private final Logger logger = Logger.getLogger(BlockchainTrilemmaStandalone.class);
+	
+	private String modelProjectName = "org.palladiosimulator.blockchainsystems.trilemma";
     private Class<? extends Plugin> modelProjectActivator;
-
-    public BlockchainTrilemmaStandalone(String modelProjectName,
-                                        Class<? extends Plugin> modelProjectActivator) {
-        this.modelProjectName = modelProjectName;
+	
+	public BlockchainTrilemmaStandalone(String modelProjectName,
+            Class<? extends Plugin> modelProjectActivator) {
+		this.modelProjectName = modelProjectName;
         this.modelProjectActivator = modelProjectActivator;
-    }
-
-    public boolean initAnalysis() {
-        EcorePlugin.ExtensionProcessor.process(null);
-        return initStandalone();
-    }
-
-/**
- * Runs one simulation and writes a dedicated JSON file for this configuration.
- * Output filename includes config_id to avoid collisions between runs.
- */
-
-    public void runSimulation(Map<String, String> configuration, int runId) {
-
-        var simulationParameters =
-                getSimulationParametersFromConfiguration(configuration);
-
-        var simulationFactory =
-                new TrilemmaSimulationFactory(simulationParameters, configuration);
-
-        var result = simulationFactory.run();
-
-        var serializer =
-                new ThreesimSimulationResultSerializer(
-                        ThreesimSerializers.INSTANCE.getJson());
-
-        String simulationJson = serializer.serialize(result);
-
-        Map<String, Object> finalResult = new LinkedHashMap<>();
-        finalResult.put("runId", runId);
-        finalResult.put("config_id", configuration.get("config_id"));
-        finalResult.put("inputParameters", configuration);
-        finalResult.put("simulationResult",
-                com.google.gson.JsonParser.parseString(simulationJson));
-
-        String jsonResult = new com.google.gson.GsonBuilder()
-                .setPrettyPrinting()
-                .create()
-                .toJson(finalResult);
-
-        try {
-            Path outputFile = createOutputPath(runId);
-            Files.createDirectories(outputFile.getParent());
-
-            try (BufferedWriter writer =
-                         Files.newBufferedWriter(outputFile)) {
-                writer.write(jsonResult);
-            }
-
-            System.out.println("✔ Result saved: "
-                    + outputFile.toAbsolutePath());
-
-        } catch (IOException e) {
-            logger.error("Failed to write simulation result", e);
-        }
-    }
-
-/**
- * Builds a unique, human-readable result filename per configuration.
- * Keeps results colocated with the corresponding model folder.
- */
-
-    private Path createOutputPath(int runId) {
-        return Paths.get("indiv_json")
-                .resolve("result_run_" + runId + ".json");
-    }
-
-    private boolean initStandalone() {
+	}
+	
+	public boolean initAnalysis() {
+		EcorePlugin.ExtensionProcessor.process(null);
+		if (!initStandalone()) {
+            return false;
+		}
+		
+		return true;
+	}
+	
+	public void runSimulation(Map<String, String> configuration) {
+		var simulationParameters = getSimulationParametersFromConfiguration(configuration);
+		
+//		var simulationTypeName = "";
+//		switch(simulationParameters.getSimulationType()) {
+//			case SimulationType.MonteCarlo:
+//				simulationTypeName = "Monte-Carlo";
+//				break;
+//			default:
+//				simulationTypeName = "Single";
+//		}
+//		
+		var simulationFactory = new TrilemmaSimulationFactory(simulationParameters, configuration);
+		System.out.println("simulationFactory.run");
+		var result = simulationFactory.run();
+		var serialization = new ThreesimSimulationResultSerializer(ThreesimSerializers.INSTANCE.getJson());
+		var jsonResult = serialization.serialize(result);
+		
+	    
+	    try {
+	    	String blockchainSystemModelFilePath = configuration.get("blockchainSystemModelFilePath");
+	    	String folderName = Paths.get(blockchainSystemModelFilePath).getParent().toString();
+	    	BufferedWriter writer = new BufferedWriter(new FileWriter(folderName + "_result.json"));
+			writer.write(jsonResult);
+			writer.close();
+			System.out.println("Simulation finished");
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			System.out.println("Simulation finished");
+		}
+	    
+	    
+		
+//		System.out.println("result: " + result);
+//		System.out.println("jsonResult: " + jsonResult);
+//		if (result instanceof ThreesimMonteCarloSimulationResult monteCarloSimulationResult) {
+//			System.out.println("final result monte-carlo: " + monteCarloSimulationResult.getSimulationRoundResults());
+//		} else if (result instanceof ThreesimSingleSimulationResult singleSimulationResult) {
+//			System.out.println("final result single: " + singleSimulationResult.getSimulationRoundResult());
+//		}
+		 
+	}
+	
+	private boolean initStandalone() {
         try {
             StandaloneInitializerBuilder.builder()
-                    .registerProjectURI(
-                            this.modelProjectActivator,
-                            this.modelProjectName)
-                    .build()
-                    .init();
+                .registerProjectURI(this.modelProjectActivator, this.modelProjectName)
+                .build()
+                .init();
 
             logger.info("Successfully initialized standalone environment.");
+            
             return true;
 
         } catch (StandaloneInitializationException e) {
-            logger.error("Unable to initialize standalone environment.", e);
+            logger.error("Unable to initialize standalone environment.");
+            e.printStackTrace();
             return false;
         }
     }
-
-    private SimulationParameters getSimulationParametersFromConfiguration(
-            Map<String, String> configuration) {
-
-        SimulationType simulationType = SimulationType.Single;
-        if ("Monte-Carlo".equals(configuration.getOrDefault("simulationType", ""))) {
-            simulationType = SimulationType.MonteCarlo;
-        }
-
-        int maxAllowedBlockchainLength =
-                Integer.parseInt(
-                        configuration.getOrDefault(
-                                "maxAllowedBlockchainLength", "30"));
-
-        int numberOfMonteCarloRounds =
-                Integer.parseInt(
-                        configuration.getOrDefault(
-                                "numberOfMonteCarloRounds", "1"));
-
-        String blockchainSystemModelFilePath =
-                configuration.getOrDefault(
-                        "blockchainSystemModelFilePath", "");
-
-        return (simulationType == SimulationType.MonteCarlo)
-                ? new MonteCarloSimulationParameters(
-                maxAllowedBlockchainLength,
-                numberOfMonteCarloRounds,
-                blockchainSystemModelFilePath)
-                : new SingleSimulationParameters(
-                maxAllowedBlockchainLength,
-                blockchainSystemModelFilePath);
-    }
+	
+	private SimulationParameters getSimulationParametersFromConfiguration(Map<String, String> configuration) {
+		System.out.println("getSimulationParametersFromConfiguration");
+		
+		SimulationType simulationType = SimulationType.Single;
+		var simulationTypeName = configuration.getOrDefault("simulationType", "");
+		if (simulationTypeName.equals("Monte-Carlo")) {
+			simulationType = SimulationType.MonteCarlo;
+		}
+		
+		var maxAllowedBlockchainLength = Integer. parseInt(configuration.getOrDefault("maxAllowedBlockchainLength", "30"));
+		var numberOfMonteCarloRounds = Integer. parseInt(configuration.getOrDefault("numberOfMonteCarloRounds", "1"));
+		var blockchainSystemModelFilePath = configuration.getOrDefault("blockchainSystemModelFilePath", "");
+		
+		
+		SimulationParameters simulationParameters = null;
+		switch (simulationType) {
+		case MonteCarlo:
+			simulationParameters = new MonteCarloSimulationParameters(maxAllowedBlockchainLength, numberOfMonteCarloRounds, blockchainSystemModelFilePath);
+			break;
+		default:
+			simulationParameters = new SingleSimulationParameters(maxAllowedBlockchainLength, blockchainSystemModelFilePath);
+		}
+		
+		return simulationParameters;
+		
+	}
 }
