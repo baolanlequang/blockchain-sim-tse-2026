@@ -162,8 +162,8 @@ def modify_p2p_network(file_path, node_allocation_id, parameter_data):
     alllocation.attrib['href'] = new_href
   
   
-  inbound_connectivity = parameter_data['inbound_connectivity']
-  outbound_connectivity = parameter_data['outbound_connectivity']
+  inbound_connectivity = int(parameter_data['inbound_connectivity'])
+  outbound_connectivity = int(parameter_data['outbound_connectivity'])
   for subgraph in xml_root.iter('Subgraphs'):
     # subgraph.attrib['Connectivity'] = str(parameter_data['peer_connectivity'])
     for nodetemplate in subgraph.iter('NodeTemplates'):

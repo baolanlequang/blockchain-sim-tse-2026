@@ -68,7 +68,7 @@ public class BandwidthSpecificationItemProvider extends EntityItemProvider {
 						getString("_UI_PropertyDescriptor_description", "_UI_BandwidthSpecification_Bandwidth_feature",
 								"_UI_BandwidthSpecification_type"),
 						LinkallocationPackage.Literals.BANDWIDTH_SPECIFICATION__BANDWIDTH, true, false, false,
-						ItemPropertyDescriptor.INTEGRAL_VALUE_IMAGE, null, null));
+						ItemPropertyDescriptor.REAL_VALUE_IMAGE, null, null));
 	}
 
 	/**
