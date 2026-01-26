@@ -3,6 +3,8 @@ package org.palladiosimulator.blockchainsystems.trilemma;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
 
@@ -22,22 +24,20 @@ import org.palladiosimulator.blockchainsystems.threesim.serialization.ThreesimSe
 import org.palladiosimulator.blockchainsystems.threesim.simulation.results.ThreesimSimulationResultSerializer;
 
 /**
- * Standalone entry point for running blockchain trilemma simulations.
+ * Standalone executor for Trilemma / Threesim simulations.
  *
- * RESPONSIBILITY:
- * - Initializes the Palladio / EMF standalone environment
- * - Parses simulation parameters from a configuration map
- * - Executes either Single or Monte-Carlo simulations
- * - Serializes results to JSON next to the model directory
+ * FIXES:
+ * - Ensures Monte-Carlo actually runs when numberOfMonteCarloRounds > 1.
+ * - Writes results into ONE shared folder (flat file naming).
  *
  * NOTE:
- * - This class does NOT validate model semantics
- * - Non-progressing systems are handled downstream (e.g., NaN metrics)
+ * - We do NOT modify model parameters (models are already parameterized).
+ * - configuration.json is only used for simulation settings + thresholds.
  */
 public class BlockchainTrilemmaStandalone {
 
     private final Logger logger =
-        Logger.getLogger(BlockchainTrilemmaStandalone.class);
+            Logger.getLogger(BlockchainTrilemmaStandalone.class);
 
     private final String modelProjectName;
     private final Class<? extends Plugin> modelProjectActivator;
@@ -50,123 +50,124 @@ public class BlockchainTrilemmaStandalone {
         this.modelProjectActivator = modelProjectActivator;
     }
 
-    /**
-     * Initializes the EMF / Palladio standalone environment.
-     */
     public boolean initAnalysis() {
         EcorePlugin.ExtensionProcessor.process(null);
         return initStandalone();
     }
 
-    /**
-     * Executes a single simulation run based on the provided configuration.
-     *
-     * @param configuration key-value map describing the simulation setup
-     */
-    public void runSimulation(Map<String, String> configuration) {
-
-        // Parse simulation parameters from configuration
-        SimulationParameters simulationParameters =
-            getSimulationParametersFromConfiguration(configuration);
-
-        // Create and execute simulation
-        TrilemmaSimulationFactory simulationFactory =
-            new TrilemmaSimulationFactory(simulationParameters, configuration);
-
-        var result = simulationFactory.run();
-
-        // Serialize simulation result to JSON
-        var serializer = new ThreesimSimulationResultSerializer(
-            ThreesimSerializers.INSTANCE.getJson());
-
-        String jsonResult = serializer.serialize(result);
-
-        // Write result next to the model directory
-        try {
-            String modelPath =
-                configuration.get("blockchainSystemModelFilePath");
-
-            String modelFolder =
-                Paths.get(modelPath).getParent().toString();
-
-            try (BufferedWriter writer =
-                     new BufferedWriter(
-                         new FileWriter(modelFolder + "_result.json"))) {
-
-                writer.write(jsonResult);
-            }
-
-            System.out.println("Simulation finished");
-
-        } catch (IOException e) {
-            logger.error("Failed to write simulation result", e);
-        }
-    }
-
-    /**
-     * Initializes the standalone environment for EMF-based models.
-     */
     private boolean initStandalone() {
         try {
             StandaloneInitializerBuilder.builder()
-                .registerProjectURI(
-                    this.modelProjectActivator,
-                    this.modelProjectName)
+                .registerProjectURI(this.modelProjectActivator, this.modelProjectName)
                 .build()
                 .init();
 
-            logger.info(
-                "Successfully initialized standalone environment.");
-
+            logger.info("Successfully initialized standalone environment.");
             return true;
 
         } catch (StandaloneInitializationException e) {
-            logger.error(
-                "Unable to initialize standalone environment.", e);
+            logger.error("Unable to initialize standalone environment.", e);
             return false;
         }
     }
 
+    public void runSimulation(Map<String, String> configuration) {
+
+        SimulationParameters simulationParameters =
+                getSimulationParametersFromConfiguration(configuration);
+
+        TrilemmaSimulationFactory simulationFactory =
+                new TrilemmaSimulationFactory(simulationParameters, configuration);
+
+        var result = simulationFactory.run();
+
+        // Serialize full simulation result (Monte-Carlo result object includes averages;
+        // depending on library, it may also include per-round results)
+        var serializer =
+                new ThreesimSimulationResultSerializer(
+                        ThreesimSerializers.INSTANCE.getJson());
+
+        String jsonResult = serializer.serialize(result);
+
+        writeResult(configuration, jsonResult);
+    }
+
     /**
-     * Creates simulation parameters based on the configuration map.
+     * Builds SimulationParameters from the configuration map.
      *
-     * Expected configuration keys:
-     * - simulationType (Single | Monte-Carlo)
-     * - maxAllowedBlockchainLength
-     * - numberOfMonteCarloRounds
-     * - blockchainSystemModelFilePath
+     * IMPORTANT FIX:
+     * - If numberOfMonteCarloRounds > 1, we force Monte-Carlo execution
+     *   even if simulationType was not explicitly passed.
      */
-    private SimulationParameters
-        getSimulationParametersFromConfiguration(
+    private SimulationParameters getSimulationParametersFromConfiguration(
             Map<String, String> configuration) {
 
-        SimulationType simulationType =
-            "Monte-Carlo".equals(
-                configuration.get("simulationType"))
-                ? SimulationType.MonteCarlo
-                : SimulationType.Single;
+        int numberOfMonteCarloRounds =
+                Integer.parseInt(configuration.getOrDefault("numberOfMonteCarloRounds", "1"));
+
+        // ✅ Force Monte-Carlo if rounds > 1
+        SimulationType simulationType;
+        if (numberOfMonteCarloRounds > 1) {
+            simulationType = SimulationType.MonteCarlo;
+        } else {
+            simulationType = SimulationType.Single;
+        }
+
+        // If simulationType is explicitly given, keep it consistent:
+        // (but still safe if user forgets to pass it)
+        String simulationTypeName = configuration.getOrDefault("simulationType", "");
+        if ("Monte-Carlo".equalsIgnoreCase(simulationTypeName)) {
+            simulationType = SimulationType.MonteCarlo;
+        }
 
         int maxAllowedBlockchainLength =
-            Integer.parseInt(
-                configuration.getOrDefault(
-                    "maxAllowedBlockchainLength", "30"));
+                Integer.parseInt(configuration.getOrDefault("maxAllowedBlockchainLength", "30"));
 
-        int numberOfMonteCarloRounds =
-            Integer.parseInt(
-                configuration.getOrDefault(
-                    "numberOfMonteCarloRounds", "1"));
+        String modelPath = configuration.get("blockchainSystemModelFilePath");
+        if (modelPath == null || modelPath.isBlank()) {
+            throw new IllegalArgumentException("Missing blockchainSystemModelFilePath");
+        }
 
-        String blockchainSystemModelFilePath =
-            configuration.getOrDefault(
-                "blockchainSystemModelFilePath", "");
+        if (simulationType == SimulationType.MonteCarlo) {
+            return new MonteCarloSimulationParameters(
+                    maxAllowedBlockchainLength,
+                    numberOfMonteCarloRounds,
+                    modelPath);
+        }
 
-        return simulationType == SimulationType.MonteCarlo
-            ? new MonteCarloSimulationParameters(
-                maxAllowedBlockchainLength,
-                numberOfMonteCarloRounds,
-                blockchainSystemModelFilePath)
-            : new SingleSimulationParameters(
-                maxAllowedBlockchainLength,
-                blockchainSystemModelFilePath);
+        return new SingleSimulationParameters(maxAllowedBlockchainLength, modelPath);
+    }
+
+    /**
+     * Writes results into ONE shared directory as flat files:
+     *   result_run_1.json
+     *   result_run_2.json
+     *   ...
+     */
+    private void writeResult(Map<String, String> configuration, String jsonResult) {
+
+        try {
+            String outputDir = configuration.get("outputDirectory");
+            String runIndex = configuration.getOrDefault("run_index", "0");
+
+            if (outputDir == null || outputDir.isBlank()) {
+                throw new IllegalStateException("outputDirectory must be provided");
+            }
+
+            Path outDir = Paths.get(outputDir);
+            Files.createDirectories(outDir);
+
+            Path outputFile = outDir.resolve("result_run_" + runIndex + ".json");
+
+            try (BufferedWriter writer =
+                    new BufferedWriter(new FileWriter(outputFile.toFile()))) {
+                writer.write(jsonResult);
+            }
+
+            System.out.println("Simulation finished → " + outputFile.toAbsolutePath());
+
+        } catch (IOException e) {
+            logger.error("Failed to write simulation result", e);
+        }
     }
 }
