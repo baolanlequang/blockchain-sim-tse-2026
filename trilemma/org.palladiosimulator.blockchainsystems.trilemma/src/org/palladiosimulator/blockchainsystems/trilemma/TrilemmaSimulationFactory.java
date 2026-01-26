@@ -1,161 +1,93 @@
 package org.palladiosimulator.blockchainsystems.trilemma;
 
-import java.util.Map;
-
-import org.eclipse.core.runtime.CoreException;
-
-import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystem;
-import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectedSubgraphsNetworkTopology;
-import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ExplicitNetworkTopology;
-
 import org.palladiosimulator.blockchainsystems.core.simulation.MonteCarloSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.SingleSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.Simulation;
-import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationResult;
-
 import org.palladiosimulator.blockchainsystems.plugin.logging.LogOutputProviderImpl;
 import org.palladiosimulator.blockchainsystems.plugin.simulation.MonteCarloSimulationProgressMonitorAdapter;
-
+import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationParameters;
+import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSingleSimulation;
 import org.palladiosimulator.blockchainsystems.threesim.creation.ThreesimBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.creation.network.connectedsubgraphs.ConnectedSubgraphNetworkBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.creation.network.explicit.ExplicitNetworkBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.serialization.ThreesimSerializers;
+
+import java.util.Map;
+
+import org.eclipse.core.runtime.CoreException;
+import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectedSubgraphsNetworkTopology;
+import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ExplicitNetworkTopology;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimMonteCarloSimulation;
-import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSingleSimulation;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSimulationParameters;
 
 public class TrilemmaSimulationFactory implements Simulation {
+	
+	private Simulation simulation;
+	
+	public TrilemmaSimulationFactory() {
+		
+	}
+	
+	public TrilemmaSimulationFactory(SimulationParameters simulationParameters, Map<String, String> configuration) {
+		var blockchainSystemFactory = createBlockchainSystemFactory(simulationParameters);
+		var maxAllowedBlockchainLength = simulationParameters.getMaxAllowedBlockchainLength();
+		var threesimSimulationParameters = getThreesimSimulationParametersFromConfiguration(configuration);
+		
+		System.out.println("simulationParameters " + simulationParameters);
+		LogOutputProviderImpl logOutputProvider;
+		try {
+			logOutputProvider = LogOutputProviderImpl.Companion.fromLaunchConfiguration(ThreesimSerializers.INSTANCE.getJson(), null);
+		} catch (CoreException e) {
+			logOutputProvider = null;
+			e.printStackTrace();
+		}
+		
+		if (simulationParameters instanceof MonteCarloSimulationParameters) {
+			var progressMonitor = new MonteCarloSimulationProgressMonitorAdapter(null);
+			simulation = new ThreesimMonteCarloSimulation(progressMonitor, blockchainSystemFactory, logOutputProvider, 
+					maxAllowedBlockchainLength, (MonteCarloSimulationParameters) simulationParameters, 
+					threesimSimulationParameters);
+			
+		} else {
+			simulation = new ThreesimSingleSimulation(
+					blockchainSystemFactory, logOutputProvider, 
+					maxAllowedBlockchainLength, (SingleSimulationParameters) simulationParameters, 
+					threesimSimulationParameters);
+		}
+		
+		
+	}
 
-    private final Simulation simulation;
+	@Override
+	public SimulationResult run() {
+		return simulation.run();
+	}
+	
+	private ThreesimSimulationParameters getThreesimSimulationParametersFromConfiguration(Map<String, String> configuration) {
+		var failureThroughputThreshold = Double.parseDouble(configuration.getOrDefault("failureThroughputThreshold", "1.0"));
+		var shannonEntropyK = Double.parseDouble(configuration.getOrDefault("shannonEntropyK", "1.0"));
+		var nakamotoCoefficientThreshold = Double.parseDouble(configuration.getOrDefault("nakamotoCoefficientThreshold", "50.0"));
+		var reliabilityObservationTimespan = Double.parseDouble(configuration.getOrDefault("reliabilityObservationTimespan", "24.0"));
+		var threesimSimulationParameters = new ThreesimSimulationParameters(
+				failureThroughputThreshold, shannonEntropyK,
+				nakamotoCoefficientThreshold, reliabilityObservationTimespan);
+		return threesimSimulationParameters;
+	}
+	
+	private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(SimulationParameters simulationParameters) {
+		final var designModelLoader = new BlockchainSystemModelLoader();
+		final var designBlockchainSystem = designModelLoader.load(simulationParameters.getBlockchainSystemModelFilePath());
+		final var networkTopology = designBlockchainSystem.getNetwork().getTopology();
+		
+		if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) { 
+			var blockchainFactory = new ConnectedSubgraphNetworkBlockchainSystemFactory(designBlockchainSystem, (ConnectedSubgraphsNetworkTopology) networkTopology);
+			return blockchainFactory;
+		} else if (networkTopology instanceof ExplicitNetworkTopology) { 
+			var blockchainFactory = new ExplicitNetworkBlockchainSystemFactory(designBlockchainSystem, (ExplicitNetworkTopology) networkTopology);
+			return blockchainFactory;
+		}
+		return null;
+	}
 
-    public TrilemmaSimulationFactory(
-            SimulationParameters simulationParameters,
-            Map<String, String> configuration) {
-
-        ThreesimBlockchainSystemFactory blockchainSystemFactory =
-                createBlockchainSystemFactory(simulationParameters, configuration);
-
-        // ✅ FIX: Threesim expects int, SimulationParameters returns long
-        int maxAllowedBlockchainLength =
-                Math.toIntExact(simulationParameters.getMaxAllowedBlockchainLength());
-
-        ThreesimSimulationParameters threesimSimulationParameters =
-                getThreesimSimulationParametersFromConfiguration(configuration);
-
-        LogOutputProviderImpl logOutputProvider;
-        try {
-            logOutputProvider =
-                    LogOutputProviderImpl.Companion.fromLaunchConfiguration(
-                            ThreesimSerializers.INSTANCE.getJson(), null);
-        } catch (CoreException e) {
-            logOutputProvider = null;
-            e.printStackTrace();
-        }
-
-        if (simulationParameters instanceof MonteCarloSimulationParameters) {
-
-            MonteCarloSimulationProgressMonitorAdapter progressMonitor =
-                    new MonteCarloSimulationProgressMonitorAdapter(null);
-
-            this.simulation =
-                    new ThreesimMonteCarloSimulation(
-                            progressMonitor,
-                            blockchainSystemFactory,
-                            logOutputProvider,
-                            maxAllowedBlockchainLength,
-                            (MonteCarloSimulationParameters) simulationParameters,
-                            threesimSimulationParameters
-                    );
-
-        } else {
-
-            this.simulation =
-                    new ThreesimSingleSimulation(
-                            blockchainSystemFactory,
-                            logOutputProvider,
-                            maxAllowedBlockchainLength,
-                            (SingleSimulationParameters) simulationParameters,
-                            threesimSimulationParameters
-                    );
-        }
-    }
-
-    @Override
-    public SimulationResult run() {
-        return simulation.run();
-    }
-
-    private ThreesimSimulationParameters getThreesimSimulationParametersFromConfiguration(
-            Map<String, String> configuration) {
-
-        double failureThroughputThreshold =
-                Double.parseDouble(configuration.getOrDefault(
-                        "failureThroughputThreshold", "1.0"));
-
-        double shannonEntropyK =
-                Double.parseDouble(configuration.getOrDefault(
-                        "shannonEntropyK", "1.0"));
-
-        double nakamotoCoefficientThreshold =
-                Double.parseDouble(configuration.getOrDefault(
-                        "nakamotoCoefficientThreshold", "50.0"));
-
-        double reliabilityObservationTimespan =
-                Double.parseDouble(configuration.getOrDefault(
-                        "reliabilityObservationTimespan", "24.0"));
-
-        return new ThreesimSimulationParameters(
-                failureThroughputThreshold,
-                shannonEntropyK,
-                nakamotoCoefficientThreshold,
-                reliabilityObservationTimespan);
-    }
-
-    private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(
-            SimulationParameters simulationParameters,
-            Map<String, String> configuration) {
-
-        BlockchainSystemModelLoader loader =
-                new BlockchainSystemModelLoader();
-
-        //BlockchainSystem designBlockchainSystem =
-                //loader.load(
-                        //simulationParameters.getBlockchainSystemModelFilePath(),
-                        //configuration);
-        
-	     // IMPORTANT CHANGE:
-	     // We no longer pass the configuration map into the model loader.
-	     //
-	     // Reason:
-	     // - Each simulation already uses a fully materialized EMF model
-	     //   located at testmodels/threesim-<config_id>/Net.blockchainsystem
-	     // - All CSV-based parameter variation has already been applied
-	     //   offline by the Python model generator.
-	     // - Passing configuration here incorrectly suggests runtime model mutation,
-	     //   which is NOT how Threesim is designed to work.
-	     BlockchainSystem designBlockchainSystem =
-	             loader.load(
-	                     simulationParameters.getBlockchainSystemModelFilePath());
-
-
-        var networkTopology =
-                designBlockchainSystem.getNetwork().getTopology();
-
-        if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) {
-            return new ConnectedSubgraphNetworkBlockchainSystemFactory(
-                    designBlockchainSystem,
-                    (ConnectedSubgraphsNetworkTopology) networkTopology);
-        }
-
-        if (networkTopology instanceof ExplicitNetworkTopology) {
-            return new ExplicitNetworkBlockchainSystemFactory(
-                    designBlockchainSystem,
-                    (ExplicitNetworkTopology) networkTopology);
-        }
-
-        throw new IllegalStateException(
-                "Unsupported network topology: "
-                        + networkTopology.getClass().getName());
-    }
 }
