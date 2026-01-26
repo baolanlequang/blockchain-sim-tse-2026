@@ -24,18 +24,32 @@ class FaultToleranceCalculator(
         FaultToleranceValue.of(0.0, 0.0)
       )
     }
+
+    var currAverageThroughputWithoutFailures = averageThroughputWithoutFailures
+    var currAverageConfirmationLatencyWithoutFailures = averageConfirmationLatencyWithoutFailures
+    if (currAverageThroughputWithoutFailures == -1.0) {
+      currAverageThroughputWithoutFailures = 0.0
+    }
+    if (currAverageConfirmationLatencyWithoutFailures == -1.0) {
+      currAverageConfirmationLatencyWithoutFailures = 0.0
+    }
+    
     if (
-      averageThroughputWithoutFailures < 0.0
+      currAverageThroughputWithoutFailures < 0.0
       || averageThroughputWithFailures < 0.0
-      || averageConfirmationLatencyWithoutFailures < 0.0
+      || currAverageConfirmationLatencyWithoutFailures < 0.0
       || averageConfirmationLatencyWithFailures < 0.0
     ) {
+      println(averageThroughputWithoutFailures)
+      println(averageThroughputWithFailures)
+      println(averageConfirmationLatencyWithoutFailures)
+      println(averageConfirmationLatencyWithFailures)
       throw IllegalStateException("Average throughput and average confirmation latency must not be negative when calculating fault tolerance.")
     }
 
-    val throughputDelta = abs(averageThroughputWithoutFailures - averageThroughputWithFailures)
+    val throughputDelta = abs(currAverageThroughputWithoutFailures - averageThroughputWithFailures)
     val confirmationLatencyDelta =
-      abs(averageConfirmationLatencyWithoutFailures - averageConfirmationLatencyWithFailures)
+      abs(currAverageConfirmationLatencyWithoutFailures - averageConfirmationLatencyWithFailures)
 
     return FaultTolerance(
       FaultToleranceValue.of(throughputDelta, confirmationLatencyDelta)
