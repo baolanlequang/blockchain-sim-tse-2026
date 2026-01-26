@@ -676,7 +676,7 @@ public class LinkallocationPackageImpl extends EPackageImpl implements Linkalloc
 
 		initEClass(bandwidthSpecificationEClass, BandwidthSpecification.class, "BandwidthSpecification", !IS_ABSTRACT,
 				!IS_INTERFACE, IS_GENERATED_INSTANCE_CLASS);
-		initEAttribute(getBandwidthSpecification_Bandwidth(), theEcorePackage.getELong(), "Bandwidth", null, 0, 1,
+		initEAttribute(getBandwidthSpecification_Bandwidth(), theEcorePackage.getEDouble(), "Bandwidth", null, 0, 1,
 				BandwidthSpecification.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE, !IS_UNSETTABLE, !IS_ID,
 				IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
 
