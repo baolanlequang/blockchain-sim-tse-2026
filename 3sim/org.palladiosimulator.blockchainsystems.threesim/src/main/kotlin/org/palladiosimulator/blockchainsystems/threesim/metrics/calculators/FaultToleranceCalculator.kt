@@ -1,81 +1,128 @@
-package org.palladiosimulator.blockchainsystems.threesim.metrics.calculators
+package org.palladiosimulator.blockchainsystems.threesim.metrics
 
-import org.palladiosimulator.blockchainsystems.threesim.metrics.FaultTolerance
-import org.palladiosimulator.blockchainsystems.threesim.metrics.FaultToleranceAverageOutputMetric
-import org.palladiosimulator.blockchainsystems.threesim.metrics.FaultToleranceValue
-import org.palladiosimulator.blockchainsystems.threesim.metrics.abstractions.OutputMetricCalculator
-import org.palladiosimulator.blockchainsystems.threesim.metrics.utils.AverageCalculator
-import kotlin.math.abs
+import kotlinx.serialization.Serializable
+import org.palladiosimulator.blockchainsystems.threesim.metrics.abstractions.AverageOutputMetric
+import org.palladiosimulator.blockchainsystems.threesim.metrics.abstractions.AverageOutputMetricImpl
+import org.palladiosimulator.blockchainsystems.threesim.metrics.abstractions.OutputMetric
+import org.palladiosimulator.blockchainsystems.threesim.metrics.utils.AverageCalculatorResult
 
 /**
- * Calculates fault tolerance based on super-CDF distance:
+ * Fault tolerance
  *
- *   FT = | S_N(b_N) − S_F(b_F) |
+ * @property value Pair of throughput delta and confirmation latency delta
  *
- * where S(x) is the empirical super-cumulative distribution function.
- *
- * This implementation follows the revised metric definition used in the paper.
+ * @author Davis Riedel
  */
-class FaultToleranceCalculator(
-  private val normalMeasurements: List<Double>,
-  private val faultyMeasurements: List<Double>
-) : OutputMetricCalculator<FaultTolerance> {
-
-  override fun calculate(): FaultTolerance {
-
-    // If no faults occurred, fault tolerance is zero by definition
-    if (faultyMeasurements.isEmpty()) {
-      return FaultTolerance(FaultToleranceValue.of(0.0, 0.0))
-    }
-
-    // Filter invalid values defensively
-    val normal = normalMeasurements.filter { it >= 0.0 }
-    val faulty = faultyMeasurements.filter { it >= 0.0 }
-
-    if (normal.isEmpty() || faulty.isEmpty()) {
-      return FaultTolerance(FaultToleranceValue.of(0.0, 0.0))
-    }
-
-    val sN = superCdf(normal)
-    val sF = superCdf(faulty)
-
-    val bN = normal.maxOrNull()!!
-    val bF = faulty.maxOrNull()!!
-
-    val ftValue = abs(sN(bN) - sF(bF))
-
-    // Second value kept for compatibility; set to same FT or 0.0
-    return FaultTolerance(
-      FaultToleranceValue.of(ftValue, 0.0)
-    )
-  }
-
-  /**
-   * Builds the empirical super-CDF function S(x).
-   */
-  private fun superCdf(samples: List<Double>): (Double) -> Double {
-
-    val sorted = samples.sorted()
-    val n = sorted.size.toDouble()
-
-    // Empirical CDF
-    fun cdf(x: Double): Double =
-      sorted.count { it <= x } / n
-
-    // Super-CDF: sum of CDF values up to x
-    return { x ->
-      sorted
-        .filter { it <= x }
-        .sumOf { t -> cdf(t) }
-    }
-  }
-
+@Serializable
+class FaultTolerance(
+  override val value: FaultToleranceValue
+) : OutputMetric<FaultToleranceValue> {
   companion object {
-    fun calculateAverage(measurements: List<FaultTolerance>): FaultToleranceAverageOutputMetric {
-      return FaultToleranceAverageOutputMetric.of(
-        AverageCalculator.calculate(measurements.map { it.value.throughputDelta.value }),
-        AverageCalculator.calculate(measurements.map { it.value.confirmationLatencyDelta.value })
+    const val NAME = "FaultTolerance"
+  }
+
+  override val name: String = NAME
+  override val unit: String? = null
+}
+
+/**
+ * Value of fault tolerance metric
+ *
+ * @author Davis Riedel
+ */
+@Serializable
+class FaultToleranceValue private constructor(
+  val throughputDelta: ThroughputDeltaValue,
+  val confirmationLatencyDelta: ConfirmationLatencyDeltaValue,
+) {
+  companion object {
+    fun of(
+      throughputDelta: Double,
+      confirmationLatencyDelta: Double
+    ): FaultToleranceValue {
+      return FaultToleranceValue(
+        ThroughputDeltaValue.of(throughputDelta),
+        ConfirmationLatencyDeltaValue.of(confirmationLatencyDelta)
       )
     }
   }
 }
+
+// The following are used for serialization
+
+@Serializable
+class ThroughputDeltaValue private constructor(
+  val value: Double,
+  val unit: String
+) {
+  companion object {
+    const val UNIT = "transactions/min"
+
+    fun of(value: Double): ThroughputDeltaValue {
+      return ThroughputDeltaValue(value, UNIT)
+    }
+  }
+}
+
+@Serializable
+class ConfirmationLatencyDeltaValue private constructor(
+  val value: Double,
+  val unit: String
+) {
+  companion object {
+    const val UNIT = "ms"
+
+    fun of(value: Double): ConfirmationLatencyDeltaValue {
+      return ConfirmationLatencyDeltaValue(value, UNIT)
+    }
+  }
+}
+
+/**
+ * Result of calculating average fault tolerance, for serialization.
+ *
+ * @author Davis Riedel
+ */
+@Serializable
+class FaultToleranceAverageOutputMetric private constructor(
+  val name: String,
+  val average: FaultToleranceAverageOutputMetricItem
+) : AverageOutputMetric {
+  companion object {
+    fun of(
+      throughputDelta: AverageCalculatorResult,
+      confirmationLatencyDelta: AverageCalculatorResult,
+    ): FaultToleranceAverageOutputMetric {
+      return FaultToleranceAverageOutputMetric(
+        FaultTolerance.NAME,
+        FaultToleranceAverageOutputMetricItem(
+          AverageOutputMetricImpl(
+            name = "throughputDelta",
+            average = throughputDelta.average,
+            unit = ThroughputDeltaValue.UNIT,
+            standardDeviation = throughputDelta.standardDeviation,
+            coefficientOfVariation = throughputDelta.coefficientOfVariation
+          ),
+          AverageOutputMetricImpl(
+            name = "confirmationLatencyDelta",
+            average = confirmationLatencyDelta.average,
+            unit = ConfirmationLatencyDeltaValue.UNIT,
+            standardDeviation = confirmationLatencyDelta.standardDeviation,
+            coefficientOfVariation = confirmationLatencyDelta.coefficientOfVariation
+          ),
+        )
+      )
+    }
+  }
+}
+
+/**
+ * Item of the average fault tolerance result, for serialization.
+ *
+ * @author Davis Riedel
+ */
+@Serializable
+data class FaultToleranceAverageOutputMetricItem(
+  val throughputDelta: AverageOutputMetricImpl,
+  val confirmationLatencyDelta: AverageOutputMetricImpl,
+)
