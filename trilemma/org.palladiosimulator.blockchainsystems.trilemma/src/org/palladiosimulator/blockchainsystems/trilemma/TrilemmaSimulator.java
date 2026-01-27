@@ -17,9 +17,9 @@ import com.google.gson.reflect.TypeToken;
 /**
  * Batch runner for pre-generated Threesim blockchain system models.
  *
- * FIXES (your two requirements):
+ * FIXES:
  * 1) Monte-Carlo settings are actually applied:
- *    - We load testmodels/configuration.json ONCE
+ *    - Load testmodels/configuration.json ONCE
  *    - Then merge its keys into each run configuration map
  *
  * 2) Results go into ONE folder (flat output):
@@ -27,8 +27,8 @@ import com.google.gson.reflect.TypeToken;
  *    - files = result_run_1.json, result_run_2.json, ...
  *
  * IMPORTANT:
- * - We do NOT parse CSV parameters.
- * - We do NOT modify models.
+ * - Do NOT parse CSV parameters.
+ * - Do NOT modify models.
  * - Parameters embedded in threesim-X models remain the single source of truth.
  */
 public class TrilemmaSimulator {
@@ -139,3 +139,4 @@ public class TrilemmaSimulator {
         System.out.println("\n✔ All simulations finished");
     }
 }
+
