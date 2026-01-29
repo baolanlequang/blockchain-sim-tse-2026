@@ -6,27 +6,29 @@ from scipy.stats import qmc
 # 1. Experimental setup
 # -----------------------------
 
-SEED = 42                 # For reproducibility
-N_SAMPLES = 50            # Number of configurations to generate
-DIM = 9                   # Number of parameters
+SEED = 42
+N_SAMPLES = 50
+DIM = 8  # UPDATED: bandwidth heterogeneity added back
 
 # -----------------------------
 # 2. Define parameter ranges
 # -----------------------------
-# Continuous parameters are defined by (min, max)
-# Integer parameters will be rounded after sampling
+# IMPORTANT:
+# - Bandwidth is modeled via heterogeneity (dimensionless).
+# - Hashing power is modeled via heterogeneity.
+# - Workload is removed.
 
 param_ranges = {
-    "bandwidth": (10, 250),                         # Mbps (continuous)
-    "block_creation_interval": (300, 1200),         # seconds (continuous)
-    "hashing_power": (100, 500),                     # TH/s (continuous)
-    "max_block_size": (0.5, 2.5),                    # MB (continuous)
+    "bandwidth_heterogeneity": (0.05, 1.0),     # dimensionless (continuous)
+    "hashrate_heterogeneity": (0.05, 1.0),      # dimensionless (continuous)
 
-    "inbound_connectivity": (1, 250),                # integer
-    "outbound_connectivity": (1, 16),                # integer
-    "validator_count": (5000, 30000),                # integer
-    "crashed_validators": (0, 15000),                # integer (constrained)
-    "workload": (200, 600000),                       # integer (tx/day)
+    "block_creation_interval": (300, 1200),     # seconds (continuous)
+    "max_block_size": (0.5, 2.5),                # MB (continuous)
+
+    "inbound_connectivity": (1, 250),             # integer
+    "outbound_connectivity": (1, 16),             # integer
+    "validator_count": (5000, 30000),             # integer
+    "crashed_validators": (0, 15000),             # integer (constrained)
 }
 
 param_names = list(param_ranges.keys())
@@ -34,7 +36,6 @@ param_names = list(param_ranges.keys())
 # -----------------------------
 # 3. Generate optimized LHS
 # -----------------------------
-# Space-filling optimized LHS using random coordinate descent
 
 sampler = qmc.LatinHypercube(
     d=DIM,
@@ -65,7 +66,6 @@ integer_params = [
     "outbound_connectivity",
     "validator_count",
     "crashed_validators",
-    "workload",
 ]
 
 for p in integer_params:
@@ -81,11 +81,12 @@ df["crashed_validators"] = np.minimum(
     df["validator_count"]
 )
 
-# Connectivity cannot exceed available peers
+# Connectivity cannot exceed possible peers
 df["inbound_connectivity"] = np.minimum(
     df["inbound_connectivity"],
     df["validator_count"] - 1
 )
+
 df["outbound_connectivity"] = np.minimum(
     df["outbound_connectivity"],
     df["validator_count"] - 1
@@ -107,10 +108,8 @@ assert (df["outbound_connectivity"] <= df["validator_count"] - 1).all()
 assert (df["inbound_connectivity"] <= df["validator_count"] - 1).all()
 
 # -----------------------------
-# 8. Add config_id (NEW)
+# 8. Add config_id
 # -----------------------------
-# config_id is metadata, not a parameter.
-# We use the row index to ensure uniqueness and reproducibility.
 
 df.insert(0, "config_id", range(1, len(df) + 1))
 
