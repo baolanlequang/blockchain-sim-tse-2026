@@ -19,8 +19,8 @@ DIM = 8  # UPDATED: bandwidth heterogeneity added back
 # - Workload is removed.
 
 param_ranges = {
-    "bandwidth_heterogeneity": (0.05, 1.0),     # dimensionless (continuous)
-    "hashrate_heterogeneity": (0.05, 1.0),      # dimensionless (continuous)
+    "bandwidth_heterogeneity": (0.0, 1.0),     # dimensionless (continuous)
+    "hashrate_heterogeneity": (0.0, 1.0),      # dimensionless (continuous)
 
     "block_creation_interval": (300, 1200),     # seconds (continuous)
     "max_block_size": (0.5, 2.5),                # MB (continuous)
