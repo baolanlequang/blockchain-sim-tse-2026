@@ -12,7 +12,8 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.Resource
  * @author Yannik Sproll, Davis Riedel
  */
 class ExplicitNetworkResourcePowerCalculator(
-  private val networkTopology: ExplicitNetworkTopology
+  private val networkTopology: ExplicitNetworkTopology,
+  private val hashRateConcentration: Double?
 ) : ResourcePowerCalculator {
   private val resourcePowerPerNode: Map<String, Double> by lazy {
     networkTopology.nodes.associate { it.id to getResourcePowerOfNode(it) }

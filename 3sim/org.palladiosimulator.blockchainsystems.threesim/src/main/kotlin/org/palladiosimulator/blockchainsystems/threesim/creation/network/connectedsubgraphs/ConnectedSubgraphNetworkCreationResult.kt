@@ -13,5 +13,6 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetwo
  */
 data class ConnectedSubgraphNetworkCreationResult(
   override val createdNetwork: P2PNetwork,
-  val nodeIdToNodeTemplateIdMapping: HashMap<String, String>
+  val nodeIdToNodeTemplateIdMapping: HashMap<String, String>,
+  val nodeIdToIndexMapping: HashMap<String, Int>
 ) : P2PNetworkCreationResult

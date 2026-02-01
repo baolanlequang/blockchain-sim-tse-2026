@@ -64,7 +64,7 @@ def modify_link_allocation(file_path, parameter_data):
   xml_tree = ET.parse(file_path)
   xml_root = xml_tree.getroot()
   for bandwidth in xml_root.iter('bandwidthSpecification'):
-    bandwidth.attrib['Bandwidth'] = str(parameter_data['bandwidth'])
+    bandwidth.attrib['HeterogeneityTarget'] = str(parameter_data['bandwidth_heterogeneity'])
   xml_tree.write(file_path)
   
 def modify_blockchain_system(file_path, parameter_data):
@@ -76,6 +76,7 @@ def modify_blockchain_system(file_path, parameter_data):
   for specification in xml_root.iter('Specification'):
     specification.attrib['MeanBlockTime'] = str(block_interval_ms)
     specification.attrib['MaxBlockSize'] = str(max_block_size_byte)
+    specification.attrib['HashRateConcentration'] = str(parameter_data['hashrate_concentration'])
   xml_tree.write(file_path)
   
 def modify_node_allocation(file_path, parameter_data):
@@ -86,10 +87,10 @@ def modify_node_allocation(file_path, parameter_data):
   xml_tree = ET.parse(file_path)
   xml_root = xml_tree.getroot()
  
-  hashrate = parameter_data['hashing_power']
+  # hashrate = parameter_data['hashing_power']
   validator_count = int(parameter_data['validator_count'])
   
-  crashed_validators = int(parameter_data['crashed_validators'])
+  crashed_validators = int(parameter_data['fraction_of_validators'])
   
   # #test
   # validator_count = 4
@@ -114,7 +115,7 @@ def modify_node_allocation(file_path, parameter_data):
           for comp in context.iter('EncapsulatedComponent'):
             comp.tag = f"{{{pcm_namespaces['blockchainsystemComponentRepository']}}}{comp.tag}"
       for resource_container in node_allo.iter('ResourceContainers'):
-        resource_container.attrib['ResourcePower'] = str(hashrate)
+        # resource_container.attrib['ResourcePower'] = str(hashrate)
         resource_id = resource_container.attrib['id']
         break
       for idx in range(1, validator_count):
@@ -136,7 +137,7 @@ def modify_node_allocation(file_path, parameter_data):
           for comp in context.iter('EncapsulatedComponent'):
             comp.tag = f"{{{pcm_namespaces['blockchainsystemComponentRepository']}}}{comp.tag}"
       for resource_container in node_allo.iter('ResourceContainers'):
-        resource_container.attrib['ResourcePower'] = str(hashrate)
+        # resource_container.attrib['ResourcePower'] = str(hashrate)
         resource_id = resource_container.attrib['id']
         break
       for idx in range(1, validator_count):
@@ -162,8 +163,8 @@ def modify_p2p_network(file_path, node_allocation_id, parameter_data):
     alllocation.attrib['href'] = new_href
   
   
-  inbound_connectivity = int(parameter_data['inbound_connectivity'])
-  outbound_connectivity = int(parameter_data['outbound_connectivity'])
+  inbound_connectivity = int(parameter_data['inbound_connections'])
+  outbound_connectivity = int(parameter_data['outbound_connections'])
   for subgraph in xml_root.iter('Subgraphs'):
     # subgraph.attrib['Connectivity'] = str(parameter_data['peer_connectivity'])
     for nodetemplate in subgraph.iter('NodeTemplates'):
@@ -177,11 +178,11 @@ def modify_p2p_network(file_path, node_allocation_id, parameter_data):
 def modify_transaction(file_path, parameter_data):
   register_all_namespaces(file_path)
   xml_tree = ET.parse(file_path)
-  xml_root = xml_tree.getroot()
-  workload_txs_per_day = parameter_data['workload']
-  transaction_time_in_sec = 86400 / workload_txs_per_day
-  transaction_time_in_ms = transaction_time_in_sec * 1000
-  xml_root.attrib['MeanTransactionCreationInterval'] = str(transaction_time_in_ms)
+  # xml_root = xml_tree.getroot()
+  # workload_txs_per_day = parameter_data['workload']
+  # transaction_time_in_sec = 86400 / workload_txs_per_day
+  # transaction_time_in_ms = transaction_time_in_sec * 1000
+  # xml_root.attrib['MeanTransactionCreationInterval'] = str(transaction_time_in_ms)
   xml_tree.write(file_path)
   
 read_and_generate_raw_data()

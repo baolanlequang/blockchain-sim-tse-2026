@@ -27,6 +27,7 @@ public class TrilemmaSimulator_bk {
 				Map<String, String> configuration = gson.fromJson(new FileReader(configFilePath), type);
 				
 //				simulator.runSimulation(configuration);
+				simulator.runSimulation(configuration, 1);
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();

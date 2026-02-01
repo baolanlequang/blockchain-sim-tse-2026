@@ -14,7 +14,7 @@ import kotlin.math.roundToLong
 class P2PLink(
   private val latencyValueProvider: SimulationLifecycleAwareValueProvider<Long>,
   private val throughputValueProvider: SimulationLifecycleAwareValueProvider<Long>,
-  private val bandwidthValueProvider: SimulationLifecycleAwareValueProvider<Double>,
+  var bandwidthValueProvider: SimulationLifecycleAwareValueProvider<Double>,
   val fromNode: P2PNode,
   val toNode: P2PNode
 ) : P2PNetworkObject() {

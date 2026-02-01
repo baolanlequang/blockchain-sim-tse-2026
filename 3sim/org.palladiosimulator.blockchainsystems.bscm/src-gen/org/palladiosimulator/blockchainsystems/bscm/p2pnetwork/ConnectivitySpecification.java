@@ -19,6 +19,8 @@ import org.palladiosimulator.pcm.core.entity.Entity;
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getOutBoundLinkAllocationSpecification <em>Out Bound Link Allocation Specification</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getNumberOfInbound <em>Number Of Inbound</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getNumberOfOutBound <em>Number Of Out Bound</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getUploadBudget <em>Upload Budget</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getDownloadBudget <em>Download Budget</em>}</li>
  * </ul>
  *
  * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.P2pnetworkPackage#getConnectivitySpecification()
@@ -113,5 +115,49 @@ public interface ConnectivitySpecification extends Entity {
 	 * @generated
 	 */
 	void setNumberOfOutBound(int value);
+
+	/**
+	 * Returns the value of the '<em><b>Upload Budget</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the value of the '<em>Upload Budget</em>' attribute.
+	 * @see #setUploadBudget(double)
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.P2pnetworkPackage#getConnectivitySpecification_UploadBudget()
+	 * @model required="true"
+	 * @generated
+	 */
+	double getUploadBudget();
+
+	/**
+	 * Sets the value of the '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getUploadBudget <em>Upload Budget</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @param value the new value of the '<em>Upload Budget</em>' attribute.
+	 * @see #getUploadBudget()
+	 * @generated
+	 */
+	void setUploadBudget(double value);
+
+	/**
+	 * Returns the value of the '<em><b>Download Budget</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the value of the '<em>Download Budget</em>' attribute.
+	 * @see #setDownloadBudget(double)
+	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.P2pnetworkPackage#getConnectivitySpecification_DownloadBudget()
+	 * @model required="true"
+	 * @generated
+	 */
+	double getDownloadBudget();
+
+	/**
+	 * Sets the value of the '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getDownloadBudget <em>Download Budget</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @param value the new value of the '<em>Download Budget</em>' attribute.
+	 * @see #getDownloadBudget()
+	 * @generated
+	 */
+	void setDownloadBudget(double value);
 
 } // ConnectivitySpecification
