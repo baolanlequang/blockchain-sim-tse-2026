@@ -54,6 +54,8 @@ public class ConnectivitySpecificationItemProvider extends EntityItemProvider {
 			addOutBoundLinkAllocationSpecificationPropertyDescriptor(object);
 			addNumberOfInboundPropertyDescriptor(object);
 			addNumberOfOutBoundPropertyDescriptor(object);
+			addUploadBudgetPropertyDescriptor(object);
+			addDownloadBudgetPropertyDescriptor(object);
 		}
 		return itemPropertyDescriptors;
 	}
@@ -125,6 +127,38 @@ public class ConnectivitySpecificationItemProvider extends EntityItemProvider {
 	}
 
 	/**
+	 * This adds a property descriptor for the Upload Budget feature.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	protected void addUploadBudgetPropertyDescriptor(Object object) {
+		itemPropertyDescriptors.add(createItemPropertyDescriptor(
+				((ComposeableAdapterFactory) adapterFactory).getRootAdapterFactory(), getResourceLocator(),
+				getString("_UI_ConnectivitySpecification_UploadBudget_feature"),
+				getString("_UI_PropertyDescriptor_description", "_UI_ConnectivitySpecification_UploadBudget_feature",
+						"_UI_ConnectivitySpecification_type"),
+				P2pnetworkPackage.Literals.CONNECTIVITY_SPECIFICATION__UPLOAD_BUDGET, true, false, false,
+				ItemPropertyDescriptor.REAL_VALUE_IMAGE, null, null));
+	}
+
+	/**
+	 * This adds a property descriptor for the Download Budget feature.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	protected void addDownloadBudgetPropertyDescriptor(Object object) {
+		itemPropertyDescriptors.add(createItemPropertyDescriptor(
+				((ComposeableAdapterFactory) adapterFactory).getRootAdapterFactory(), getResourceLocator(),
+				getString("_UI_ConnectivitySpecification_DownloadBudget_feature"),
+				getString("_UI_PropertyDescriptor_description", "_UI_ConnectivitySpecification_DownloadBudget_feature",
+						"_UI_ConnectivitySpecification_type"),
+				P2pnetworkPackage.Literals.CONNECTIVITY_SPECIFICATION__DOWNLOAD_BUDGET, true, false, false,
+				ItemPropertyDescriptor.REAL_VALUE_IMAGE, null, null));
+	}
+
+	/**
 	 * This returns ConnectivitySpecification.gif.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
@@ -172,6 +206,8 @@ public class ConnectivitySpecificationItemProvider extends EntityItemProvider {
 		switch (notification.getFeatureID(ConnectivitySpecification.class)) {
 		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__NUMBER_OF_INBOUND:
 		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__NUMBER_OF_OUT_BOUND:
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__UPLOAD_BUDGET:
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__DOWNLOAD_BUDGET:
 			fireNotifyChanged(new ViewerNotification(notification, notification.getNotifier(), false, true));
 			return;
 		}

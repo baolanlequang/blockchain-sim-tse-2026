@@ -2,6 +2,7 @@ package org.palladiosimulator.blockchainsystems.threesim.creation
 
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.SimulationContext
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.SimulationLifecycleAwareValueProvider
+import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification
 
 
 class BandwidthValueProvider(
@@ -12,10 +13,10 @@ class BandwidthValueProvider(
   }
 
   override fun initialize(simulationContext: SimulationContext) {
-    // NOTE: No op, just for compatibility with the non-static latency value provider interface
+    // NOTE: No op, just for compatibility with the non-static bandwidth value provider interface
   }
 
   override fun cleanup() {
-    // NOTE: No op, just for compatibility with the non-static latency value provider interface
+    // NOTE: No op, just for compatibility with the non-static bandwidth value provider interface
   }
 }

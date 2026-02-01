@@ -22,6 +22,7 @@ import org.palladiosimulator.pcm.core.entity.impl.EntityImpl;
  * </p>
  * <ul>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.impl.BandwidthSpecificationImpl#getBandwidth <em>Bandwidth</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.impl.BandwidthSpecificationImpl#getHeterogeneityTarget <em>Heterogeneity Target</em>}</li>
  * </ul>
  *
  * @generated
@@ -46,6 +47,26 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 	 * @ordered
 	 */
 	protected double bandwidth = BANDWIDTH_EDEFAULT;
+
+	/**
+	 * The default value of the '{@link #getHeterogeneityTarget() <em>Heterogeneity Target</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #getHeterogeneityTarget()
+	 * @generated
+	 * @ordered
+	 */
+	protected static final double HETEROGENEITY_TARGET_EDEFAULT = 0.0;
+
+	/**
+	 * The cached value of the '{@link #getHeterogeneityTarget() <em>Heterogeneity Target</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #getHeterogeneityTarget()
+	 * @generated
+	 * @ordered
+	 */
+	protected double heterogeneityTarget = HETEROGENEITY_TARGET_EDEFAULT;
 
 	/**
 	 * <!-- begin-user-doc -->
@@ -96,10 +117,37 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 	 * @generated
 	 */
 	@Override
+	public double getHeterogeneityTarget() {
+		return heterogeneityTarget;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public void setHeterogeneityTarget(double newHeterogeneityTarget) {
+		double oldHeterogeneityTarget = heterogeneityTarget;
+		heterogeneityTarget = newHeterogeneityTarget;
+		if (eNotificationRequired())
+			eNotify(new ENotificationImpl(this, Notification.SET,
+					LinkallocationPackage.BANDWIDTH_SPECIFICATION__HETEROGENEITY_TARGET, oldHeterogeneityTarget,
+					heterogeneityTarget));
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
 	public Object eGet(int featureID, boolean resolve, boolean coreType) {
 		switch (featureID) {
 		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__BANDWIDTH:
 			return getBandwidth();
+		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__HETEROGENEITY_TARGET:
+			return getHeterogeneityTarget();
 		}
 		return super.eGet(featureID, resolve, coreType);
 	}
@@ -114,6 +162,9 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 		switch (featureID) {
 		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__BANDWIDTH:
 			setBandwidth((Double) newValue);
+			return;
+		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__HETEROGENEITY_TARGET:
+			setHeterogeneityTarget((Double) newValue);
 			return;
 		}
 		super.eSet(featureID, newValue);
@@ -130,6 +181,9 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__BANDWIDTH:
 			setBandwidth(BANDWIDTH_EDEFAULT);
 			return;
+		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__HETEROGENEITY_TARGET:
+			setHeterogeneityTarget(HETEROGENEITY_TARGET_EDEFAULT);
+			return;
 		}
 		super.eUnset(featureID);
 	}
@@ -144,6 +198,8 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 		switch (featureID) {
 		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__BANDWIDTH:
 			return bandwidth != BANDWIDTH_EDEFAULT;
+		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__HETEROGENEITY_TARGET:
+			return heterogeneityTarget != HETEROGENEITY_TARGET_EDEFAULT;
 		}
 		return super.eIsSet(featureID);
 	}
@@ -161,6 +217,8 @@ public class BandwidthSpecificationImpl extends EntityImpl implements BandwidthS
 		StringBuilder result = new StringBuilder(super.toString());
 		result.append(" (Bandwidth: ");
 		result.append(bandwidth);
+		result.append(", HeterogeneityTarget: ");
+		result.append(heterogeneityTarget);
 		result.append(')');
 		return result.toString();
 	}

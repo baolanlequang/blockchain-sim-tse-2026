@@ -308,7 +308,7 @@ public class BlockchainsystemPackageImpl extends EPackageImpl implements Blockch
 	 * @generated
 	 */
 	@Override
-	public EAttribute getBlockchainSystemSpecification_BlockValidationRule() {
+	public EAttribute getBlockchainSystemSpecification_HashRateConcentration() {
 		return (EAttribute) blockchainSystemSpecificationEClass.getEStructuralFeatures().get(4);
 	}
 
@@ -354,7 +354,7 @@ public class BlockchainsystemPackageImpl extends EPackageImpl implements Blockch
 				BLOCKCHAIN_SYSTEM_SPECIFICATION__NUM_OF_REQUIRED_SECURITY_CONFIRMATIONS);
 		createEAttribute(blockchainSystemSpecificationEClass, BLOCKCHAIN_SYSTEM_SPECIFICATION__MAX_BLOCK_SIZE);
 		createEAttribute(blockchainSystemSpecificationEClass, BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD);
-		createEAttribute(blockchainSystemSpecificationEClass, BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE);
+		createEAttribute(blockchainSystemSpecificationEClass, BLOCKCHAIN_SYSTEM_SPECIFICATION__HASH_RATE_CONCENTRATION);
 	}
 
 	/**
@@ -431,8 +431,8 @@ public class BlockchainsystemPackageImpl extends EPackageImpl implements Blockch
 		initEAttribute(getBlockchainSystemSpecification_BlockReward(), theEcorePackage.getEDouble(), "BlockReward",
 				null, 0, 1, BlockchainSystemSpecification.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE,
 				!IS_UNSETTABLE, !IS_ID, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
-		initEAttribute(getBlockchainSystemSpecification_BlockValidationRule(), theEcorePackage.getEDouble(),
-				"BlockValidationRule", null, 1, 1, BlockchainSystemSpecification.class, !IS_TRANSIENT, !IS_VOLATILE,
+		initEAttribute(getBlockchainSystemSpecification_HashRateConcentration(), theEcorePackage.getEDouble(),
+				"HashRateConcentration", null, 1, 1, BlockchainSystemSpecification.class, !IS_TRANSIENT, !IS_VOLATILE,
 				IS_CHANGEABLE, !IS_UNSETTABLE, !IS_ID, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
 
 		// Create resource
