@@ -20,15 +20,15 @@ DIM = 8  # UPDATED: bandwidth heterogeneity added back
 
 param_ranges = {
     "bandwidth_heterogeneity": (0.0, 1.0),     # dimensionless (continuous)
-    "hashrate_heterogeneity": (0.0, 1.0),      # dimensionless (continuous)
+    "hashrate_concentration": (0.0, 1.0),      # dimensionless (continuous)
 
     "block_creation_interval": (300, 1200),     # seconds (continuous)
     "max_block_size": (0.5, 2.5),                # MB (continuous)
 
-    "inbound_connectivity": (1, 250),             # integer
-    "outbound_connectivity": (1, 16),             # integer
+    "inbound_connections": (1, 250),             # integer
+    "outbound_connections": (1, 16),             # integer
     "validator_count": (5000, 30000),             # integer
-    "crashed_validators": (0, 15000),             # integer (constrained)
+    "fraction_of_validators": (0, 15000),             # integer (constrained)
 }
 
 param_names = list(param_ranges.keys())
@@ -62,10 +62,10 @@ df = pd.DataFrame(lhs_scaled, columns=param_names)
 # -----------------------------
 
 integer_params = [
-    "inbound_connectivity",
-    "outbound_connectivity",
+    "inbound_connections",
+    "outbound_connections",
     "validator_count",
-    "crashed_validators",
+    "fraction_of_validators",
 ]
 
 for p in integer_params:
@@ -76,25 +76,25 @@ for p in integer_params:
 # -----------------------------
 
 # Crashed validators cannot exceed total validators
-df["crashed_validators"] = np.minimum(
-    df["crashed_validators"],
+df["fraction_of_validators"] = np.minimum(
+    df["fraction_of_validators"],
     df["validator_count"]
 )
 
 # Connectivity cannot exceed possible peers
-df["inbound_connectivity"] = np.minimum(
-    df["inbound_connectivity"],
+df["inbound_connections"] = np.minimum(
+    df["inbound_connections"],
     df["validator_count"] - 1
 )
 
-df["outbound_connectivity"] = np.minimum(
-    df["outbound_connectivity"],
+df["outbound_connections"] = np.minimum(
+    df["outbound_connections"],
     df["validator_count"] - 1
 )
 
 # Enforce lower bounds
-df["inbound_connectivity"] = df["inbound_connectivity"].clip(lower=1)
-df["outbound_connectivity"] = df["outbound_connectivity"].clip(lower=1)
+df["inbound_connections"] = df["inbound_connections"].clip(lower=1)
+df["outbound_connections"] = df["outbound_connections"].clip(lower=1)
 
 # -----------------------------
 # 7. Final sanity checks
@@ -103,9 +103,9 @@ df["outbound_connectivity"] = df["outbound_connectivity"].clip(lower=1)
 if df.duplicated().any():
     print("Warning: duplicate configurations detected after rounding.")
 
-assert (df["crashed_validators"] <= df["validator_count"]).all()
-assert (df["outbound_connectivity"] <= df["validator_count"] - 1).all()
-assert (df["inbound_connectivity"] <= df["validator_count"] - 1).all()
+assert (df["fraction_of_validators"] <= df["validator_count"]).all()
+assert (df["outbound_connections"] <= df["validator_count"] - 1).all()
+assert (df["inbound_connections"] <= df["validator_count"] - 1).all()
 
 # -----------------------------
 # 8. Add config_id
