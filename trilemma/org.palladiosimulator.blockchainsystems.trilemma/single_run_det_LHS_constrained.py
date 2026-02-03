@@ -1,3 +1,14 @@
+"""
+LHS configuration generator for ANOVA and design narrowing.
+
+IMPORTANT:
+- This script produces ONLY the 8 experimental parameters listed in Table 1.
+- Bandwidth heterogeneity and hash-rate concentration are sampled as
+  normalized, dimensionless control variables in [0.05, 1.0].
+- Mapping to Dirichlet parameters (alpha) is done INSIDE the simulator,
+  not here.
+"""
+
 import numpy as np
 import pandas as pd
 from scipy.stats import qmc
@@ -8,30 +19,24 @@ from scipy.stats import qmc
 
 SEED = 42
 N_SAMPLES = 50
-DIM = 8  # UPDATED: bandwidth heterogeneity added back
 
 # -----------------------------
-# 2. Define parameter ranges
+# 2. Parameter ranges (Table 1)
 # -----------------------------
-# IMPORTANT:
-# - Bandwidth is modeled via heterogeneity (dimensionless).
-# - Hashing power is modeled via heterogeneity.
-# - Workload is removed.
 
 param_ranges = {
-    "bandwidth_heterogeneity": (0.0, 1.0),     # dimensionless (continuous)
-    "hashrate_concentration": (0.0, 1.0),      # dimensionless (continuous)
-
-    "block_creation_interval": (300, 1200),     # seconds (continuous)
-    "max_block_size": (0.5, 2.5),                # MB (continuous)
-
-    "inbound_connections": (1, 250),             # integer
-    "outbound_connections": (1, 16),             # integer
-    "validator_count": (5000, 30000),             # integer
-    "fraction_of_validators": (0, 15000),             # integer (constrained)
+    "bandwidth_heterogeneity": (0.05, 1.0),   # dimensionless
+    "block_creation_interval": (300, 1200),   # seconds
+    "hashrate_concentration": (0.05, 1.0),    # normalized HHI*
+    "max_block_size": (0.5, 2.5),             # MB
+    "inbound_connections": (1, 250),          # integer
+    "outbound_connections": (1, 16),          # integer
+    "fraction_of_validators": (0, 15000),     # integer
+    "validator_count": (5000, 30000),         # integer
 }
 
 param_names = list(param_ranges.keys())
+DIM = len(param_names)
 
 # -----------------------------
 # 3. Generate optimized LHS
@@ -58,7 +63,7 @@ for i, param in enumerate(param_names):
 df = pd.DataFrame(lhs_scaled, columns=param_names)
 
 # -----------------------------
-# 5. Map continuous samples to integers
+# 5. Integer parameters
 # -----------------------------
 
 integer_params = [
@@ -72,16 +77,16 @@ for p in integer_params:
     df[p] = df[p].round().astype(int)
 
 # -----------------------------
-# 6. Enforce semantic constraints
+# 6. Semantic constraints
 # -----------------------------
 
-# Crashed validators cannot exceed total validators
+# Fraction cannot exceed total validators
 df["fraction_of_validators"] = np.minimum(
     df["fraction_of_validators"],
     df["validator_count"]
 )
 
-# Connectivity cannot exceed possible peers
+# Connectivity constraints
 df["inbound_connections"] = np.minimum(
     df["inbound_connections"],
     df["validator_count"] - 1
@@ -92,30 +97,23 @@ df["outbound_connections"] = np.minimum(
     df["validator_count"] - 1
 )
 
-# Enforce lower bounds
+# Lower bounds
 df["inbound_connections"] = df["inbound_connections"].clip(lower=1)
 df["outbound_connections"] = df["outbound_connections"].clip(lower=1)
 
 # -----------------------------
-# 7. Final sanity checks
+# 7. Final checks
 # -----------------------------
-
-if df.duplicated().any():
-    print("Warning: duplicate configurations detected after rounding.")
 
 assert (df["fraction_of_validators"] <= df["validator_count"]).all()
-assert (df["outbound_connections"] <= df["validator_count"] - 1).all()
 assert (df["inbound_connections"] <= df["validator_count"] - 1).all()
+assert (df["outbound_connections"] <= df["validator_count"] - 1).all()
 
 # -----------------------------
-# 8. Add config_id
+# 8. Add config_id and save
 # -----------------------------
 
 df.insert(0, "config_id", range(1, len(df) + 1))
-
-# -----------------------------
-# 9. Save configurations
-# -----------------------------
-
 df.to_csv("optimized_deterministic_lhs_configurations.csv", index=False)
-print("Optimized LHS configurations generated successfully.")
+
+print("LHS configurations generated.")
