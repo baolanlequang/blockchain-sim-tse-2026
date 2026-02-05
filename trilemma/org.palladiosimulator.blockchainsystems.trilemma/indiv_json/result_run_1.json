@@ -1,20 +1,31 @@
 {
   "runId": 1,
+  "config_id": "1",
   "inputParameters": {
     "simulationType": "Monte-Carlo",
     "maxAllowedBlockchainLength": "10",
     "numberOfMonteCarloRounds": "1",
-    "blockchainSystemModelFilePath": "/Users/lanle/Documents/Working/Uni_Ulm/PhD/blockchain-sim-tse-2026/trilemma/org.palladiosimulator.blockchainsystems.trilemma/testmodels/threesim-net-base/Net.blockchainsystem",
+    "blockchainSystemModelFilePath": "testmodels/threesim-1/Net.blockchainsystem",
     "failureThroughputThreshold": "1.0",
     "shannonEntropyK": "1.0",
     "nakamotoCoefficientThreshold": "50.0",
-    "reliabilityObservationTimespan": "24.0"
+    "reliabilityObservationTimespan": "24.0",
+    "config_id": "1",
+    "id": "1",
+    "bandwidth_heterogeneity": "0.1112948350774367",
+    "block_creation_interval": "373.5117867875231",
+    "hashrate_concentration": "0.3831323009291863",
+    "max_block_size": "0.6900244969667115",
+    "inbound_connections": "145",
+    "outbound_connections": "4",
+    "fraction_of_validators": "11183",
+    "validator_count": "21292"
   },
   "simulationResult": {
     "simulationParameters": {
       "maxAllowedBlockchainLength": 10,
       "numberOfMonteCarloRounds": 1,
-      "blockchainSystemModelFilePath": "/Users/lanle/Documents/Working/Uni_Ulm/PhD/blockchain-sim-tse-2026/trilemma/org.palladiosimulator.blockchainsystems.trilemma/testmodels/threesim-net-base/Net.blockchainsystem"
+      "blockchainSystemModelFilePath": "testmodels/threesim-1/Net.blockchainsystem"
     },
     "threesimSimulationParameters": {
       "failureThroughputThreshold": 1.0,
@@ -30,7 +41,7 @@
       },
       {
         "name": "NakamotoCoefficient",
-        "value": 3,
+        "value": 53,
         "unit": "validating nodes"
       }
     ],
@@ -38,58 +49,58 @@
       [
         {
           "name": "AvailabilityScalability",
-          "value": 0.06850569100729303,
+          "value": 0.004264201580438348,
           "unit": "%"
         },
         {
           "name": "AvailabilitySecurity",
-          "value": 0.962101923365737,
+          "value": 0.979917705618731,
           "unit": "%"
         },
         {
           "name": "Consistency",
-          "value": 2016061.3333333333,
+          "value": 2388652.6666666665,
           "unit": "ms"
         },
         {
           "name": "FaultTolerance",
           "value": {
             "throughputDelta": {
-              "value": 2043.6564728474366,
+              "value": 41.533521784082716,
               "unit": "transactions/min"
             },
             "confirmationLatencyDelta": {
-              "value": 943977.8095238095,
+              "value": 733680.1369008473,
               "unit": "ms"
             }
           }
         },
         {
           "name": "GiniCoefficient",
-          "value": 0.8002848922486742
+          "value": 0.9865782211714532
         },
         {
           "name": "HerfindahlHirschmanIndex",
-          "value": 0.4444489535329643
+          "value": 0.4966216337081952
         },
         {
           "name": "Reliability",
-          "value": 4.232323346133805E-12,
+          "value": 0.0,
           "unit": "%"
         },
         {
           "name": "ShannonEntropy",
-          "value": 2.4464393446710155,
+          "value": 3.169925001442312,
           "unit": "bits"
         },
         {
           "name": "StaleBlockRate",
-          "value": 0.3333333333333333,
+          "value": 0.0,
           "unit": "blocks/min"
         },
         {
           "name": "TransactionThroughput",
-          "value": 40.82824041195604,
+          "value": 2.5820834705127873,
           "unit": "transactions/min"
         }
       ]
@@ -97,21 +108,21 @@
     "averageSimulationRoundResult": [
       {
         "name": "AvailabilityScalability",
-        "average": 0.06850569100729303,
+        "average": 0.004264201580438348,
         "unit": "%",
         "standardDeviation": 0.0,
         "coefficientOfVariation": 0.0
       },
       {
         "name": "AvailabilitySecurity",
-        "average": 0.962101923365737,
+        "average": 0.979917705618731,
         "unit": "%",
         "standardDeviation": 0.0,
         "coefficientOfVariation": 0.0
       },
       {
         "name": "Consistency",
-        "average": 2016061.3333333333,
+        "average": 2388652.6666666665,
         "unit": "ms",
         "standardDeviation": 0.0,
         "coefficientOfVariation": 0.0
@@ -121,14 +132,14 @@
         "average": {
           "throughputDelta": {
             "name": "throughputDelta",
-            "average": 2043.6564728474366,
+            "average": 41.533521784082716,
             "unit": "transactions/min",
             "standardDeviation": 0.0,
             "coefficientOfVariation": 0.0
           },
           "confirmationLatencyDelta": {
             "name": "confirmationLatencyDelta",
-            "average": 943977.8095238095,
+            "average": 733680.1369008473,
             "unit": "ms",
             "standardDeviation": 0.0,
             "coefficientOfVariation": 0.0
@@ -137,40 +148,38 @@
       },
       {
         "name": "GiniCoefficient",
-        "average": 0.8002848922486742,
+        "average": 0.9865782211714532,
         "standardDeviation": 0.0,
         "coefficientOfVariation": 0.0
       },
       {
         "name": "HerfindahlHirschmanIndex",
-        "average": 0.4444489535329643,
+        "average": 0.4966216337081952,
         "standardDeviation": 0.0,
         "coefficientOfVariation": 0.0
       },
       {
         "name": "Reliability",
-        "average": 4.232323346133805E-12,
+        "average": 0.0,
         "unit": "%",
-        "standardDeviation": 0.0,
-        "coefficientOfVariation": 0.0
+        "standardDeviation": 0.0
       },
       {
         "name": "ShannonEntropy",
-        "average": 2.4464393446710155,
+        "average": 3.169925001442312,
         "unit": "bits",
         "standardDeviation": 0.0,
         "coefficientOfVariation": 0.0
       },
       {
         "name": "StaleBlockRate",
-        "average": 0.3333333333333333,
+        "average": 0.0,
         "unit": "blocks/min",
-        "standardDeviation": 0.0,
-        "coefficientOfVariation": 0.0
+        "standardDeviation": 0.0
       },
       {
         "name": "TransactionThroughput",
-        "average": 40.82824041195604,
+        "average": 2.5820834705127873,
         "unit": "transactions/min",
         "standardDeviation": 0.0,
         "coefficientOfVariation": 0.0
