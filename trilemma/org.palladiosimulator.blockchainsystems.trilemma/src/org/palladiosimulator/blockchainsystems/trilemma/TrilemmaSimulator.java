@@ -179,16 +179,15 @@ public class TrilemmaSimulator {
     private static void validateCsvColumns(Map<String, String> row) {
 
         List<String> required = List.of(
-                "config_id",
-                "bandwidth",
-                "block_creation_interval",
-                "hashing_power",
-                "max_block_size",
-                "inbound_connectivity",
-                "outbound_connectivity",
-                "crashed_validators",
-                "validator_count",
-                "workload"
+        		"config_id",
+        		"bandwidth_heterogeneity",
+        		"block_creation_interval",
+        		"hashrate_concentration",
+        		"max_block_size",
+        		"inbound_connections",
+        		"outbound_connections",
+        		"fraction_of_validators",
+        		"validator_count"
         );
 
         for (String key : required) {

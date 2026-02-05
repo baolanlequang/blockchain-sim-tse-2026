@@ -26,6 +26,8 @@ import org.palladiosimulator.pcm.core.entity.impl.EntityImpl;
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.ConnectivitySpecificationImpl#getOutBoundLinkAllocationSpecification <em>Out Bound Link Allocation Specification</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.ConnectivitySpecificationImpl#getNumberOfInbound <em>Number Of Inbound</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.ConnectivitySpecificationImpl#getNumberOfOutBound <em>Number Of Out Bound</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.ConnectivitySpecificationImpl#getUploadBudget <em>Upload Budget</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.ConnectivitySpecificationImpl#getDownloadBudget <em>Download Budget</em>}</li>
  * </ul>
  *
  * @generated
@@ -90,6 +92,46 @@ public class ConnectivitySpecificationImpl extends EntityImpl implements Connect
 	 * @ordered
 	 */
 	protected int numberOfOutBound = NUMBER_OF_OUT_BOUND_EDEFAULT;
+
+	/**
+	 * The default value of the '{@link #getUploadBudget() <em>Upload Budget</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #getUploadBudget()
+	 * @generated
+	 * @ordered
+	 */
+	protected static final double UPLOAD_BUDGET_EDEFAULT = 0.0;
+
+	/**
+	 * The cached value of the '{@link #getUploadBudget() <em>Upload Budget</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #getUploadBudget()
+	 * @generated
+	 * @ordered
+	 */
+	protected double uploadBudget = UPLOAD_BUDGET_EDEFAULT;
+
+	/**
+	 * The default value of the '{@link #getDownloadBudget() <em>Download Budget</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #getDownloadBudget()
+	 * @generated
+	 * @ordered
+	 */
+	protected static final double DOWNLOAD_BUDGET_EDEFAULT = 0.0;
+
+	/**
+	 * The cached value of the '{@link #getDownloadBudget() <em>Download Budget</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @see #getDownloadBudget()
+	 * @generated
+	 * @ordered
+	 */
+	protected double downloadBudget = DOWNLOAD_BUDGET_EDEFAULT;
 
 	/**
 	 * <!-- begin-user-doc -->
@@ -255,6 +297,54 @@ public class ConnectivitySpecificationImpl extends EntityImpl implements Connect
 	 * @generated
 	 */
 	@Override
+	public double getUploadBudget() {
+		return uploadBudget;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public void setUploadBudget(double newUploadBudget) {
+		double oldUploadBudget = uploadBudget;
+		uploadBudget = newUploadBudget;
+		if (eNotificationRequired())
+			eNotify(new ENotificationImpl(this, Notification.SET,
+					P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__UPLOAD_BUDGET, oldUploadBudget, uploadBudget));
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public double getDownloadBudget() {
+		return downloadBudget;
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
+	public void setDownloadBudget(double newDownloadBudget) {
+		double oldDownloadBudget = downloadBudget;
+		downloadBudget = newDownloadBudget;
+		if (eNotificationRequired())
+			eNotify(new ENotificationImpl(this, Notification.SET,
+					P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__DOWNLOAD_BUDGET, oldDownloadBudget, downloadBudget));
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
 	public Object eGet(int featureID, boolean resolve, boolean coreType) {
 		switch (featureID) {
 		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__IN_BOUND_LINK_ALLOCATION_SPECIFICATION:
@@ -269,6 +359,10 @@ public class ConnectivitySpecificationImpl extends EntityImpl implements Connect
 			return getNumberOfInbound();
 		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__NUMBER_OF_OUT_BOUND:
 			return getNumberOfOutBound();
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__UPLOAD_BUDGET:
+			return getUploadBudget();
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__DOWNLOAD_BUDGET:
+			return getDownloadBudget();
 		}
 		return super.eGet(featureID, resolve, coreType);
 	}
@@ -294,6 +388,12 @@ public class ConnectivitySpecificationImpl extends EntityImpl implements Connect
 		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__NUMBER_OF_OUT_BOUND:
 			setNumberOfOutBound((Integer) newValue);
 			return;
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__UPLOAD_BUDGET:
+			setUploadBudget((Double) newValue);
+			return;
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__DOWNLOAD_BUDGET:
+			setDownloadBudget((Double) newValue);
+			return;
 		}
 		super.eSet(featureID, newValue);
 	}
@@ -318,6 +418,12 @@ public class ConnectivitySpecificationImpl extends EntityImpl implements Connect
 		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__NUMBER_OF_OUT_BOUND:
 			setNumberOfOutBound(NUMBER_OF_OUT_BOUND_EDEFAULT);
 			return;
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__UPLOAD_BUDGET:
+			setUploadBudget(UPLOAD_BUDGET_EDEFAULT);
+			return;
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__DOWNLOAD_BUDGET:
+			setDownloadBudget(DOWNLOAD_BUDGET_EDEFAULT);
+			return;
 		}
 		super.eUnset(featureID);
 	}
@@ -338,6 +444,10 @@ public class ConnectivitySpecificationImpl extends EntityImpl implements Connect
 			return numberOfInbound != NUMBER_OF_INBOUND_EDEFAULT;
 		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__NUMBER_OF_OUT_BOUND:
 			return numberOfOutBound != NUMBER_OF_OUT_BOUND_EDEFAULT;
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__UPLOAD_BUDGET:
+			return uploadBudget != UPLOAD_BUDGET_EDEFAULT;
+		case P2pnetworkPackage.CONNECTIVITY_SPECIFICATION__DOWNLOAD_BUDGET:
+			return downloadBudget != DOWNLOAD_BUDGET_EDEFAULT;
 		}
 		return super.eIsSet(featureID);
 	}
@@ -357,6 +467,10 @@ public class ConnectivitySpecificationImpl extends EntityImpl implements Connect
 		result.append(numberOfInbound);
 		result.append(", NumberOfOutBound: ");
 		result.append(numberOfOutBound);
+		result.append(", UploadBudget: ");
+		result.append(uploadBudget);
+		result.append(", DownloadBudget: ");
+		result.append(downloadBudget);
 		result.append(')');
 		return result.toString();
 	}

@@ -122,7 +122,7 @@ public class TrilemmaSimulationFactory implements Simulation {
         BlockchainSystem designBlockchainSystem =
                 loader.load(
                         simulationParameters.getBlockchainSystemModelFilePath(),
-                        configuration);
+                        configuration);        
 
         var networkTopology =
                 designBlockchainSystem.getNetwork().getTopology();
