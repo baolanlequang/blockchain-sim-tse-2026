@@ -25,7 +25,7 @@ import org.palladiosimulator.pcm.core.entity.impl.EntityImpl;
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.impl.BlockchainSystemSpecificationImpl#getNumOfRequiredSecurityConfirmations <em>Num Of Required Security Confirmations</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.impl.BlockchainSystemSpecificationImpl#getMaxBlockSize <em>Max Block Size</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.impl.BlockchainSystemSpecificationImpl#getBlockReward <em>Block Reward</em>}</li>
- *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.impl.BlockchainSystemSpecificationImpl#getBlockValidationRule <em>Block Validation Rule</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.impl.BlockchainSystemSpecificationImpl#getHashRateConcentration <em>Hash Rate Concentration</em>}</li>
  * </ul>
  *
  * @generated
@@ -112,24 +112,24 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 	protected double blockReward = BLOCK_REWARD_EDEFAULT;
 
 	/**
-	 * The default value of the '{@link #getBlockValidationRule() <em>Block Validation Rule</em>}' attribute.
+	 * The default value of the '{@link #getHashRateConcentration() <em>Hash Rate Concentration</em>}' attribute.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
-	 * @see #getBlockValidationRule()
+	 * @see #getHashRateConcentration()
 	 * @generated
 	 * @ordered
 	 */
-	protected static final double BLOCK_VALIDATION_RULE_EDEFAULT = 0.0;
+	protected static final double HASH_RATE_CONCENTRATION_EDEFAULT = 0.0;
 
 	/**
-	 * The cached value of the '{@link #getBlockValidationRule() <em>Block Validation Rule</em>}' attribute.
+	 * The cached value of the '{@link #getHashRateConcentration() <em>Hash Rate Concentration</em>}' attribute.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
-	 * @see #getBlockValidationRule()
+	 * @see #getHashRateConcentration()
 	 * @generated
 	 * @ordered
 	 */
-	protected double blockValidationRule = BLOCK_VALIDATION_RULE_EDEFAULT;
+	protected double hashRateConcentration = HASH_RATE_CONCENTRATION_EDEFAULT;
 
 	/**
 	 * <!-- begin-user-doc -->
@@ -256,8 +256,8 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 	 * @generated
 	 */
 	@Override
-	public double getBlockValidationRule() {
-		return blockValidationRule;
+	public double getHashRateConcentration() {
+		return hashRateConcentration;
 	}
 
 	/**
@@ -266,13 +266,13 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 	 * @generated
 	 */
 	@Override
-	public void setBlockValidationRule(double newBlockValidationRule) {
-		double oldBlockValidationRule = blockValidationRule;
-		blockValidationRule = newBlockValidationRule;
+	public void setHashRateConcentration(double newHashRateConcentration) {
+		double oldHashRateConcentration = hashRateConcentration;
+		hashRateConcentration = newHashRateConcentration;
 		if (eNotificationRequired())
 			eNotify(new ENotificationImpl(this, Notification.SET,
-					BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE,
-					oldBlockValidationRule, blockValidationRule));
+					BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__HASH_RATE_CONCENTRATION,
+					oldHashRateConcentration, hashRateConcentration));
 	}
 
 	/**
@@ -291,8 +291,8 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 			return getMaxBlockSize();
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD:
 			return getBlockReward();
-		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE:
-			return getBlockValidationRule();
+		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__HASH_RATE_CONCENTRATION:
+			return getHashRateConcentration();
 		}
 		return super.eGet(featureID, resolve, coreType);
 	}
@@ -317,8 +317,8 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD:
 			setBlockReward((Double) newValue);
 			return;
-		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE:
-			setBlockValidationRule((Double) newValue);
+		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__HASH_RATE_CONCENTRATION:
+			setHashRateConcentration((Double) newValue);
 			return;
 		}
 		super.eSet(featureID, newValue);
@@ -344,8 +344,8 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD:
 			setBlockReward(BLOCK_REWARD_EDEFAULT);
 			return;
-		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE:
-			setBlockValidationRule(BLOCK_VALIDATION_RULE_EDEFAULT);
+		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__HASH_RATE_CONCENTRATION:
+			setHashRateConcentration(HASH_RATE_CONCENTRATION_EDEFAULT);
 			return;
 		}
 		super.eUnset(featureID);
@@ -367,8 +367,8 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 			return maxBlockSize != MAX_BLOCK_SIZE_EDEFAULT;
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD:
 			return blockReward != BLOCK_REWARD_EDEFAULT;
-		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_VALIDATION_RULE:
-			return blockValidationRule != BLOCK_VALIDATION_RULE_EDEFAULT;
+		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__HASH_RATE_CONCENTRATION:
+			return hashRateConcentration != HASH_RATE_CONCENTRATION_EDEFAULT;
 		}
 		return super.eIsSet(featureID);
 	}
@@ -392,8 +392,8 @@ public class BlockchainSystemSpecificationImpl extends EntityImpl implements Blo
 		result.append(maxBlockSize);
 		result.append(", BlockReward: ");
 		result.append(blockReward);
-		result.append(", BlockValidationRule: ");
-		result.append(blockValidationRule);
+		result.append(", HashRateConcentration: ");
+		result.append(hashRateConcentration);
 		result.append(')');
 		return result.toString();
 	}

@@ -370,6 +370,16 @@ public class LinkallocationPackageImpl extends EPackageImpl implements Linkalloc
 	 * @generated
 	 */
 	@Override
+	public EAttribute getBandwidthSpecification_HeterogeneityTarget() {
+		return (EAttribute) bandwidthSpecificationEClass.getEStructuralFeatures().get(1);
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
 	public EClass getDynamicLinkLatencySpecificationValue() {
 		return dynamicLinkLatencySpecificationValueEClass;
 	}
@@ -576,6 +586,7 @@ public class LinkallocationPackageImpl extends EPackageImpl implements Linkalloc
 
 		bandwidthSpecificationEClass = createEClass(BANDWIDTH_SPECIFICATION);
 		createEAttribute(bandwidthSpecificationEClass, BANDWIDTH_SPECIFICATION__BANDWIDTH);
+		createEAttribute(bandwidthSpecificationEClass, BANDWIDTH_SPECIFICATION__HETEROGENEITY_TARGET);
 
 		dynamicLinkLatencySpecificationValueEClass = createEClass(DYNAMIC_LINK_LATENCY_SPECIFICATION_VALUE);
 		createEAttribute(dynamicLinkLatencySpecificationValueEClass, DYNAMIC_LINK_LATENCY_SPECIFICATION_VALUE__LATENCY);
@@ -679,6 +690,9 @@ public class LinkallocationPackageImpl extends EPackageImpl implements Linkalloc
 		initEAttribute(getBandwidthSpecification_Bandwidth(), theEcorePackage.getEDouble(), "Bandwidth", null, 0, 1,
 				BandwidthSpecification.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE, !IS_UNSETTABLE, !IS_ID,
 				IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
+		initEAttribute(getBandwidthSpecification_HeterogeneityTarget(), theEcorePackage.getEDouble(),
+				"HeterogeneityTarget", "0.0", 1, 1, BandwidthSpecification.class, !IS_TRANSIENT, !IS_VOLATILE,
+				IS_CHANGEABLE, !IS_UNSETTABLE, !IS_ID, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
 
 		initEClass(dynamicLinkLatencySpecificationValueEClass, DynamicLinkLatencySpecificationValue.class,
 				"DynamicLinkLatencySpecificationValue", !IS_ABSTRACT, !IS_INTERFACE, IS_GENERATED_INSTANCE_CLASS);

@@ -34,7 +34,9 @@ class ConnectedSubgraphNetworkBlockchainSystemFactory(
     networkCreationResult as ConnectedSubgraphNetworkCreationResult
     return ConnectedSubgraphNetworkResourcePowerCalculator(
       networkTopology as ConnectedSubgraphsNetworkTopology,
-      networkCreationResult.nodeIdToNodeTemplateIdMapping
+      networkCreationResult.nodeIdToNodeTemplateIdMapping,
+      designBlockchainSystem.specification.hashRateConcentration,
+      networkCreationResult.nodeIdToIndexMapping
     )
   }
 }

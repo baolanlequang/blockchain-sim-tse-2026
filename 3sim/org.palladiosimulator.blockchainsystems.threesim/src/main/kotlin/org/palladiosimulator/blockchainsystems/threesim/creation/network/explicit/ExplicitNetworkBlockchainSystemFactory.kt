@@ -28,6 +28,9 @@ class ExplicitNetworkBlockchainSystemFactory(
   }
 
   override fun getResourcePowerCalculator(networkCreationResult: P2PNetworkCreationResult): ResourcePowerCalculator {
-    return ExplicitNetworkResourcePowerCalculator(networkTopology as ExplicitNetworkTopology)
+    return ExplicitNetworkResourcePowerCalculator(
+      networkTopology as ExplicitNetworkTopology,
+      designBlockchainSystem.specification.hashRateConcentration
+    )
   }
 }

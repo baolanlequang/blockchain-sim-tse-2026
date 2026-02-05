@@ -132,6 +132,10 @@
           eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EInt"/>
       <eStructuralFeatures xsi:type="ecore:EAttribute" name="NumberOfOutBound" lowerBound="1"
           eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EInt"/>
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="UploadBudget" lowerBound="1"
+          eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EDouble"/>
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="DownloadBudget" lowerBound="1"
+          eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EDouble"/>
     </eClassifiers>
     <eClassifiers xsi:type="ecore:EClass" name="SubgraphLink" eSuperTypes="../../org.palladiosimulator.pcm/model/pcm.ecore#//core/entity/Entity">
       <eStructuralFeatures xsi:type="ecore:EReference" name="Allocation" lowerBound="1"
@@ -178,7 +182,7 @@
       <eStructuralFeatures xsi:type="ecore:EAttribute" name="MaxBlockSize" lowerBound="1"
           eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EInt"/>
       <eStructuralFeatures xsi:type="ecore:EAttribute" name="BlockReward" eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EDouble"/>
-      <eStructuralFeatures xsi:type="ecore:EAttribute" name="BlockValidationRule"
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="HashRateConcentration"
           lowerBound="1" eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EDouble"/>
     </eClassifiers>
   </eSubpackages>
@@ -223,6 +227,9 @@
         eSuperTypes="../../org.palladiosimulator.pcm/model/pcm.ecore#//core/entity/Entity"/>
     <eClassifiers xsi:type="ecore:EClass" name="BandwidthSpecification" eSuperTypes="../../org.palladiosimulator.pcm/model/pcm.ecore#//core/entity/Entity">
       <eStructuralFeatures xsi:type="ecore:EAttribute" name="Bandwidth" eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EDouble"/>
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="HeterogeneityTarget"
+          lowerBound="1" eType="ecore:EDataType platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EDouble"
+          defaultValueLiteral="0.0"/>
     </eClassifiers>
     <eClassifiers xsi:type="ecore:EClass" name="DynamicLinkLatencySpecificationValue"
         eSuperTypes="../../org.palladiosimulator.pcm/model/pcm.ecore#//core/entity/Entity">

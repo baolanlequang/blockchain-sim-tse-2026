@@ -7,6 +7,7 @@ import org.palladiosimulator.blockchainsystems.bscm.linkallocation.LinkThroughpu
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.StaticLinkLatencySpecification
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.StaticLinkThroughputSpecification
 import org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification
+import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.SimulationLifecycleAwareValueProvider
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetworkFactory
 import org.palladiosimulator.blockchainsystems.threesim.creation.LatencyValueProviderAdapter
@@ -84,5 +85,12 @@ abstract class AbstractThreesimP2PNetworkFactory() : P2PNetworkFactory {
       }
     }
   }
+
+  protected fun createBandwidthValueProviderWithValue(
+    bandwidth: Double
+  ): SimulationLifecycleAwareValueProvider<Double> {
+    return BandwidthValueProvider(bandwidth)
+  }
+
 
 }
