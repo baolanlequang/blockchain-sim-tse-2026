@@ -1,14 +1,3 @@
-"""
-LHS configuration generator for ANOVA and design narrowing.
-
-IMPORTANT:
-- This script produces ONLY the 8 experimental parameters listed in Table 1.
-- Bandwidth heterogeneity and hash-rate concentration are sampled as
-  normalized, dimensionless control variables in [0.05, 1.0].
-- Mapping to Dirichlet parameters (alpha) is done INSIDE the simulator,
-  not here.
-"""
-
 import numpy as np
 import pandas as pd
 from scipy.stats import qmc
@@ -31,7 +20,8 @@ param_ranges = {
     "max_block_size": (0.5, 2.5),             # MB
     "inbound_connections": (1, 250),          # integer
     "outbound_connections": (1, 16),          # integer
-    "fraction_of_validators": (0, 15000),     # integer
+    "validator_fraction": (0.0, 0.51),         # fraction of validators
+    "attacker_fraction": (0.0, 0.51),          # fraction of validators
     "validator_count": (5000, 30000),         # integer
 }
 
@@ -70,20 +60,37 @@ integer_params = [
     "inbound_connections",
     "outbound_connections",
     "validator_count",
-    "fraction_of_validators",
 ]
 
 for p in integer_params:
     df[p] = df[p].round().astype(int)
 
 # -----------------------------
-# 6. Semantic constraints
+# 6. Derived dependent parameters
 # -----------------------------
 
-# Fraction cannot exceed total validators
+df["fraction_of_validators"] = (
+    df["validator_fraction"] * df["validator_count"]
+).round().astype(int)
+
+df["number_of_attackers"] = (
+    df["attacker_fraction"] * df["validator_count"]
+).round().astype(int)
+
+# -----------------------------
+# 7. Semantic constraints
+# -----------------------------
+
+# Validators cannot exceed total
 df["fraction_of_validators"] = np.minimum(
     df["fraction_of_validators"],
     df["validator_count"]
+)
+
+# Attackers cannot exceed validators
+df["number_of_attackers"] = np.minimum(
+    df["number_of_attackers"],
+    df["fraction_of_validators"]
 )
 
 # Connectivity constraints
@@ -102,18 +109,21 @@ df["inbound_connections"] = df["inbound_connections"].clip(lower=1)
 df["outbound_connections"] = df["outbound_connections"].clip(lower=1)
 
 # -----------------------------
-# 7. Final checks
+# 8. Final checks
 # -----------------------------
 
 assert (df["fraction_of_validators"] <= df["validator_count"]).all()
+assert (df["number_of_attackers"] <= df["fraction_of_validators"]).all()
 assert (df["inbound_connections"] <= df["validator_count"] - 1).all()
 assert (df["outbound_connections"] <= df["validator_count"] - 1).all()
 
 # -----------------------------
-# 8. Add config_id and save
+# 9. Cleanup + save
 # -----------------------------
 
+df = df.drop(columns=["validator_fraction", "attacker_fraction"])
 df.insert(0, "config_id", range(1, len(df) + 1))
+
 df.to_csv("optimized_deterministic_lhs_configurations.csv", index=False)
 
 print("LHS configurations generated.")
