@@ -17,12 +17,12 @@ param_ranges = {
     "Hnode": (0.0, 1.5),                  # dimensionless
     "Hlink": (0.3, 10.0),                 # Dirichlet alpha
     "block_creation_interval": (60, 1200),# seconds
-    "hashrate_concentration": (0.10, 0.35),# normalized HHI*
-    "max_block_size": (0.5, 2.5),         # MB
+    "hashrate_concentration": (0.10, 1.5),# normalized HHI*
+    "max_block_size": (0.25, 8.0),         # MB
     "inbound_connections": (1, 250),      # integer
     "outbound_connections": (1, 16),      # integer
     "attacker_fraction": (0.0, 0.51),     # fraction of validators
-    "validator_count": (5000, 30000),     # integer
+    "validator_count": (50, 5000),     # integer
 }
 
 param_names = list(param_ranges.keys())
