@@ -21,7 +21,7 @@ param_ranges = {
     "max_block_size": (0.25, 8.0),         # MB
     "inbound_connections": (1, 250),      # integer
     "outbound_connections": (1, 16),      # integer
-    "attacker_fraction": (0.0, 0.51),     # fraction of validators
+    "attacker_fraction": (0.0, 0.25),     # fraction of validators
     "validator_count": (50, 5000),     # integer
 }
 
