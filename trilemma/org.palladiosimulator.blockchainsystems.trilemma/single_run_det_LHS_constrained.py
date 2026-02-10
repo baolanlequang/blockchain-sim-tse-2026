@@ -14,15 +14,15 @@ N_SAMPLES = 50
 # -----------------------------
 
 param_ranges = {
-    "bandwidth_heterogeneity": (0.05, 1.0),   # dimensionless
-    "block_creation_interval": (300, 1200),   # seconds
-    "hashrate_concentration": (0.05, 1.0),    # normalized HHI*
-    "max_block_size": (0.5, 2.5),             # MB
-    "inbound_connections": (1, 250),          # integer
-    "outbound_connections": (1, 16),          # integer
-    "validator_fraction": (0.0, 0.51),         # fraction of validators
-    "attacker_fraction": (0.0, 0.51),          # fraction of validators
-    "validator_count": (5000, 30000),         # integer
+    "Hnode": (0.0, 1.5),                  # dimensionless
+    "Hlink": (0.3, 10.0),                 # Dirichlet alpha
+    "block_creation_interval": (60, 1200),# seconds
+    "hashrate_concentration": (0.10, 0.35),# normalized HHI*
+    "max_block_size": (0.5, 2.5),         # MB
+    "inbound_connections": (1, 250),      # integer
+    "outbound_connections": (1, 16),      # integer
+    "attacker_fraction": (0.0, 0.51),     # fraction of validators
+    "validator_count": (5000, 30000),     # integer
 }
 
 param_names = list(param_ranges.keys())
@@ -69,10 +69,6 @@ for p in integer_params:
 # 6. Derived dependent parameters
 # -----------------------------
 
-df["fraction_of_validators"] = (
-    df["validator_fraction"] * df["validator_count"]
-).round().astype(int)
-
 df["number_of_attackers"] = (
     df["attacker_fraction"] * df["validator_count"]
 ).round().astype(int)
@@ -81,16 +77,10 @@ df["number_of_attackers"] = (
 # 7. Semantic constraints
 # -----------------------------
 
-# Validators cannot exceed total
-df["fraction_of_validators"] = np.minimum(
-    df["fraction_of_validators"],
-    df["validator_count"]
-)
-
-# Attackers cannot exceed validators
+# Attackers cannot exceed total validators
 df["number_of_attackers"] = np.minimum(
     df["number_of_attackers"],
-    df["fraction_of_validators"]
+    df["validator_count"]
 )
 
 # Connectivity constraints
@@ -112,8 +102,7 @@ df["outbound_connections"] = df["outbound_connections"].clip(lower=1)
 # 8. Final checks
 # -----------------------------
 
-assert (df["fraction_of_validators"] <= df["validator_count"]).all()
-assert (df["number_of_attackers"] <= df["fraction_of_validators"]).all()
+assert (df["number_of_attackers"] <= df["validator_count"]).all()
 assert (df["inbound_connections"] <= df["validator_count"] - 1).all()
 assert (df["outbound_connections"] <= df["validator_count"] - 1).all()
 
@@ -121,7 +110,7 @@ assert (df["outbound_connections"] <= df["validator_count"] - 1).all()
 # 9. Cleanup + save
 # -----------------------------
 
-df = df.drop(columns=["validator_fraction", "attacker_fraction"])
+df = df.drop(columns=["attacker_fraction"])
 df.insert(0, "config_id", range(1, len(df) + 1))
 
 df.to_csv("optimized_deterministic_lhs_configurations.csv", index=False)
