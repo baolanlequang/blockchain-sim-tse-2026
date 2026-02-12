@@ -518,31 +518,13 @@ public interface P2pnetworkPackage extends EPackage {
 	int CONNECTIVITY_SPECIFICATION__NUMBER_OF_OUT_BOUND = EntityPackage.ENTITY_FEATURE_COUNT + 3;
 
 	/**
-	 * The feature id for the '<em><b>Upload Budget</b></em>' attribute.
-	 * <!-- begin-user-doc -->
-	 * <!-- end-user-doc -->
-	 * @generated
-	 * @ordered
-	 */
-	int CONNECTIVITY_SPECIFICATION__UPLOAD_BUDGET = EntityPackage.ENTITY_FEATURE_COUNT + 4;
-
-	/**
-	 * The feature id for the '<em><b>Download Budget</b></em>' attribute.
-	 * <!-- begin-user-doc -->
-	 * <!-- end-user-doc -->
-	 * @generated
-	 * @ordered
-	 */
-	int CONNECTIVITY_SPECIFICATION__DOWNLOAD_BUDGET = EntityPackage.ENTITY_FEATURE_COUNT + 5;
-
-	/**
 	 * The number of structural features of the '<em>Connectivity Specification</em>' class.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
 	 * @generated
 	 * @ordered
 	 */
-	int CONNECTIVITY_SPECIFICATION_FEATURE_COUNT = EntityPackage.ENTITY_FEATURE_COUNT + 6;
+	int CONNECTIVITY_SPECIFICATION_FEATURE_COUNT = EntityPackage.ENTITY_FEATURE_COUNT + 4;
 
 	/**
 	 * The meta object id for the '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.SubgraphLinkImpl <em>Subgraph Link</em>}' class.
@@ -1038,28 +1020,6 @@ public interface P2pnetworkPackage extends EPackage {
 	EAttribute getConnectivitySpecification_NumberOfOutBound();
 
 	/**
-	 * Returns the meta object for the attribute '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getUploadBudget <em>Upload Budget</em>}'.
-	 * <!-- begin-user-doc -->
-	 * <!-- end-user-doc -->
-	 * @return the meta object for the attribute '<em>Upload Budget</em>'.
-	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getUploadBudget()
-	 * @see #getConnectivitySpecification()
-	 * @generated
-	 */
-	EAttribute getConnectivitySpecification_UploadBudget();
-
-	/**
-	 * Returns the meta object for the attribute '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getDownloadBudget <em>Download Budget</em>}'.
-	 * <!-- begin-user-doc -->
-	 * <!-- end-user-doc -->
-	 * @return the meta object for the attribute '<em>Download Budget</em>'.
-	 * @see org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectivitySpecification#getDownloadBudget()
-	 * @see #getConnectivitySpecification()
-	 * @generated
-	 */
-	EAttribute getConnectivitySpecification_DownloadBudget();
-
-	/**
 	 * Returns the meta object for class '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.SubgraphLink <em>Subgraph Link</em>}'.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
@@ -1425,23 +1385,6 @@ public interface P2pnetworkPackage extends EPackage {
 		 */
 		EAttribute CONNECTIVITY_SPECIFICATION__NUMBER_OF_OUT_BOUND = eINSTANCE
 				.getConnectivitySpecification_NumberOfOutBound();
-
-		/**
-		 * The meta object literal for the '<em><b>Upload Budget</b></em>' attribute feature.
-		 * <!-- begin-user-doc -->
-		 * <!-- end-user-doc -->
-		 * @generated
-		 */
-		EAttribute CONNECTIVITY_SPECIFICATION__UPLOAD_BUDGET = eINSTANCE.getConnectivitySpecification_UploadBudget();
-
-		/**
-		 * The meta object literal for the '<em><b>Download Budget</b></em>' attribute feature.
-		 * <!-- begin-user-doc -->
-		 * <!-- end-user-doc -->
-		 * @generated
-		 */
-		EAttribute CONNECTIVITY_SPECIFICATION__DOWNLOAD_BUDGET = eINSTANCE
-				.getConnectivitySpecification_DownloadBudget();
 
 		/**
 		 * The meta object literal for the '{@link org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.impl.SubgraphLinkImpl <em>Subgraph Link</em>}' class.
