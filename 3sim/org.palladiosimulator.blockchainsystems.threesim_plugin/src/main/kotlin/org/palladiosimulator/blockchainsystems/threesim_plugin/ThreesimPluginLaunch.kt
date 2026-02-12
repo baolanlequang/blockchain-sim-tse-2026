@@ -62,7 +62,8 @@ class ThreesimPluginLaunch : PluginLaunch() {
     return when (simulationType) {
       SimulationType.Single -> SingleSimulationParameters(
         maxAllowedBlockchainLength,
-        blockchainSystemModelFilePath
+        blockchainSystemModelFilePath,
+        0
       )
 
       SimulationType.MonteCarlo -> MonteCarloSimulationParameters(
@@ -71,7 +72,8 @@ class ThreesimPluginLaunch : PluginLaunch() {
           Attributes.SimulationType.NUMBER_OF_MONTE_CARLO_SIMULATION_ROUNDS,
           Attributes.SimulationType.NUMBER_OF_MONTE_CARLO_SIMULATION_ROUNDS_DEFAULT
         ).toInt(),
-        blockchainSystemModelFilePath
+        blockchainSystemModelFilePath,
+        0
       )
     }
   }

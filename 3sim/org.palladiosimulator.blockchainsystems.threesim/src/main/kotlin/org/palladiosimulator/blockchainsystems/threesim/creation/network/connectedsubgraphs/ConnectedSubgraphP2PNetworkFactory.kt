@@ -25,6 +25,9 @@ class ConnectedSubgraphP2PNetworkFactory(
     val nodeIdToNodeTemplateIdMapping = HashMap<String, String>()
     val nodeIdToIndexMapping = HashMap<String, Int>()
 
+    // Store attacker information
+    val attackerNodeIds = ArrayList<String>()
+
     val subgraphIdToSubgraphNodesMapping = HashMap<String, HashSet<P2PNode>>()
     val subGraphIdToProxyNodesMapping = HashMap<String, HashSet<P2PNode>>()
     val subGraphIdToLinkSpecificationMapping = HashMap<String, SubgraphSpecification>()
@@ -60,12 +63,6 @@ class ConnectedSubgraphP2PNetworkFactory(
       val initialDegrees = CounterMap<P2PNode>()
       val subgraphSpec = subGraphIdToLinkSpecificationMapping.get(subgraphId) ?: return@forEach
 
-//      // Add vertices of subgraph
-//      subgraphNodes.forEach { node ->
-//        networkGraph.addVertex(node)
-//        initialDegrees.put(node, subgraphSpec.connectivity)
-//      }
-
       // Get link allocation for subgraph internal links
       val subgraphLinkSpecification = subgraphSpec.linkAllocation
 
@@ -77,12 +74,6 @@ class ConnectedSubgraphP2PNetworkFactory(
 
       val numberOfInbound = subgraphConnectivitySpecification.numberOfInbound
       val numberOfOutBound = subgraphConnectivitySpecification.numberOfOutBound
-
-//      val nodeBudget = subgraphConnectivitySpecification.nodeBudget
-//      val nodeBudget = subgraphConnectivitySpecification.nodeBudget
-//
-//      var bandWidthLinkTarget = subgraphLinkSpecification.bandwidthSpecification.heterogeneityTarget
-//      val nodeBudget = 0.0
 
       var bandWidthLinkTarget = subgraphLinkSpecification.bandwidthSpecification.heterogeneityLinkTarget
       var bandWidthNodeTarget = subgraphLinkSpecification.bandwidthSpecification.heterogeneityNodeTarget
@@ -110,8 +101,6 @@ class ConnectedSubgraphP2PNetworkFactory(
       for (i in 0..<sharesBandwidthNodes.size) {
         val nodeBudget = sharesBandwidthNodes[i] * subgraphLinkSpecification.bandwidthSpecification.bandwidth
         val currentNode = subgraphNodes.elementAt(i)
-        println("currentNode: " + currentNode.endpointId)
-        println("bandwidth: " + nodeBudget)
 
         val arrInBoundBandwidth: ArrayList<Double> = ArrayList()
         val arrOutBoundBandwidth: ArrayList<Double> = ArrayList()
@@ -284,58 +273,11 @@ class ConnectedSubgraphP2PNetworkFactory(
             initialDegrees.decrement(currentNode)
             initialDegrees.decrement(selectedNode)
           }
-//          val currEdges2 = networkGraph.getAllEdges(currentNode, selectedNode)
-//          println(currEdges2)
-
-
 
         }
       }
 
-//      println("====")
-////      println(initialDegrees.getAll().size)
-////      println(initialDegrees.getAll())
-//      val edgeSet = networkGraph.edgeSet()
-//      val emptyMutableMap = mutableMapOf<P2PNode, P2PNode>()
-//      for (edge in edgeSet) {
-////        println("edge3: " + edge.bandwidthValueProvider.getValue())
-//        val sourceVertex = networkGraph.getEdgeSource(edge)
-//        val targetVertex = networkGraph.getEdgeTarget(edge)
-//        if (emptyMutableMap[sourceVertex] == targetVertex) {
-//          println("==== edge")
-//          println("sourceVertex: " + sourceVertex)
-//          println("targetVertex: " + targetVertex)
-//          println("edge bandwidth: " + edge.bandwidthValueProvider.getValue())
-//        } else {
-//          print("hihih")
-//          emptyMutableMap[sourceVertex] = targetVertex
-//        }
-//      }
-//      subgraphNodes
-//        .windowed(2)
-//        .forEach { (firstNode, secondNode) ->
-//          println("====")
-//          println("firstNode: " + firstNode)
-//          println("secondNode: " + secondNode)
-//          var allEdges = networkGraph.getAllEdges(firstNode, secondNode)
-//          var allEdges2 = networkGraph.getAllEdges(secondNode, firstNode)
-//          val edgeSet = networkGraph.edgeSet()
-//          println(allEdges)
-//          println(allEdges2)
-//          println(edgeSet)
-//          for (edge in allEdges) {
-////            edge.modifyBandwidthValueProvider(inBoundBandwidthValueProvider)
-//            println("edge1: " + edge.bandwidthValueProvider.getValue())
-//          }
-//          for (edge in allEdges2) {
-////            edge.modifyBandwidthValueProvider(inBoundBandwidthValueProvider)
-//            println("edge2: " + edge.bandwidthValueProvider.getValue())
-//          }
-//        }
     }
-
-
-
 
     // Add connections between the proxies of the subgraph
     topology.subgraphLinks.forEach { subgraphLink ->
@@ -380,4 +322,5 @@ class ConnectedSubgraphP2PNetworkFactory(
       nodeIdToIndexMapping
     )
   }
+
 }

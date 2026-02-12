@@ -161,9 +161,11 @@ public class BlockchainTrilemmaStandalone {
                 ? new MonteCarloSimulationParameters(
                 maxAllowedBlockchainLength,
                 numberOfMonteCarloRounds,
-                blockchainSystemModelFilePath)
+                blockchainSystemModelFilePath,
+                0)
                 : new SingleSimulationParameters(
                 maxAllowedBlockchainLength,
-                blockchainSystemModelFilePath);
+                blockchainSystemModelFilePath,
+                0);
     }
 }
