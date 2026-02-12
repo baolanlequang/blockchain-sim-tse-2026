@@ -17,7 +17,8 @@ import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.Simu
 class MonteCarloSimulationParameters(
   override val maxAllowedBlockchainLength: Long,
   val numberOfMonteCarloRounds: Int,
-  override val blockchainSystemModelFilePath: String
+  override val blockchainSystemModelFilePath: String,
+  override val numberOfAttacker: Int
 ) : SimulationParameters {
   override val simulationType: SimulationType = SimulationType.MonteCarlo
 }

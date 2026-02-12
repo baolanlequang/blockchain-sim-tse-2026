@@ -318,6 +318,16 @@ public class BlockchainsystemPackageImpl extends EPackageImpl implements Blockch
 	 * @generated
 	 */
 	@Override
+	public EAttribute getBlockchainSystemSpecification_NumberOfAttacker() {
+		return (EAttribute) blockchainSystemSpecificationEClass.getEStructuralFeatures().get(5);
+	}
+
+	/**
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	@Override
 	public BlockchainsystemFactory getBlockchainsystemFactory() {
 		return (BlockchainsystemFactory) getEFactoryInstance();
 	}
@@ -355,6 +365,7 @@ public class BlockchainsystemPackageImpl extends EPackageImpl implements Blockch
 		createEAttribute(blockchainSystemSpecificationEClass, BLOCKCHAIN_SYSTEM_SPECIFICATION__MAX_BLOCK_SIZE);
 		createEAttribute(blockchainSystemSpecificationEClass, BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD);
 		createEAttribute(blockchainSystemSpecificationEClass, BLOCKCHAIN_SYSTEM_SPECIFICATION__HASH_RATE_CONCENTRATION);
+		createEAttribute(blockchainSystemSpecificationEClass, BLOCKCHAIN_SYSTEM_SPECIFICATION__NUMBER_OF_ATTACKER);
 	}
 
 	/**
@@ -433,6 +444,9 @@ public class BlockchainsystemPackageImpl extends EPackageImpl implements Blockch
 				!IS_UNSETTABLE, !IS_ID, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
 		initEAttribute(getBlockchainSystemSpecification_HashRateConcentration(), theEcorePackage.getEDouble(),
 				"HashRateConcentration", null, 1, 1, BlockchainSystemSpecification.class, !IS_TRANSIENT, !IS_VOLATILE,
+				IS_CHANGEABLE, !IS_UNSETTABLE, !IS_ID, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
+		initEAttribute(getBlockchainSystemSpecification_NumberOfAttacker(), theEcorePackage.getEInt(),
+				"NumberOfAttacker", "0", 1, 1, BlockchainSystemSpecification.class, !IS_TRANSIENT, !IS_VOLATILE,
 				IS_CHANGEABLE, !IS_UNSETTABLE, !IS_ID, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
 
 		// Create resource
