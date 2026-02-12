@@ -78,34 +78,56 @@ class ConnectedSubgraphP2PNetworkFactory(
       val numberOfInbound = subgraphConnectivitySpecification.numberOfInbound
       val numberOfOutBound = subgraphConnectivitySpecification.numberOfOutBound
 
-      val uploadBudget = subgraphConnectivitySpecification.uploadBudget
-      val downloadBudget = subgraphConnectivitySpecification.downloadBudget
+//      val nodeBudget = subgraphConnectivitySpecification.nodeBudget
+//      val nodeBudget = subgraphConnectivitySpecification.nodeBudget
+//
+//      var bandWidthLinkTarget = subgraphLinkSpecification.bandwidthSpecification.heterogeneityTarget
+//      val nodeBudget = 0.0
 
-      var bandWidthTarget = subgraphLinkSpecification.bandwidthSpecification.heterogeneityTarget
+      var bandWidthLinkTarget = subgraphLinkSpecification.bandwidthSpecification.heterogeneityLinkTarget
+      var bandWidthNodeTarget = subgraphLinkSpecification.bandwidthSpecification.heterogeneityNodeTarget
+
+      // Calirate node alpha
+      val alphaNodes: Double = BandwidthDistribution.calibrateAlpha(bandWidthNodeTarget, subgraphNodes.size)
+      // Distribute node
+      val sharesBandwidthNodes: DoubleArray = BandwidthDistribution.generateDirichlet(alphaNodes, subgraphNodes.size)
 
       // Calirate inbound alpha
-      val alphaInBound: Double = BandwidthDistribution.calibrateAlpha(bandWidthTarget, numberOfInbound)
+      val alphaInBound: Double = BandwidthDistribution.calibrateAlpha(bandWidthLinkTarget, numberOfInbound)
 
       // Distribute inbound
       val sharesInBound: DoubleArray = BandwidthDistribution.generateDirichlet(alphaInBound, numberOfInbound)
 
       // Calirate outbound alpha
-      val alphaOutBound: Double = BandwidthDistribution.calibrateAlpha(bandWidthTarget, numberOfOutBound)
+      val alphaOutBound: Double = BandwidthDistribution.calibrateAlpha(bandWidthLinkTarget, numberOfOutBound)
 
       // Distribute outbound
       val sharesOutBound: DoubleArray = BandwidthDistribution.generateDirichlet(alphaOutBound, numberOfOutBound)
 
-      val arrInBoundBandwidth: ArrayList<Double> = ArrayList()
-      val arrOutBoundBandwidth: ArrayList<Double> = ArrayList()
+      val inBoundBandwidthMapping = HashMap<String, ArrayList<Double>>()
+      val outBoundBandwidthMapping = HashMap<String, ArrayList<Double>>()
 
-      for (i in 0..<sharesInBound.size) {
-        val bandwidth: Double = sharesInBound[i] * downloadBudget // b = B * p
-        arrInBoundBandwidth.add(bandwidth)
-      }
+      for (i in 0..<sharesBandwidthNodes.size) {
+        val nodeBudget = sharesBandwidthNodes[i] * subgraphLinkSpecification.bandwidthSpecification.bandwidth
+        val currentNode = subgraphNodes.elementAt(i)
+        println("currentNode: " + currentNode.endpointId)
+        println("bandwidth: " + nodeBudget)
 
-      for (i in 0..<sharesOutBound.size) {
-        val bandwidth: Double = sharesOutBound[i] * uploadBudget // b = U * p
-        arrOutBoundBandwidth.add(bandwidth)
+        val arrInBoundBandwidth: ArrayList<Double> = ArrayList()
+        val arrOutBoundBandwidth: ArrayList<Double> = ArrayList()
+
+        for (i in 0..<sharesInBound.size) {
+          val bandwidth: Double = sharesInBound[i] * nodeBudget
+          arrInBoundBandwidth.add(bandwidth)
+        }
+
+        for (i in 0..<sharesOutBound.size) {
+          val bandwidth: Double = sharesOutBound[i] * nodeBudget
+          arrOutBoundBandwidth.add(bandwidth)
+        }
+
+        inBoundBandwidthMapping.put(currentNode.endpointId, arrInBoundBandwidth)
+        outBoundBandwidthMapping.put(currentNode.endpointId, arrOutBoundBandwidth)
       }
 
 
@@ -119,7 +141,9 @@ class ConnectedSubgraphP2PNetworkFactory(
       val throughputValueProvider = createThroughputValueProvider(outBoundLinkAllocationSpecification.throughputSpecification)
 //      val bandwidthValueProvider = createBandwidthValueProvider(outBoundLinkAllocationSpecification.bandwidthSpecification)
 
-      var bandwidthValueProvider = createBandwidthValueProviderWithValue(arrOutBoundBandwidth.get(0))
+      val currentNodeId = subgraphNodes.elementAt(0).endpointId
+      val initialOutboundBandwidth = outBoundBandwidthMapping.get(currentNodeId)?.get(0) ?: 0.0
+      var bandwidthValueProvider = createBandwidthValueProviderWithValue(initialOutboundBandwidth)
 
       // in bound connection specification
       val inBoundLatencyValueProvider = createLatencyValueProvider(inBoundLinkAllocationSpecification.latencySpecification)
@@ -168,7 +192,9 @@ class ConnectedSubgraphP2PNetworkFactory(
 
           val currentDegrees = initialDegrees.get(currentNode)
           val indexOfEdge = (numberOfOutBound + numberOfInbound) - currentDegrees - 1
-          bandwidthValueProvider = createBandwidthValueProviderWithValue(arrOutBoundBandwidth.get(indexOfEdge))
+
+          val outBoundBandwidth = outBoundBandwidthMapping.get(currentNode.endpointId)?.get(indexOfEdge) ?: 0.0
+          bandwidthValueProvider = createBandwidthValueProviderWithValue(outBoundBandwidth)
 
           val selectedNode = potentialNodes.random()
 
@@ -210,9 +236,10 @@ class ConnectedSubgraphP2PNetworkFactory(
 
           val currentDegrees = initialDegrees.get(currentNode)
           val indexOfEdge = numberOfInbound - currentDegrees
-          bandwidthValueProvider = createBandwidthValueProviderWithValue(arrInBoundBandwidth.get(indexOfEdge))
 
-
+          val arrInBoundBandwidth = inBoundBandwidthMapping.get(currentNode.endpointId)
+          val inBoundBandwidth = arrInBoundBandwidth?.get(indexOfEdge) ?: 0.0
+          bandwidthValueProvider = createBandwidthValueProviderWithValue(inBoundBandwidth)
 
           if ((networkGraph.containsEdge(currentNode, selectedNode) || networkGraph.containsEdge(selectedNode, currentNode)
           )) {
@@ -222,7 +249,7 @@ class ConnectedSubgraphP2PNetworkFactory(
 
             checkingArrayList.add(selectedNode)
 
-            if (currBandwidth >= arrInBoundBandwidth.get(indexOfEdge)) {
+            if (currBandwidth >= inBoundBandwidth) {
               networkGraph.removeEdge(firstEdge)
               networkGraph.addBidirectionalEdge(
                 currentNode,
