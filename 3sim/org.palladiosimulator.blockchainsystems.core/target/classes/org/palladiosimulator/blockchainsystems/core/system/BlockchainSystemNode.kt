@@ -32,12 +32,12 @@ class BlockchainSystemNode(
   val resourcePower: Double,
   private val miningProcess: MiningProcess,
   private val transactionSelectionProcess: TransactionSelectionProcess,
-  private val blockchain: Blockchain,
+  val blockchain: Blockchain,
   private val blockValidator: BlockValidator,
   private val trxMemPool: TrxMemPool,
   private val orphanBlockPool: OrphanBlockPool,
   private val blockFactory: BlockFactory,
-  private val behavior: BlockchainSystemNodeBehavior,
+  val behavior: BlockchainSystemNodeBehavior,
   val geographicalRegion: GeographicalRegion,
   private val tags: MutableSet<String> = mutableSetOf()
 ) : BlockchainSimulationObject(id, name), Taggable, TransactionSubmittedCallbackSubscriber {
@@ -129,5 +129,9 @@ class BlockchainSystemNode(
   override fun onTransactionSubmitted(transaction: Transaction) {
     if (transaction.recipientId !== this.id) return // Only handle transactions send to this node
     behavior.onTransactionReceived(transaction, context)
+  }
+
+  fun setTag(tag: String) {
+    tags.add(tag)
   }
 }

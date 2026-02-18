@@ -15,4 +15,5 @@ interface SimulationParameters {
   val simulationType: SimulationType
   val maxAllowedBlockchainLength: Long
   val blockchainSystemModelFilePath: String
+  val numberOfAttacker: Int
 }

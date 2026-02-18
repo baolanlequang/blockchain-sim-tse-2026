@@ -35,6 +35,8 @@ public class TrilemmaSimulationFactory implements Simulation {
 
         ThreesimBlockchainSystemFactory blockchainSystemFactory =
                 createBlockchainSystemFactory(simulationParameters, configuration);
+        blockchainSystemFactory.createBlockchainSystem();
+        
 
         // ✅ FIX: Threesim expects int, SimulationParameters returns long
         int maxAllowedBlockchainLength =
@@ -122,7 +124,7 @@ public class TrilemmaSimulationFactory implements Simulation {
         BlockchainSystem designBlockchainSystem =
                 loader.load(
                         simulationParameters.getBlockchainSystemModelFilePath(),
-                        configuration);        
+                        configuration);  
 
         var networkTopology =
                 designBlockchainSystem.getNetwork().getTopology();

@@ -48,9 +48,11 @@ class MiningProcessImpl(
 
 
   private fun scheduleNewBlockMinedEvent(): String {
-    val previousBlockHash = previousBlockSelectionCallback?.invoke() ?: throw IllegalStateException(
-      "Previous block selection callback must be set before scheduling a new block mined event."
-    )
+//    val previousBlockHash = previousBlockSelectionCallback?.invoke() ?: throw IllegalStateException(
+//      "Previous block selection callback must be set before scheduling a new block mined event."
+//    )
+
+    val previousBlockHash = previousBlockSelectionCallback?.invoke() ?: ""
 
     simulationContext.eventCoordinator
       .raiseEvent(

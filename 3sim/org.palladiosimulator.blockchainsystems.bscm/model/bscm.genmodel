@@ -113,8 +113,6 @@
             ecoreFeature="ecore:EReference bscm.ecore#//p2pnetwork/ConnectivitySpecification/OutBoundLinkAllocationSpecification"/>
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//p2pnetwork/ConnectivitySpecification/NumberOfInbound"/>
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//p2pnetwork/ConnectivitySpecification/NumberOfOutBound"/>
-        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//p2pnetwork/ConnectivitySpecification/UploadBudget"/>
-        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//p2pnetwork/ConnectivitySpecification/DownloadBudget"/>
       </genClasses>
       <genClasses ecoreClass="bscm.ecore#//p2pnetwork/SubgraphLink">
         <genFeatures notify="false" createChild="false" propertySortChoices="true"
@@ -153,6 +151,7 @@
         <genFeatures documentation="Unit: Byte" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/MaxBlockSize"/>
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/BlockReward"/>
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/HashRateConcentration"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//blockchainsystem/BlockchainSystemSpecification/NumberOfAttacker"/>
       </genClasses>
     </nestedGenPackages>
     <nestedGenPackages prefix="Nodeenvironment" basePackage="org.palladiosimulator.blockchainsystems.bscm"
@@ -186,7 +185,8 @@
       <genClasses ecoreClass="bscm.ecore#//linkallocation/LinkLatencySpecification"/>
       <genClasses ecoreClass="bscm.ecore#//linkallocation/BandwidthSpecification">
         <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/BandwidthSpecification/Bandwidth"/>
-        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/BandwidthSpecification/HeterogeneityTarget"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/BandwidthSpecification/HeterogeneityLinkTarget"/>
+        <genFeatures createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/BandwidthSpecification/HeterogeneityNodeTarget"/>
       </genClasses>
       <genClasses ecoreClass="bscm.ecore#//linkallocation/DynamicLinkLatencySpecificationValue">
         <genFeatures documentation="Unit: ms" createChild="false" ecoreFeature="ecore:EAttribute bscm.ecore#//linkallocation/DynamicLinkLatencySpecificationValue/Latency"/>

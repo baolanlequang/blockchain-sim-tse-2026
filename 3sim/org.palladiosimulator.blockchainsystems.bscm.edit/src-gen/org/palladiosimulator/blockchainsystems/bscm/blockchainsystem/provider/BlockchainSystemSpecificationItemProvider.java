@@ -55,6 +55,7 @@ public class BlockchainSystemSpecificationItemProvider extends EntityItemProvide
 			addMaxBlockSizePropertyDescriptor(object);
 			addBlockRewardPropertyDescriptor(object);
 			addHashRateConcentrationPropertyDescriptor(object);
+			addNumberOfAttackerPropertyDescriptor(object);
 		}
 		return itemPropertyDescriptors;
 	}
@@ -144,6 +145,23 @@ public class BlockchainSystemSpecificationItemProvider extends EntityItemProvide
 	}
 
 	/**
+	 * This adds a property descriptor for the Number Of Attacker feature.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	protected void addNumberOfAttackerPropertyDescriptor(Object object) {
+		itemPropertyDescriptors
+				.add(createItemPropertyDescriptor(((ComposeableAdapterFactory) adapterFactory).getRootAdapterFactory(),
+						getResourceLocator(), getString("_UI_BlockchainSystemSpecification_NumberOfAttacker_feature"),
+						getString("_UI_PropertyDescriptor_description",
+								"_UI_BlockchainSystemSpecification_NumberOfAttacker_feature",
+								"_UI_BlockchainSystemSpecification_type"),
+						BlockchainsystemPackage.Literals.BLOCKCHAIN_SYSTEM_SPECIFICATION__NUMBER_OF_ATTACKER, true,
+						false, false, ItemPropertyDescriptor.INTEGRAL_VALUE_IMAGE, null, null));
+	}
+
+	/**
 	 * This returns BlockchainSystemSpecification.gif.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
@@ -194,6 +212,7 @@ public class BlockchainSystemSpecificationItemProvider extends EntityItemProvide
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__MAX_BLOCK_SIZE:
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__BLOCK_REWARD:
 		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__HASH_RATE_CONCENTRATION:
+		case BlockchainsystemPackage.BLOCKCHAIN_SYSTEM_SPECIFICATION__NUMBER_OF_ATTACKER:
 			fireNotifyChanged(new ViewerNotification(notification, notification.getNotifier(), false, true));
 			return;
 		}
