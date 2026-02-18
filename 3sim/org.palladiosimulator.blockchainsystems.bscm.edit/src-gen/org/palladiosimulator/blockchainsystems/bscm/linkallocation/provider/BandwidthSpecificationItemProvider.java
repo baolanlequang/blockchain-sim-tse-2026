@@ -51,7 +51,8 @@ public class BandwidthSpecificationItemProvider extends EntityItemProvider {
 			super.getPropertyDescriptors(object);
 
 			addBandwidthPropertyDescriptor(object);
-			addHeterogeneityTargetPropertyDescriptor(object);
+			addHeterogeneityLinkTargetPropertyDescriptor(object);
+			addHeterogeneityNodeTargetPropertyDescriptor(object);
 		}
 		return itemPropertyDescriptors;
 	}
@@ -73,19 +74,37 @@ public class BandwidthSpecificationItemProvider extends EntityItemProvider {
 	}
 
 	/**
-	 * This adds a property descriptor for the Heterogeneity Target feature.
+	 * This adds a property descriptor for the Heterogeneity Link Target feature.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
 	 * @generated
 	 */
-	protected void addHeterogeneityTargetPropertyDescriptor(Object object) {
-		itemPropertyDescriptors.add(createItemPropertyDescriptor(
-				((ComposeableAdapterFactory) adapterFactory).getRootAdapterFactory(), getResourceLocator(),
-				getString("_UI_BandwidthSpecification_HeterogeneityTarget_feature"),
-				getString("_UI_PropertyDescriptor_description",
-						"_UI_BandwidthSpecification_HeterogeneityTarget_feature", "_UI_BandwidthSpecification_type"),
-				LinkallocationPackage.Literals.BANDWIDTH_SPECIFICATION__HETEROGENEITY_TARGET, true, false, false,
-				ItemPropertyDescriptor.REAL_VALUE_IMAGE, null, null));
+	protected void addHeterogeneityLinkTargetPropertyDescriptor(Object object) {
+		itemPropertyDescriptors
+				.add(createItemPropertyDescriptor(((ComposeableAdapterFactory) adapterFactory).getRootAdapterFactory(),
+						getResourceLocator(), getString("_UI_BandwidthSpecification_HeterogeneityLinkTarget_feature"),
+						getString("_UI_PropertyDescriptor_description",
+								"_UI_BandwidthSpecification_HeterogeneityLinkTarget_feature",
+								"_UI_BandwidthSpecification_type"),
+						LinkallocationPackage.Literals.BANDWIDTH_SPECIFICATION__HETEROGENEITY_LINK_TARGET, true, false,
+						false, ItemPropertyDescriptor.REAL_VALUE_IMAGE, null, null));
+	}
+
+	/**
+	 * This adds a property descriptor for the Heterogeneity Node Target feature.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 */
+	protected void addHeterogeneityNodeTargetPropertyDescriptor(Object object) {
+		itemPropertyDescriptors
+				.add(createItemPropertyDescriptor(((ComposeableAdapterFactory) adapterFactory).getRootAdapterFactory(),
+						getResourceLocator(), getString("_UI_BandwidthSpecification_HeterogeneityNodeTarget_feature"),
+						getString("_UI_PropertyDescriptor_description",
+								"_UI_BandwidthSpecification_HeterogeneityNodeTarget_feature",
+								"_UI_BandwidthSpecification_type"),
+						LinkallocationPackage.Literals.BANDWIDTH_SPECIFICATION__HETEROGENEITY_NODE_TARGET, true, false,
+						false, ItemPropertyDescriptor.REAL_VALUE_IMAGE, null, null));
 	}
 
 	/**
@@ -135,7 +154,8 @@ public class BandwidthSpecificationItemProvider extends EntityItemProvider {
 
 		switch (notification.getFeatureID(BandwidthSpecification.class)) {
 		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__BANDWIDTH:
-		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__HETEROGENEITY_TARGET:
+		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__HETEROGENEITY_LINK_TARGET:
+		case LinkallocationPackage.BANDWIDTH_SPECIFICATION__HETEROGENEITY_NODE_TARGET:
 			fireNotifyChanged(new ViewerNotification(notification, notification.getNotifier(), false, true));
 			return;
 		}

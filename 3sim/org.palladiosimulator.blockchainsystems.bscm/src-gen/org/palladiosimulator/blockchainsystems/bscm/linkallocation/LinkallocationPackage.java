@@ -243,13 +243,22 @@ public interface LinkallocationPackage extends EPackage {
 	int BANDWIDTH_SPECIFICATION__BANDWIDTH = EntityPackage.ENTITY_FEATURE_COUNT + 0;
 
 	/**
-	 * The feature id for the '<em><b>Heterogeneity Target</b></em>' attribute.
+	 * The feature id for the '<em><b>Heterogeneity Link Target</b></em>' attribute.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
 	 * @generated
 	 * @ordered
 	 */
-	int BANDWIDTH_SPECIFICATION__HETEROGENEITY_TARGET = EntityPackage.ENTITY_FEATURE_COUNT + 1;
+	int BANDWIDTH_SPECIFICATION__HETEROGENEITY_LINK_TARGET = EntityPackage.ENTITY_FEATURE_COUNT + 1;
+
+	/**
+	 * The feature id for the '<em><b>Heterogeneity Node Target</b></em>' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @generated
+	 * @ordered
+	 */
+	int BANDWIDTH_SPECIFICATION__HETEROGENEITY_NODE_TARGET = EntityPackage.ENTITY_FEATURE_COUNT + 2;
 
 	/**
 	 * The number of structural features of the '<em>Bandwidth Specification</em>' class.
@@ -258,7 +267,7 @@ public interface LinkallocationPackage extends EPackage {
 	 * @generated
 	 * @ordered
 	 */
-	int BANDWIDTH_SPECIFICATION_FEATURE_COUNT = EntityPackage.ENTITY_FEATURE_COUNT + 2;
+	int BANDWIDTH_SPECIFICATION_FEATURE_COUNT = EntityPackage.ENTITY_FEATURE_COUNT + 3;
 
 	/**
 	 * The meta object id for the '{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.impl.DynamicLinkLatencySpecificationValueImpl <em>Dynamic Link Latency Specification Value</em>}' class.
@@ -705,15 +714,26 @@ public interface LinkallocationPackage extends EPackage {
 	EAttribute getBandwidthSpecification_Bandwidth();
 
 	/**
-	 * Returns the meta object for the attribute '{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification#getHeterogeneityTarget <em>Heterogeneity Target</em>}'.
+	 * Returns the meta object for the attribute '{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification#getHeterogeneityLinkTarget <em>Heterogeneity Link Target</em>}'.
 	 * <!-- begin-user-doc -->
 	 * <!-- end-user-doc -->
-	 * @return the meta object for the attribute '<em>Heterogeneity Target</em>'.
-	 * @see org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification#getHeterogeneityTarget()
+	 * @return the meta object for the attribute '<em>Heterogeneity Link Target</em>'.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification#getHeterogeneityLinkTarget()
 	 * @see #getBandwidthSpecification()
 	 * @generated
 	 */
-	EAttribute getBandwidthSpecification_HeterogeneityTarget();
+	EAttribute getBandwidthSpecification_HeterogeneityLinkTarget();
+
+	/**
+	 * Returns the meta object for the attribute '{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification#getHeterogeneityNodeTarget <em>Heterogeneity Node Target</em>}'.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the meta object for the attribute '<em>Heterogeneity Node Target</em>'.
+	 * @see org.palladiosimulator.blockchainsystems.bscm.linkallocation.BandwidthSpecification#getHeterogeneityNodeTarget()
+	 * @see #getBandwidthSpecification()
+	 * @generated
+	 */
+	EAttribute getBandwidthSpecification_HeterogeneityNodeTarget();
 
 	/**
 	 * Returns the meta object for class '{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.DynamicLinkLatencySpecificationValue <em>Dynamic Link Latency Specification Value</em>}'.
@@ -999,13 +1019,22 @@ public interface LinkallocationPackage extends EPackage {
 		EAttribute BANDWIDTH_SPECIFICATION__BANDWIDTH = eINSTANCE.getBandwidthSpecification_Bandwidth();
 
 		/**
-		 * The meta object literal for the '<em><b>Heterogeneity Target</b></em>' attribute feature.
+		 * The meta object literal for the '<em><b>Heterogeneity Link Target</b></em>' attribute feature.
 		 * <!-- begin-user-doc -->
 		 * <!-- end-user-doc -->
 		 * @generated
 		 */
-		EAttribute BANDWIDTH_SPECIFICATION__HETEROGENEITY_TARGET = eINSTANCE
-				.getBandwidthSpecification_HeterogeneityTarget();
+		EAttribute BANDWIDTH_SPECIFICATION__HETEROGENEITY_LINK_TARGET = eINSTANCE
+				.getBandwidthSpecification_HeterogeneityLinkTarget();
+
+		/**
+		 * The meta object literal for the '<em><b>Heterogeneity Node Target</b></em>' attribute feature.
+		 * <!-- begin-user-doc -->
+		 * <!-- end-user-doc -->
+		 * @generated
+		 */
+		EAttribute BANDWIDTH_SPECIFICATION__HETEROGENEITY_NODE_TARGET = eINSTANCE
+				.getBandwidthSpecification_HeterogeneityNodeTarget();
 
 		/**
 		 * The meta object literal for the '{@link org.palladiosimulator.blockchainsystems.bscm.linkallocation.impl.DynamicLinkLatencySpecificationValueImpl <em>Dynamic Link Latency Specification Value</em>}' class.

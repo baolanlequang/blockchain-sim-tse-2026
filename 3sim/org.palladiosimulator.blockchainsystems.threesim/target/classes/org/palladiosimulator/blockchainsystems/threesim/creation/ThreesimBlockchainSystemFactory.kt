@@ -11,6 +11,7 @@ import org.palladiosimulator.blockchainsystems.core.orphanblockpool.OrphanBlockP
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNodeFactory
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.*
+import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNode
 import org.palladiosimulator.blockchainsystems.core.transaction.TrxMemPoolFactoryImpl
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimBlockchainSystemNodeBehaviorFactory
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransactionSelectionProcessFactory
@@ -21,6 +22,7 @@ import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransac
 import org.palladiosimulator.blockchainsystems.threesim.creation.abstractions.NodeAllocationResolver
 import java.util.UUID
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.NetworkTopology
+import java.util.HashSet
 
 /**
  * Factory for creating a generic [BlockchainSystem]
@@ -29,7 +31,7 @@ import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.NetworkTopology
  */
 abstract class ThreesimBlockchainSystemFactory(
   protected val designBlockchainSystem: DesignBlockchainSystem,
-  protected val networkTopology: NetworkTopology,
+  protected val networkTopology: NetworkTopology
 ) {
   protected abstract fun createP2PNetworkFactory(): P2PNetworkFactory
 
@@ -44,6 +46,7 @@ abstract class ThreesimBlockchainSystemFactory(
     // Create information provider based on the generated network
     val nodeAllocationResolver = getNodeAllocationResolver(networkCreationResult)
     val resourcePowerCalculator = getResourcePowerCalculator(networkCreationResult)
+
     val geographicalRegionsResolver = ThreesimGeographicalRegionsResolver(
       designBlockchainSystem.geographicalRegionsSpecification,
       nodeAllocationResolver
@@ -56,7 +59,8 @@ abstract class ThreesimBlockchainSystemFactory(
       nodeAllocationResolver,
       resourcePowerCalculator,
       blockFactory,
-      geographicalRegionsResolver
+      geographicalRegionsResolver,
+      networkCreationResult
     )
 
     return createBlockchainSystemInstance(
@@ -83,6 +87,7 @@ abstract class ThreesimBlockchainSystemFactory(
     val blockchainSystemNodes = network.nodes
       .map { nodeFactory.createBlockchainSystemNode(it, genesisBlock) }
       .toHashSet()
+
 
     val trxPropSpec = designBlockchainSystem.transactionsSpecification.transactionPropertiesSpecification
     val meanTrxCreationInterval = designBlockchainSystem.transactionsSpecification.meanTransactionCreationInterval
@@ -114,7 +119,8 @@ abstract class ThreesimBlockchainSystemFactory(
     nodeAllocationResolver: NodeAllocationResolver,
     resourcePowerCalculator: ResourcePowerCalculator,
     blockFactory: BlockFactory,
-    geographicalRegionsResolver: ThreesimGeographicalRegionsResolver
+    geographicalRegionsResolver: ThreesimGeographicalRegionsResolver,
+    networkCreationResult: P2PNetworkCreationResult
   ): BlockchainSystemNodeFactory {
     val blockchainFactory = BlockchainFactoryImpl(
       designBlockchainSystem.specification.numOfRequiredSecurityConfirmations
@@ -131,8 +137,8 @@ abstract class ThreesimBlockchainSystemFactory(
       maxBlockSize = designBlockchainSystem.specification.maxBlockSize // in byte
     )
     val blockValidatorFactory = ThreesimBlockValidatorFactory(nodeAllocationResolver)
-    val behaviorFactory = ThreesimBlockchainSystemNodeBehaviorFactory()
-    val tagProvider = ThreesimBlockchainSystemNodeTagProvider()
+    val behaviorFactory = ThreesimBlockchainSystemNodeBehaviorFactory(resourcePowerCalculator, designBlockchainSystem.specification.numberOfAttacker)
+    val tagProvider = ThreesimBlockchainSystemNodeTagProvider(behaviorFactory.maliciousNodesIdProvider)
 
     return BlockchainSystemNodeFactory(
       blockFactory,

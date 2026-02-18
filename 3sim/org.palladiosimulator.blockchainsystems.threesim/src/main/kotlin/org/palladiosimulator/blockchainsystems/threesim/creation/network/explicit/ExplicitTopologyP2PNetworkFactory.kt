@@ -24,6 +24,9 @@ class ExplicitTopologyP2PNetworkFactory(
   override fun createP2PNetwork(): P2PNetworkCreationResult {
     val networkGraph: Graph<P2PNode, P2PLink> = SimpleDirectedGraph(P2PLink::class.java)
 
+    // Store attacker information
+    val attackerNodeIds = ArrayList<String>()
+
     // Add nodes to the graph
     val p2pNodeMappings = topology.nodes.associate {
       val nodeImpl = P2PNode(it.id)

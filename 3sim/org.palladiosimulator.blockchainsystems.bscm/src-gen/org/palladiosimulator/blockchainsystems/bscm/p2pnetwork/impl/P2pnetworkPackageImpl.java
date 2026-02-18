@@ -536,26 +536,6 @@ public class P2pnetworkPackageImpl extends EPackageImpl implements P2pnetworkPac
 	 * @generated
 	 */
 	@Override
-	public EAttribute getConnectivitySpecification_UploadBudget() {
-		return (EAttribute) connectivitySpecificationEClass.getEStructuralFeatures().get(4);
-	}
-
-	/**
-	 * <!-- begin-user-doc -->
-	 * <!-- end-user-doc -->
-	 * @generated
-	 */
-	@Override
-	public EAttribute getConnectivitySpecification_DownloadBudget() {
-		return (EAttribute) connectivitySpecificationEClass.getEStructuralFeatures().get(5);
-	}
-
-	/**
-	 * <!-- begin-user-doc -->
-	 * <!-- end-user-doc -->
-	 * @generated
-	 */
-	@Override
 	public EClass getSubgraphLink() {
 		return subgraphLinkEClass;
 	}
@@ -734,8 +714,6 @@ public class P2pnetworkPackageImpl extends EPackageImpl implements P2pnetworkPac
 				CONNECTIVITY_SPECIFICATION__OUT_BOUND_LINK_ALLOCATION_SPECIFICATION);
 		createEAttribute(connectivitySpecificationEClass, CONNECTIVITY_SPECIFICATION__NUMBER_OF_INBOUND);
 		createEAttribute(connectivitySpecificationEClass, CONNECTIVITY_SPECIFICATION__NUMBER_OF_OUT_BOUND);
-		createEAttribute(connectivitySpecificationEClass, CONNECTIVITY_SPECIFICATION__UPLOAD_BUDGET);
-		createEAttribute(connectivitySpecificationEClass, CONNECTIVITY_SPECIFICATION__DOWNLOAD_BUDGET);
 
 		subgraphLinkEClass = createEClass(SUBGRAPH_LINK);
 		createEReference(subgraphLinkEClass, SUBGRAPH_LINK__ALLOCATION);
@@ -875,12 +853,6 @@ public class P2pnetworkPackageImpl extends EPackageImpl implements P2pnetworkPac
 				null, 1, 1, ConnectivitySpecification.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE, !IS_UNSETTABLE,
 				!IS_ID, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
 		initEAttribute(getConnectivitySpecification_NumberOfOutBound(), theEcorePackage.getEInt(), "NumberOfOutBound",
-				null, 1, 1, ConnectivitySpecification.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE, !IS_UNSETTABLE,
-				!IS_ID, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
-		initEAttribute(getConnectivitySpecification_UploadBudget(), theEcorePackage.getEDouble(), "UploadBudget", null,
-				1, 1, ConnectivitySpecification.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE, !IS_UNSETTABLE,
-				!IS_ID, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
-		initEAttribute(getConnectivitySpecification_DownloadBudget(), theEcorePackage.getEDouble(), "DownloadBudget",
 				null, 1, 1, ConnectivitySpecification.class, !IS_TRANSIENT, !IS_VOLATILE, IS_CHANGEABLE, !IS_UNSETTABLE,
 				!IS_ID, IS_UNIQUE, !IS_DERIVED, IS_ORDERED);
 

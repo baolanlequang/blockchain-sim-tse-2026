@@ -18,6 +18,7 @@ import org.palladiosimulator.pcm.core.entity.Entity;
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getMaxBlockSize <em>Max Block Size</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getBlockReward <em>Block Reward</em>}</li>
  *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getHashRateConcentration <em>Hash Rate Concentration</em>}</li>
+ *   <li>{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getNumberOfAttacker <em>Number Of Attacker</em>}</li>
  * </ul>
  *
  * @see org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainsystemPackage#getBlockchainSystemSpecification()
@@ -140,5 +141,28 @@ public interface BlockchainSystemSpecification extends Entity {
 	 * @generated
 	 */
 	void setHashRateConcentration(double value);
+
+	/**
+	 * Returns the value of the '<em><b>Number Of Attacker</b></em>' attribute.
+	 * The default value is <code>"0"</code>.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @return the value of the '<em>Number Of Attacker</em>' attribute.
+	 * @see #setNumberOfAttacker(int)
+	 * @see org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainsystemPackage#getBlockchainSystemSpecification_NumberOfAttacker()
+	 * @model default="0" required="true"
+	 * @generated
+	 */
+	int getNumberOfAttacker();
+
+	/**
+	 * Sets the value of the '{@link org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification#getNumberOfAttacker <em>Number Of Attacker</em>}' attribute.
+	 * <!-- begin-user-doc -->
+	 * <!-- end-user-doc -->
+	 * @param value the new value of the '<em>Number Of Attacker</em>' attribute.
+	 * @see #getNumberOfAttacker()
+	 * @generated
+	 */
+	void setNumberOfAttacker(int value);
 
 } // BlockchainSystemSpecification
