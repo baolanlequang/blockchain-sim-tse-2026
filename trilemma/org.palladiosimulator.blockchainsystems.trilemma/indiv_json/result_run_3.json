@@ -3,29 +3,31 @@
   "config_id": "3",
   "inputParameters": {
     "simulationType": "Monte-Carlo",
-    "maxAllowedBlockchainLength": "10",
+    "maxAllowedBlockchainLength": "30",
     "numberOfMonteCarloRounds": "1",
-    "blockchainSystemModelFilePath": "/Users/lanle/Documents/Working/Uni_Ulm/PhD/blockchain-sim-tse-2026/trilemma/org.palladiosimulator.blockchainsystems.trilemma/testmodels/threesim-net-2/Net.blockchainsystem",
+    "blockchainSystemModelFilePath": "testmodels/threesim-3/Net.blockchainsystem",
     "failureThroughputThreshold": "1.0",
     "shannonEntropyK": "1.0",
     "nakamotoCoefficientThreshold": "50.0",
     "reliabilityObservationTimespan": "24.0",
     "config_id": "3",
     "id": "3",
-    "bandwidth": "131.06845677644233",
-    "block_creation_interval": "1171.4223977008012",
-    "hashing_power": "189.37895062405934",
-    "max_block_size": "1.9991731039011384",
-    "peer_connectivity": "98",
-    "crashed_validators": "4094",
-    "validator_count": "19352",
-    "workload": "573580"
+    "Hnode": "0.4384473151169894",
+    "Hlink": "7.142440972516587",
+    "block_creation_interval": "833.8706974894892",
+    "hashrate_concentration": "1.3965606518019993",
+    "max_block_size": "6.226968723652717",
+    "inbound_connections": "127",
+    "outbound_connections": "2",
+    "validator_count": "3487",
+    "number_of_attackers": "721"
   },
   "simulationResult": {
     "simulationParameters": {
-      "maxAllowedBlockchainLength": 10,
+      "maxAllowedBlockchainLength": 30,
       "numberOfMonteCarloRounds": 1,
-      "blockchainSystemModelFilePath": "/Users/lanle/Documents/Working/Uni_Ulm/PhD/blockchain-sim-tse-2026/trilemma/org.palladiosimulator.blockchainsystems.trilemma/testmodels/threesim-net-2/Net.blockchainsystem"
+      "blockchainSystemModelFilePath": "testmodels/threesim-3/Net.blockchainsystem",
+      "numberOfAttacker": 0
     },
     "threesimSimulationParameters": {
       "failureThroughputThreshold": 1.0,
@@ -41,7 +43,7 @@
       },
       {
         "name": "NakamotoCoefficient",
-        "value": 2,
+        "value": 1,
         "unit": "validating nodes"
       }
     ],
@@ -49,48 +51,48 @@
       [
         {
           "name": "AvailabilityScalability",
-          "value": 0.18864922206506365,
+          "value": 0.0,
           "unit": "%"
         },
         {
           "name": "AvailabilitySecurity",
-          "value": 0.9209808672842785,
+          "value": 0.950117800749149,
           "unit": "%"
         },
         {
           "name": "Consistency",
-          "value": 1010523.3333333333,
+          "value": 0.0,
           "unit": "ms"
         },
         {
           "name": "FaultTolerance",
           "value": {
             "throughputDelta": {
-              "value": 1365.904730807982,
+              "value": 22.750700447929642,
               "unit": "transactions/min"
             },
             "confirmationLatencyDelta": {
-              "value": 693654.625,
+              "value": 274156.2380952379,
               "unit": "ms"
             }
           }
         },
         {
           "name": "GiniCoefficient",
-          "value": 0.5000449028601459
+          "value": 0.0
         },
         {
           "name": "HerfindahlHirschmanIndex",
-          "value": 0.33333335484017973
+          "value": 0.0
         },
         {
           "name": "Reliability",
-          "value": 9.311057834123019E-32,
+          "value": 4.536434961857558E-5,
           "unit": "%"
         },
         {
           "name": "ShannonEntropy",
-          "value": 1.836591668108979,
+          "value": -0.0,
           "unit": "bits"
         },
         {
@@ -100,7 +102,7 @@
         },
         {
           "name": "TransactionThroughput",
-          "value": 26.471795876899943,
+          "value": 0.0,
           "unit": "transactions/min"
         }
       ]
@@ -108,38 +110,36 @@
     "averageSimulationRoundResult": [
       {
         "name": "AvailabilityScalability",
-        "average": 0.18864922206506365,
+        "average": 0.0,
         "unit": "%",
-        "standardDeviation": 0.0,
-        "coefficientOfVariation": 0.0
+        "standardDeviation": 0.0
       },
       {
         "name": "AvailabilitySecurity",
-        "average": 0.9209808672842785,
+        "average": 0.950117800749149,
         "unit": "%",
         "standardDeviation": 0.0,
         "coefficientOfVariation": 0.0
       },
       {
         "name": "Consistency",
-        "average": 1010523.3333333333,
+        "average": 0.0,
         "unit": "ms",
-        "standardDeviation": 0.0,
-        "coefficientOfVariation": 0.0
+        "standardDeviation": 0.0
       },
       {
         "name": "FaultTolerance",
         "average": {
           "throughputDelta": {
             "name": "throughputDelta",
-            "average": 1365.904730807982,
+            "average": 22.750700447929642,
             "unit": "transactions/min",
             "standardDeviation": 0.0,
             "coefficientOfVariation": 0.0
           },
           "confirmationLatencyDelta": {
             "name": "confirmationLatencyDelta",
-            "average": 693654.625,
+            "average": 274156.2380952379,
             "unit": "ms",
             "standardDeviation": 0.0,
             "coefficientOfVariation": 0.0
@@ -148,29 +148,26 @@
       },
       {
         "name": "GiniCoefficient",
-        "average": 0.5000449028601459,
-        "standardDeviation": 0.0,
-        "coefficientOfVariation": 0.0
+        "average": 0.0,
+        "standardDeviation": 0.0
       },
       {
         "name": "HerfindahlHirschmanIndex",
-        "average": 0.33333335484017973,
-        "standardDeviation": 0.0,
-        "coefficientOfVariation": 0.0
+        "average": 0.0,
+        "standardDeviation": 0.0
       },
       {
         "name": "Reliability",
-        "average": 9.311057834123019E-32,
+        "average": 4.536434961857558E-5,
         "unit": "%",
         "standardDeviation": 0.0,
         "coefficientOfVariation": 0.0
       },
       {
         "name": "ShannonEntropy",
-        "average": 1.836591668108979,
+        "average": 0.0,
         "unit": "bits",
-        "standardDeviation": 0.0,
-        "coefficientOfVariation": 0.0
+        "standardDeviation": 0.0
       },
       {
         "name": "StaleBlockRate",
@@ -180,10 +177,9 @@
       },
       {
         "name": "TransactionThroughput",
-        "average": 26.471795876899943,
+        "average": 0.0,
         "unit": "transactions/min",
-        "standardDeviation": 0.0,
-        "coefficientOfVariation": 0.0
+        "standardDeviation": 0.0
       }
     ]
   }
