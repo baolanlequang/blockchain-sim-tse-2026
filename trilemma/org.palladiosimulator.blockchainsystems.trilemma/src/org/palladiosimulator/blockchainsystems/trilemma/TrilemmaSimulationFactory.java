@@ -132,13 +132,15 @@ public class TrilemmaSimulationFactory implements Simulation {
         if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) {
             return new ConnectedSubgraphNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
-                    (ConnectedSubgraphsNetworkTopology) networkTopology);
+                    (ConnectedSubgraphsNetworkTopology) networkTopology,
+                    false);
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {
             return new ExplicitNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
-                    (ExplicitNetworkTopology) networkTopology);
+                    (ExplicitNetworkTopology) networkTopology,
+                    false);
         }
 
         throw new IllegalStateException(

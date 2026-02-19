@@ -31,7 +31,8 @@ import java.util.HashSet
  */
 abstract class ThreesimBlockchainSystemFactory(
   protected val designBlockchainSystem: DesignBlockchainSystem,
-  protected val networkTopology: NetworkTopology
+  protected val networkTopology: NetworkTopology,
+  protected val attackSimulation: Boolean
 ) {
   protected abstract fun createP2PNetworkFactory(): P2PNetworkFactory
 
@@ -137,7 +138,9 @@ abstract class ThreesimBlockchainSystemFactory(
       maxBlockSize = designBlockchainSystem.specification.maxBlockSize // in byte
     )
     val blockValidatorFactory = ThreesimBlockValidatorFactory(nodeAllocationResolver)
-    val behaviorFactory = ThreesimBlockchainSystemNodeBehaviorFactory(resourcePowerCalculator, designBlockchainSystem.specification.numberOfAttacker)
+
+    val numberOfAttacker = if (attackSimulation == true) designBlockchainSystem.specification.numberOfAttacker else 0
+    val behaviorFactory = ThreesimBlockchainSystemNodeBehaviorFactory(resourcePowerCalculator, numberOfAttacker)
     val tagProvider = ThreesimBlockchainSystemNodeTagProvider(behaviorFactory.maliciousNodesIdProvider)
 
     return BlockchainSystemNodeFactory(

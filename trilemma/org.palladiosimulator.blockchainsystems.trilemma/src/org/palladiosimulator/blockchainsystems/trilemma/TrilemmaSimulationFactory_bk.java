@@ -81,10 +81,10 @@ public class TrilemmaSimulationFactory_bk implements Simulation {
 		final var networkTopology = designBlockchainSystem.getNetwork().getTopology();
 		
 		if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) { 
-			var blockchainFactory = new ConnectedSubgraphNetworkBlockchainSystemFactory(designBlockchainSystem, (ConnectedSubgraphsNetworkTopology) networkTopology);
+			var blockchainFactory = new ConnectedSubgraphNetworkBlockchainSystemFactory(designBlockchainSystem, (ConnectedSubgraphsNetworkTopology) networkTopology, false);
 			return blockchainFactory;
 		} else if (networkTopology instanceof ExplicitNetworkTopology) { 
-			var blockchainFactory = new ExplicitNetworkBlockchainSystemFactory(designBlockchainSystem, (ExplicitNetworkTopology) networkTopology);
+			var blockchainFactory = new ExplicitNetworkBlockchainSystemFactory(designBlockchainSystem, (ExplicitNetworkTopology) networkTopology, false);
 			return blockchainFactory;
 		}
 		return null;

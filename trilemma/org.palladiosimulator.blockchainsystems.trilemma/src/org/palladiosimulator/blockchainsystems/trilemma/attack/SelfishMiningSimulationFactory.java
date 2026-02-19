@@ -57,10 +57,11 @@ public class SelfishMiningSimulationFactory {
 
     public void run() {
     	if (singleSimulation != null) {
-    		singleSimulation.run();
+    		var result = singleSimulation.run();
+    		System.out.println("Selfish mining attack Single simulation result: " + result);
     	} else if (montecarloSimulation != null) {
     		MonteCarloDoubleSpendingAttackSimulationResult result = montecarloSimulation.run();
-    		System.out.println("montecarloSimulation result: " + result);
+    		System.out.println("Selfish mining attack Montecarlo Simulation result: " + result);
     	}
     }
 
@@ -108,13 +109,15 @@ public class SelfishMiningSimulationFactory {
         if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) {
             return new ConnectedSubgraphNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
-                    (ConnectedSubgraphsNetworkTopology) networkTopology);
+                    (ConnectedSubgraphsNetworkTopology) networkTopology,
+                    true);
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {
             return new ExplicitNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
-                    (ExplicitNetworkTopology) networkTopology);
+                    (ExplicitNetworkTopology) networkTopology,
+                    true);
         }
 
         throw new IllegalStateException(

@@ -26,7 +26,7 @@ Make sure the following prerequisites are installed:
 1. Edit `configuration.json` to change the configuation of the simulator in `testmodels` folder
 2. Run:
 - `TrilemmaSimulator` as Java Application to run the **NORMAL** simulation.
-- `SelfishminingSimulator` as Java Application to run the **SEFISHMINING ATTACK** simulation.
+- `SelfishminingSimulator` as Java Application to run the **SELFISH MINING ATTACK** simulation.
 3. Depending the blockchain system file path is defined at `blockchainSystemModelFilePath`, the result will be written as the corresponding json file.
 
 
