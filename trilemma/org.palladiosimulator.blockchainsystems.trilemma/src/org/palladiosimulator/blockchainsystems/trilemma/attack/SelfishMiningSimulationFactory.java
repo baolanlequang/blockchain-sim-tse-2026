@@ -108,13 +108,15 @@ public class SelfishMiningSimulationFactory {
         if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) {
             return new ConnectedSubgraphNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
-                    (ConnectedSubgraphsNetworkTopology) networkTopology);
+                    (ConnectedSubgraphsNetworkTopology) networkTopology,
+                    true);
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {
             return new ExplicitNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
-                    (ExplicitNetworkTopology) networkTopology);
+                    (ExplicitNetworkTopology) networkTopology,
+                    true);
         }
 
         throw new IllegalStateException(
