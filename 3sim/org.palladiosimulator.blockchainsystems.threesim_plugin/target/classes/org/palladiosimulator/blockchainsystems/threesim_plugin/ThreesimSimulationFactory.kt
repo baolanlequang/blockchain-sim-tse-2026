@@ -94,14 +94,16 @@ class ThreesimSimulationFactory(
       is ExplicitNetworkTopology -> {
         ExplicitNetworkBlockchainSystemFactory(
           designBlockchainSystem,
-          networkTopology
+          networkTopology,
+          false
         )
       }
 
       is ConnectedSubgraphsNetworkTopology -> {
         ConnectedSubgraphNetworkBlockchainSystemFactory(
           designBlockchainSystem,
-          networkTopology
+          networkTopology,
+          false
         )
       }
 

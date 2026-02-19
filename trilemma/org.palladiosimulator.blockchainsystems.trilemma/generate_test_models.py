@@ -64,7 +64,8 @@ def modify_link_allocation(file_path, parameter_data):
   xml_tree = ET.parse(file_path)
   xml_root = xml_tree.getroot()
   for bandwidth in xml_root.iter('bandwidthSpecification'):
-    bandwidth.attrib['HeterogeneityTarget'] = str(parameter_data['bandwidth_heterogeneity'])
+    bandwidth.attrib['HeterogeneityNodeTarget'] = str(parameter_data['Hnode'])
+    bandwidth.attrib['HeterogeneityLinkTarget'] = str(parameter_data['Hlink'])
   xml_tree.write(file_path)
   
 def modify_blockchain_system(file_path, parameter_data):
@@ -77,6 +78,7 @@ def modify_blockchain_system(file_path, parameter_data):
     specification.attrib['MeanBlockTime'] = str(block_interval_ms)
     specification.attrib['MaxBlockSize'] = str(max_block_size_byte)
     specification.attrib['HashRateConcentration'] = str(parameter_data['hashrate_concentration'])
+    specification.attrib['NumberOfAttacker'] = str(int(parameter_data['number_of_attackers']))
   xml_tree.write(file_path)
   
 def modify_node_allocation(file_path, parameter_data):
@@ -90,11 +92,11 @@ def modify_node_allocation(file_path, parameter_data):
   # hashrate = parameter_data['hashing_power']
   validator_count = int(parameter_data['validator_count'])
   
-  crashed_validators = int(parameter_data['fraction_of_validators'])
+  # crashed_validators = int(parameter_data['fraction_of_validators'])
   
   # #test
   # validator_count = 4
-  # crashed_validators = 2
+  crashed_validators = 0
   
   
   # print(crashed_validators)
