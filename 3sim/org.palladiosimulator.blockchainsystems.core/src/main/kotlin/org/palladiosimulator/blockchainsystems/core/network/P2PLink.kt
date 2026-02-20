@@ -77,7 +77,7 @@ class P2PLink(
 
   private fun handleMessageSentEvent(event: MessageSentEvent) {
     val bps = throughputValueProvider.getValue() // in bits per second
-    val bandwidth = bandwidthValueProvider.getValue() // in Mega bits per second
+    val bandwidth = if (bandwidthValueProvider.getValue().isNaN()) 0.0 else bandwidthValueProvider.getValue()// in Mega bits per second
 
     val event = if (bps <= 0 || bandwidth <= 0) {
       // Link failed, raise message dropped event
