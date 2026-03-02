@@ -1,5 +1,11 @@
 package org.palladiosimulator.blockchainsystems.trilemma.attack;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.apache.log4j.Logger;
@@ -58,27 +64,41 @@ public class BlockchainTrilemmaAttackStandalone {
         var simulationFactory =
                 new SelfishMiningSimulationFactory(simulationParameters, configuration);
 
-        simulationFactory.run();
+        String simulationJson = simulationFactory.run();
 
-//        var serializer =
-//                new ThreesimSimulationResultSerializer(
-//                        ThreesimSerializers.INSTANCE.getJson());
-//
-//        String simulationJson = serializer.serialize(result);
-//
-//        Map<String, Object> finalResult = new LinkedHashMap<>();
-//        finalResult.put("runId", runId);
-//        finalResult.put("config_id", configuration.get("config_id"));
-//        finalResult.put("inputParameters", configuration);
-//        finalResult.put("simulationResult",
-//                com.google.gson.JsonParser.parseString(simulationJson));
-//
-//        String jsonResult = new com.google.gson.GsonBuilder()
-//                .setPrettyPrinting()
-//                .create()
-//                .toJson(finalResult);
+        Map<String, Object> finalResult = new LinkedHashMap<>();
+        finalResult.put("runId", runId);
+        finalResult.put("config_id", configuration.get("config_id"));
+        finalResult.put("inputParameters", configuration);
+        finalResult.put("simulationResult",
+                com.google.gson.JsonParser.parseString(simulationJson));
 
+        String jsonResult = new com.google.gson.GsonBuilder()
+                .setPrettyPrinting()
+                .create()
+                .toJson(finalResult);
         
+        try {
+            Path outputFile = createOutputPath(runId);
+            Files.createDirectories(outputFile.getParent());
+
+            try (BufferedWriter writer =
+                         Files.newBufferedWriter(outputFile)) {
+                writer.write(jsonResult);
+            }
+
+            System.out.println("✔ Result saved: "
+                    + outputFile.toAbsolutePath());
+
+        } catch (IOException e) {
+            logger.error("Failed to write simulation result", e);
+        }
+        
+    }
+    
+    private Path createOutputPath(int runId) {
+        return Paths.get("result_selfishmining")
+                .resolve("result_run_" + runId + ".json");
     }
     
     private SimulationParameters getSimulationParametersFromConfiguration(

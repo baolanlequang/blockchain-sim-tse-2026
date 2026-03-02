@@ -1,5 +1,7 @@
 package org.palladiosimulator.blockchainsystems.trilemma.attack;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 
 import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystem;
@@ -16,6 +18,8 @@ import org.palladiosimulator.blockchainsystems.threesim.creation.network.connect
 import org.palladiosimulator.blockchainsystems.threesim.creation.network.explicit.ExplicitNetworkBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSimulationParameters;
 import org.palladiosimulator.blockchainsystems.trilemma.BlockchainSystemModelLoader;
+
+import com.google.gson.Gson;
 
 public class SelfishMiningSimulationFactory {
 
@@ -55,15 +59,23 @@ public class SelfishMiningSimulationFactory {
         }
     }
 
-    public void run() {
+    public String run() {
+    	Gson gson = new Gson();
     	if (singleSimulation != null) {
     		var result = singleSimulation.run();
     		System.out.println("Selfish mining attack Single simulation result: " + result);
+    		String jsonStr = gson.toJson(result);
+    		return jsonStr;
     	} else if (montecarloSimulation != null) {
     		MonteCarloDoubleSpendingAttackSimulationResult result = montecarloSimulation.run();
-    		System.out.println("Selfish mining attack Montecarlo Simulation result: " + result);
+    		
+    		String jsonStr = gson.toJson(result);    		
+    		System.out.println("Selfish mining attack Montecarlo Simulation result: " + jsonStr);
+    		return jsonStr;
     	}
+    	return null;
     }
+    
 
     private ThreesimSimulationParameters getThreesimSimulationParametersFromConfiguration(
             Map<String, String> configuration) {
