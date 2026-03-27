@@ -7,7 +7,7 @@ from scipy.stats import qmc
 # -----------------------------
 
 SEED = 42
-N_SAMPLES = 50
+N_SAMPLES = 90
 
 # -----------------------------
 # 2. Parameter ranges (Table 1)
