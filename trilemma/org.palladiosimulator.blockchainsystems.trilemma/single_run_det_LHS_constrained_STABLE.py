@@ -14,10 +14,10 @@ N_SAMPLES = 180
 # -----------------------------
 
 param_ranges = {
-    "Hnode": (0.0, 1.5),                    # dimensionless
-    "Hlink": (0.3, 10.0),                   # Dirichlet alpha
+    "Hnode": (0.1, 10.0),                   # dimensionless
+    "Hlink": (0.1, 10.0),                   # Dirichlet alpha
     "block_creation_interval": (60, 1200),  # seconds, integer
-    "hashrate_concentration": (0.10, 1.5),  # normalized HHI*
+    "hashrate_concentration": (0.0, 1.0),  # normalized HHI*
     "max_block_size": (0.25, 8.0),          # MB, integer
     "inbound_connections": (1, 250),        # integer
     "outbound_connections": (1, 16),        # integer
