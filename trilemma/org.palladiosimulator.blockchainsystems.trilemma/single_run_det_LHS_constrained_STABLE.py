@@ -22,7 +22,7 @@ param_ranges = {
     "inbound_connections": (1, 250),        # integer
     "outbound_connections": (1, 16),        # integer
     "attacker_fraction": (0.0, 0.25),       # fraction of validators, float
-    "validator_count": (50, 5000),          # integer
+    "validator_count": (20, 5000),          # integer
 }
 
 param_names = list(param_ranges.keys())
