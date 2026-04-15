@@ -123,6 +123,8 @@ public class BlockchainTrilemmaStandalone {
                     .registerProjectURI(
                             this.modelProjectActivator,
                             this.modelProjectName)
+                    .registerProjectURI(org.glassfish.hk2.osgiresourcelocator.Activator.class,
+                            "org.glassfish.hk2.osgi-resource-locator")
                     .build()
                     .init();
 
@@ -130,6 +132,8 @@ public class BlockchainTrilemmaStandalone {
             return true;
 
         } catch (StandaloneInitializationException e) {
+        	e.printStackTrace();
+        	System.out.println("test");
             logger.error("Unable to initialize standalone environment.", e);
             return false;
         }
