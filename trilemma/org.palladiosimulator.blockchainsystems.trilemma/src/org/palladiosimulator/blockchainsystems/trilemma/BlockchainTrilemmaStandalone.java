@@ -63,6 +63,12 @@ public class BlockchainTrilemmaStandalone {
  */
 
     public void runSimulation(Map<String, String> configuration, int runId) {
+    	
+    	var startTime = System.nanoTime();
+    	
+    	Runtime runtime = Runtime.getRuntime();
+    	runtime.gc();
+    	long before = runtime.totalMemory() - runtime.freeMemory();
 
         var simulationParameters =
                 getSimulationParametersFromConfiguration(configuration);
@@ -77,6 +83,11 @@ public class BlockchainTrilemmaStandalone {
                         ThreesimSerializers.INSTANCE.getJson());
 
         String simulationJson = serializer.serialize(result);
+        
+        var stopTime = System.nanoTime();
+        
+        long after = runtime.totalMemory() - runtime.freeMemory();
+        var memoryUsed = (after - before) / (1024 * 1024);
 
         Map<String, Object> finalResult = new LinkedHashMap<>();
         finalResult.put("runId", runId);
@@ -84,6 +95,10 @@ public class BlockchainTrilemmaStandalone {
         finalResult.put("inputParameters", configuration);
         finalResult.put("simulationResult",
                 com.google.gson.JsonParser.parseString(simulationJson));
+        finalResult.put("startSimulationTime", startTime);
+        finalResult.put("stopSimulationTime", stopTime);
+        finalResult.put("simulationTime", stopTime - startTime);
+        finalResult.put("memoryUsed", memoryUsed); // in MB
 
         String jsonResult = new com.google.gson.GsonBuilder()
                 .setPrettyPrinting()
@@ -123,6 +138,8 @@ public class BlockchainTrilemmaStandalone {
                     .registerProjectURI(
                             this.modelProjectActivator,
                             this.modelProjectName)
+                    .registerProjectURI(org.glassfish.hk2.osgiresourcelocator.Activator.class,
+                            "org.glassfish.hk2.osgi-resource-locator")
                     .build()
                     .init();
 
@@ -130,6 +147,8 @@ public class BlockchainTrilemmaStandalone {
             return true;
 
         } catch (StandaloneInitializationException e) {
+        	e.printStackTrace();
+        	System.out.println("test");
             logger.error("Unable to initialize standalone environment.", e);
             return false;
         }

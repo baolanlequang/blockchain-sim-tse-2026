@@ -33,6 +33,9 @@ class MiningProcessImpl(
 
       val blockMinedEvent = event as BlockMinedEvent
 
+      if (blockMinedEvent.previousBlockHash == null) {
+        return
+      }
       val block = onCreatingBlockCallback?.invoke(
         blockMinedEvent.occurrenceTime,
         blockMinedEvent.previousBlockHash

@@ -57,6 +57,12 @@ public class BlockchainTrilemmaAttackStandalone {
     }
     
     public void runSimulation(Map<String, String> configuration, int runId) {
+    	
+    	var startTime = System.nanoTime();
+    	
+    	Runtime runtime = Runtime.getRuntime();
+    	runtime.gc();
+    	long before = runtime.totalMemory() - runtime.freeMemory();
 
         var simulationParameters =
                 getSimulationParametersFromConfiguration(configuration);
@@ -65,6 +71,11 @@ public class BlockchainTrilemmaAttackStandalone {
                 new SelfishMiningSimulationFactory(simulationParameters, configuration);
 
         String simulationJson = simulationFactory.run();
+        
+        var stopTime = System.nanoTime();
+        
+        long after = runtime.totalMemory() - runtime.freeMemory();
+        var memoryUsed = (after - before) / (1024 * 1024);
 
         Map<String, Object> finalResult = new LinkedHashMap<>();
         finalResult.put("runId", runId);
@@ -72,6 +83,10 @@ public class BlockchainTrilemmaAttackStandalone {
         finalResult.put("inputParameters", configuration);
         finalResult.put("simulationResult",
                 com.google.gson.JsonParser.parseString(simulationJson));
+        finalResult.put("startSimulationTime", startTime);
+        finalResult.put("stopSimulationTime", stopTime);
+        finalResult.put("simulationTime", stopTime - startTime);
+        finalResult.put("memoryUsed", memoryUsed); // in MB
 
         String jsonResult = new com.google.gson.GsonBuilder()
                 .setPrettyPrinting()
