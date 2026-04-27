@@ -4,11 +4,13 @@ import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.BlockType
 import org.palladiosimulator.blockchainsystems.core.blockchain.BlockAppendedTraceEvent
 import org.palladiosimulator.blockchainsystems.core.blockchain.BlockTypeChangedTraceEvent
+import org.palladiosimulator.blockchainsystems.core.clock.SimulationClock
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEvent
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEventLogOrigin
 import org.palladiosimulator.blockchainsystems.core.geography.GeographicalRegions
 import org.palladiosimulator.blockchainsystems.core.mining.BlockMinedTraceEvent
 import org.palladiosimulator.blockchainsystems.core.monitoring.abstractions.SimulationMonitor
+import org.palladiosimulator.blockchainsystems.core.simulation.termination.InActivityThresholdCondition
 import org.palladiosimulator.blockchainsystems.core.simulation.termination.LongestChainExceededMaxLengthCondition
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNode
@@ -29,7 +31,8 @@ import org.palladiosimulator.blockchainsystems.threesim.utils.BlocksMap
  */
 class ThreesimSimulationMonitor(
   private val maxBlockchainLengthCondition: LongestChainExceededMaxLengthCondition,
-  private val failureThroughputThreshold: Double
+  private val failureThroughputThreshold: Double,
+  private val inactivityThresholdCondition: InActivityThresholdCondition
 ) : SimulationMonitor {
 
   private lateinit var nodes: MutableSet<BlockchainSystemNode>
@@ -69,6 +72,7 @@ class ThreesimSimulationMonitor(
     confirmedBlocks = BlocksMap(majorityThreshold)
     staleBlocks = BlocksMap(majorityThreshold)
     forkedBlocks = BlocksMap(majorityThreshold)
+
   }
 
   fun getFinalState(
@@ -117,6 +121,9 @@ class ThreesimSimulationMonitor(
     event: TraceEvent,
     logOrigin: TraceEventLogOrigin
   ) {
+    // reset monitor prolonged inactivity
+    inactivityThresholdCondition.restartLoggedSimulationClock()
+
     when (event.eventType) {
 
       BlockMinedTraceEvent.EVENT_TYPE -> {
@@ -164,7 +171,11 @@ class ThreesimSimulationMonitor(
   }
 
   override fun shouldTerminate(): Boolean {
-    return maxBlockchainLengthCondition.hasLengthExceeded()
+    return maxBlockchainLengthCondition.hasLengthExceeded() || inactivityThresholdCondition.hasProlongedInactivityExceeded()
+  }
+
+  fun setSimulationClock(simulationClock: SimulationClock) {
+    this.inactivityThresholdCondition.simulationClock = simulationClock
   }
 
   private fun monitorThroughputForNewlyConfirmedBlock(confirmedBlock: Block, occurrenceTime: Long) {
