@@ -124,6 +124,9 @@ public class MiningForkedBlocksPhase implements DoubleSpendingAttackPhase {
 		
 		String attackOriginBlockHash = _attackBlockStorage.getHashOfFirstMinedAttackOriginBlock();
 		Block attackOriginBlock = context.getBlockchain().getBlock(attackOriginBlockHash);
+		if (attackOriginBlock == null) {
+			return false;
+		}
 		long attackOriginBlockPosition = context.getBlockchain().getPositionOfBlock(attackOriginBlock);
 		 
 		 if (context.getBlockchain().getLength() < attackOriginBlockPosition + MINIMUM_NUMBER_OF_BLOCKS_TO_OVERRIDE + 1) {

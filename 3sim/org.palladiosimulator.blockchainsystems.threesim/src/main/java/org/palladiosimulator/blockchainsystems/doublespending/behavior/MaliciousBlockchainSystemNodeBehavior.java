@@ -19,20 +19,26 @@ public class MaliciousBlockchainSystemNodeBehavior extends BlockchainNodeObject 
 	
 	@Override
 	public void onBlockReceived(Block block, BlockchainSystemNodeContext context) {
-		_currentAttackPhase.onBlockReceived(block, context);	
-		goToNextPhase(context);
+		if (block != null) {
+			_currentAttackPhase.onBlockReceived(block, context);
+			goToNextPhase(context);
+		}
 	}
 
 	@Override
 	public void onBlockValidated(Block block, boolean isValid, BlockchainSystemNodeContext context) {
-		_currentAttackPhase.onBlockValidated(block, isValid, context);
-		goToNextPhase(context);
+		if (block != null) {
+			_currentAttackPhase.onBlockValidated(block, isValid, context);
+			goToNextPhase(context);
+		}
 	}
 	
 	@Override
 	public void onBlockMined(Block block, BlockchainSystemNodeContext context) {
-		_currentAttackPhase.onBlockMined(block, context);
-		goToNextPhase(context);
+		if (block != null) {
+			_currentAttackPhase.onBlockMined(block, context);
+			goToNextPhase(context);
+		}
 	}
 
 	@Override
