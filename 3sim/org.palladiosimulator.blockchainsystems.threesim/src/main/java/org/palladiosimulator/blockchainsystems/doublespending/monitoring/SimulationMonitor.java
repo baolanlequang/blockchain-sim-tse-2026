@@ -7,10 +7,12 @@ import java.util.stream.Collectors;
 
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block;
 import org.palladiosimulator.blockchainsystems.core.blockchain.BlockAppendedTraceEvent;
+import org.palladiosimulator.blockchainsystems.core.clock.SimulationClock;
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEvent;
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEventLogOrigin;
 import org.palladiosimulator.blockchainsystems.core.eventcoordination.TerminationCondition;
 import org.palladiosimulator.blockchainsystems.core.mining.BlockMinedTraceEvent;
+import org.palladiosimulator.blockchainsystems.core.simulation.termination.InActivityThresholdCondition;
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNode;
 import org.palladiosimulator.blockchainsystems.core.tracing.TraceEventSubscriber;
 import org.palladiosimulator.blockchainsystems.doublespending.behavior.AttackerUtils;
@@ -30,9 +32,11 @@ public class SimulationMonitor implements TraceEventSubscriber, TerminationCondi
 	private final HashSet<Block> _forkedBlocks;
 	
 	private final LongestChainExceededMaxLengthCondition _maxBlockchainLengthCondition;
+	private final InActivityThresholdCondition _inactivityThresholdCondition;
 	
-	public SimulationMonitor(LongestChainExceededMaxLengthCondition maxBlockchainLengthCondition) {
+	public SimulationMonitor(LongestChainExceededMaxLengthCondition maxBlockchainLengthCondition, InActivityThresholdCondition inactivityThresholdCondition) {
 		_maxBlockchainLengthCondition = maxBlockchainLengthCondition;
+		_inactivityThresholdCondition = inactivityThresholdCondition;
 		
 		_honestNodeTerminationStates = new HashMap<String, HonestNodeTerminationState>();
 		_maliciousNodeTerminationStates = new HashMap<String, MaliciousNodeTerminationState>();
@@ -90,7 +94,11 @@ public class SimulationMonitor implements TraceEventSubscriber, TerminationCondi
 			}
 		}
 
-		return _maxBlockchainLengthCondition.hasLengthExceeded();
+		return _maxBlockchainLengthCondition.hasLengthExceeded() || _inactivityThresholdCondition.hasProlongedInactivityExceeded();
+	}
+
+	public void setSimulationClock(SimulationClock simulationClock) {
+		_inactivityThresholdCondition.setSimulationClock(simulationClock);
 	}
 	
 	public Set<SimulationWinnerVoter> getWinnerVoters() {
