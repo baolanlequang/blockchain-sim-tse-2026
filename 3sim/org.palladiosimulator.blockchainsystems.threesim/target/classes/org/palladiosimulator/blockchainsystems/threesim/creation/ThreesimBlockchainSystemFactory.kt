@@ -1,5 +1,6 @@
 package org.palladiosimulator.blockchainsystems.threesim.creation
 
+import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification
 import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystem as DesignBlockchainSystem
 import org.palladiosimulator.blockchainsystems.core.blockchain.BlockchainFactoryImpl
 import org.palladiosimulator.blockchainsystems.core.propagation.block.BlockPropagationStrategyFactoryImpl
@@ -162,5 +163,9 @@ abstract class ThreesimBlockchainSystemFactory(
 
   private fun createBlockFactory(): BlockFactoryImpl {
     return BlockFactoryImpl()
+  }
+
+  fun getBlockchainSystemSpecification(): BlockchainSystemSpecification {
+    return designBlockchainSystem.specification
   }
 }

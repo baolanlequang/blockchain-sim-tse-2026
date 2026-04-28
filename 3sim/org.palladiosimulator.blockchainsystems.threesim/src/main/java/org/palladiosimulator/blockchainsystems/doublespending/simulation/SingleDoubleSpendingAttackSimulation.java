@@ -30,7 +30,8 @@ public class SingleDoubleSpendingAttackSimulation {
 		DoubleSpendingAttackSimulationRound simulationRound = new DoubleSpendingAttackSimulationRound(
 				blockchainSystem,
 				_logOutputProvider.getLogOutputs(),
-				_maximumBlockchainLength);
+				_maximumBlockchainLength,
+				_blockchainSystemFactory.getBlockchainSystemSpecification().getMeanBlockTime());
 		
 		//Run simulation
 		SimulationRoundResult roundResult = simulationRound.run();

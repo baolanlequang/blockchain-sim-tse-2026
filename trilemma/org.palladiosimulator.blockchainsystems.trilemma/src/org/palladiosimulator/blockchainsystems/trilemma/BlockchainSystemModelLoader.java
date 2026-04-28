@@ -78,14 +78,6 @@ public class BlockchainSystemModelLoader {
         	resourceSet = new ResourceSetImpl();
         	BlockchainsystemPackage.eINSTANCE.eClass();
         	
-//        	resourceSet.getURIConverter().getURIMap().put(createRelativePluginURI(folderName, fileName), createRelativePluginURI(folderName, fileName));
-// 	        resourceSet.getURIConverter().getURIMap().put(createRelativePluginURI(folderName, baseName + ".p2pnetwork"), createRelativePluginURI(folderName, baseName + ".p2pnetwork"));
-// 	        resourceSet.getURIConverter().getURIMap().put(createRelativePluginURI(folderName, baseName + ".nodeallocation"), createRelativePluginURI(folderName, baseName + ".nodeallocation"));
-// 	        resourceSet.getURIConverter().getURIMap().put(createRelativePluginURI(folderName, baseName + ".bscmrepository"), createRelativePluginURI(folderName, baseName + ".bscmrepository"));
-// 	        resourceSet.getURIConverter().getURIMap().put(createRelativePluginURI(folderName, baseName + ".geographicalregions"), createRelativePluginURI(folderName, baseName + ".geographicalregions"));
-// 	        resourceSet.getURIConverter().getURIMap().put(createRelativePluginURI(folderName, baseName + ".linkallocation"), createRelativePluginURI(folderName, baseName + ".linkallocation"));
-// 	        resourceSet.getURIConverter().getURIMap().put(createRelativePluginURI(folderName, baseName + ".transactions"), createRelativePluginURI(folderName, baseName + ".transactions"));
-        	
         	resourceSet.getResource(createRelativePluginURI(folderName, fileName), true);
             resourceSet.getResource(createRelativePluginURI(folderName, baseName + ".p2pnetwork"), true);
             resourceSet.getResource(createRelativePluginURI(folderName, baseName + ".nodeallocation"), true);
