@@ -63,7 +63,8 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 		DoubleSpendingAttackSimulationRound simulationRound = new DoubleSpendingAttackSimulationRound(
 				blockchainSystem,
 				_logOutputProvider.getLogOutputs(),
-				_maximumBlockchainLength);
+				_maximumBlockchainLength,
+				_blockchainSystemFactory.getBlockchainSystemSpecification().getMeanBlockTime());
 		
 		//Run simulation
 		SimulationRoundResult result = simulationRound.run();

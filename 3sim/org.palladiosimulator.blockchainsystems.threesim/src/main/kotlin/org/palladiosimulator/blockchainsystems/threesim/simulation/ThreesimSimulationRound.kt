@@ -1,6 +1,8 @@
 package org.palladiosimulator.blockchainsystems.threesim.simulation
 
+import org.palladiosimulator.blockchainsystems.core.clock.SimulationClock
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationRound
+import org.palladiosimulator.blockchainsystems.core.simulation.termination.InActivityThresholdCondition
 import org.palladiosimulator.blockchainsystems.core.simulation.termination.LongestChainExceededMaxLengthCondition
 import org.palladiosimulator.blockchainsystems.core.tracing.TraceEventLogOutput
 import org.palladiosimulator.blockchainsystems.threesim.creation.ThreesimBlockchainSystemFactory
@@ -25,11 +27,20 @@ class ThreesimSimulationRound(
     LongestChainExceededMaxLengthCondition(
       maxAllowedBlockchainLength
     ),
-    threesimSimulationParameters.failureThroughputThreshold
+    threesimSimulationParameters.failureThroughputThreshold,
+    InActivityThresholdCondition(
+      blockchainSystemFactory.getBlockchainSystemSpecification().meanBlockTime
+    )
   )
 ) {
 
+  init {
+    monitor.setSimulationClock(this.clock)
+  }
+
   override fun createSimulationRoundResult(finalSystemTime: Long): ThreesimSimulationRoundResult {
+
+
     return ThreesimSimulationRoundResultFactory(
       threesimSimulationParameters,
       monitor,
