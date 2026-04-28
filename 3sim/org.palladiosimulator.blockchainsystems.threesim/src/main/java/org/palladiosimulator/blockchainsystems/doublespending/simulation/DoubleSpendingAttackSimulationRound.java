@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 import org.palladiosimulator.blockchainsystems.core.clock.SimulationClock;
 import org.palladiosimulator.blockchainsystems.core.common.SimulationContextImpl;
 import org.palladiosimulator.blockchainsystems.core.eventcoordination.EventCoordinatorImpl;
+import org.palladiosimulator.blockchainsystems.core.simulation.termination.InActivityThresholdCondition;
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem;
 import org.palladiosimulator.blockchainsystems.core.tracing.TraceEventLogOutput;
 import org.palladiosimulator.blockchainsystems.core.tracing.TraceEventLoggerContainerImpl;
@@ -29,9 +30,12 @@ public class DoubleSpendingAttackSimulationRound {
 	public DoubleSpendingAttackSimulationRound(
 			BlockchainSystem blockchainSystem,
 			Set<TraceEventLogOutput> logOutputs,
-			long maxBlockchainLength) {
+			long maxBlockchainLength,
+			double meanBlockTime) {
 		_clock = new SimulationClock();
-		_monitor = new SimulationMonitor(new LongestChainExceededMaxLengthCondition(maxBlockchainLength));
+		InActivityThresholdCondition inActivityThresholdCondition = new InActivityThresholdCondition(meanBlockTime);
+		inActivityThresholdCondition.setSimulationClock(_clock);
+		_monitor = new SimulationMonitor(new LongestChainExceededMaxLengthCondition(maxBlockchainLength), inActivityThresholdCondition);
 		_eventCoordinator = new EventCoordinatorImpl(_clock, _monitor);
 		_traceEventLoggerContainer = new TraceEventLoggerContainerImpl();
 		
