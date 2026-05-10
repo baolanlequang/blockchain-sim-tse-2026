@@ -5,6 +5,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block;
+import org.palladiosimulator.blockchainsystems.core.common.BlockchainNodeObject;
+import org.palladiosimulator.blockchainsystems.core.common.abstractions.Event;
+import org.palladiosimulator.blockchainsystems.core.common.abstractions.SimulationContext;
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider;
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeContext;
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetworkEndpoint;
 
@@ -19,10 +23,12 @@ public class AttackerUtils {
 	
 	private AttackerUtils() { } // No instance of this class should be created
 
+	public static SimulationContext simulationContext;
+
 	public static void distributeBlockToMaliciousNodes(
 			Block block, 
 			BlockchainSystemNodeContext context,
-			MaliciousNodesIdProvider maliciousNodesIdProvider) {
+			BlockchainMaliciousNodesIdProvider maliciousNodesIdProvider) {
 		Set<String> maliciousMinerIds = maliciousNodesIdProvider.getMaliciousNodeIds();
 		
 		Set<P2PNetworkEndpoint> maliciousNeighborEndpoints = context
@@ -32,13 +38,17 @@ public class AttackerUtils {
 				.filter(x -> maliciousMinerIds.contains(x.getEndpointId())) // Filter honest neighbors
 				.collect(Collectors.toSet());
 
+		MaliciousEventHandler handler = new MaliciousEventHandler(context.getResourcePower(), maliciousNeighborEndpoints);
+		handler.initialize(simulationContext);
+		handler.logEvent();
+
 		context.getBlockPropagationStrategy().distribute(block, maliciousNeighborEndpoints);
 	}
 	
 	public static void distributeBlockToHonestNodes(
 			Block block,
 			BlockchainSystemNodeContext context,
-			MaliciousNodesIdProvider maliciousNodesIdProvider) {
+			BlockchainMaliciousNodesIdProvider maliciousNodesIdProvider) {
 		Set<String> maliciousMinerIds = maliciousNodesIdProvider.getMaliciousNodeIds();
 		
 		Set<P2PNetworkEndpoint> maliciousNeighborEndpoints = context

@@ -28,12 +28,13 @@ public class SelfishMiningSimulationFactory {
 
     public SelfishMiningSimulationFactory(
             SimulationParameters simulationParameters,
-            Map<String, String> configuration) {
+            Map<String, String> configuration,
+            int runId) {
 
     	ThreesimBlockchainSystemFactory blockchainSystemFactory =
                 createBlockchainSystemFactory(simulationParameters, configuration);
 
-        LogOutputAttackProviderImpl logOutputProvider = new LogOutputAttackProviderImpl(false, false, "", false, "", 0, "", "","");
+        LogOutputAttackProviderImpl logOutputProvider = new LogOutputAttackProviderImpl(true, false, "", false, "", 0, "", "","", runId);
 
         if (simulationParameters instanceof MonteCarloSimulationParameters parameter) {
 

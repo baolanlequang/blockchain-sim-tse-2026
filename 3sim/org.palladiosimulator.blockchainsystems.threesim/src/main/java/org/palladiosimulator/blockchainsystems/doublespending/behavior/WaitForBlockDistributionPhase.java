@@ -3,15 +3,16 @@ package org.palladiosimulator.blockchainsystems.doublespending.behavior;
 import java.util.HashMap;
 
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block;
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider;
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeContext;
 import org.palladiosimulator.blockchainsystems.core.behavior.BehaviorUtils;
 
 public class WaitForBlockDistributionPhase implements DoubleSpendingAttackPhase {
 
-	private final MaliciousNodesIdProvider _maliciousNodesIdProvider;
+	private final BlockchainMaliciousNodesIdProvider _maliciousNodesIdProvider;
 	private final DSAttackBlockStorage _attackBlockStorage;
 	
-	public WaitForBlockDistributionPhase(DSAttackBlockStorage attackBlockStorage, MaliciousNodesIdProvider maliciousNodesIdProvider) {
+	public WaitForBlockDistributionPhase(DSAttackBlockStorage attackBlockStorage, BlockchainMaliciousNodesIdProvider maliciousNodesIdProvider) {
 		_attackBlockStorage = attackBlockStorage;
 		_maliciousNodesIdProvider = maliciousNodesIdProvider;
 	}

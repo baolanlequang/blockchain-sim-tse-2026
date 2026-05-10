@@ -4,15 +4,16 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block;
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider;
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeContext;
 
 public class MineBlockToOverwritePhase implements DoubleSpendingAttackPhase {
 
-	private final MaliciousNodesIdProvider _maliciousNodesIdProvider;
+	private final BlockchainMaliciousNodesIdProvider _maliciousNodesIdProvider;
 	private final DSAttackBlockStorage _attackBlockStorage;
 	private DoubleSpendingAttackPhase _nextPhase;
 	
-	public MineBlockToOverwritePhase(DSAttackBlockStorage attackBlockStorage, MaliciousNodesIdProvider maliciousNodesIdProvider) {
+	public MineBlockToOverwritePhase(DSAttackBlockStorage attackBlockStorage, BlockchainMaliciousNodesIdProvider maliciousNodesIdProvider) {
 		_maliciousNodesIdProvider = maliciousNodesIdProvider;
 		_attackBlockStorage = attackBlockStorage;
 		_nextPhase = this;
