@@ -1,10 +1,11 @@
 package org.palladiosimulator.blockchainsystems.threesim.behavior
 
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeTagProvider
 import org.palladiosimulator.blockchainsystems.doublespending.behavior.MaliciousNodesIdProvider
 
 class ThreesimBlockchainSystemNodeTagProvider(
-  private val maliciousNodesIdProvider: MaliciousNodesIdProvider
+  private val maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider
 ) : BlockchainSystemNodeTagProvider {
 
   override fun getTags(nodeId: String): Set<String> {

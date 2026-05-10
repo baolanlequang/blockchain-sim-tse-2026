@@ -68,7 +68,7 @@ public class BlockchainTrilemmaAttackStandalone {
                 getSimulationParametersFromConfiguration(configuration);
 
         var simulationFactory =
-                new SelfishMiningSimulationFactory(simulationParameters, configuration);
+                new SelfishMiningSimulationFactory(simulationParameters, configuration, runId);
 
         String simulationJson = simulationFactory.run();
         

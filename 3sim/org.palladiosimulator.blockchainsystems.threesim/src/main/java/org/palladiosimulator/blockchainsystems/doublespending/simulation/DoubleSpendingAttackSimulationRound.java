@@ -10,6 +10,7 @@ import org.palladiosimulator.blockchainsystems.core.simulation.termination.InAct
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem;
 import org.palladiosimulator.blockchainsystems.core.tracing.TraceEventLogOutput;
 import org.palladiosimulator.blockchainsystems.core.tracing.TraceEventLoggerContainerImpl;
+import org.palladiosimulator.blockchainsystems.doublespending.behavior.AttackerUtils;
 import org.palladiosimulator.blockchainsystems.doublespending.monitoring.SimulationMonitor;
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.termination.LongestChainExceededMaxLengthCondition;
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.termination.SimulationWinnerVoter;
@@ -43,6 +44,8 @@ public class DoubleSpendingAttackSimulationRound {
 				_eventCoordinator,
 				_clock,
 				_traceEventLoggerContainer);
+
+		AttackerUtils.simulationContext = _context;
 		
 		_logOutputs = logOutputs;
 		_blockchainSystem = blockchainSystem;

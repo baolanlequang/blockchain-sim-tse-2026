@@ -23,6 +23,9 @@ import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransac
 import org.palladiosimulator.blockchainsystems.threesim.creation.abstractions.NodeAllocationResolver
 import java.util.UUID
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.NetworkTopology
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider
+import org.palladiosimulator.blockchainsystems.doublespending.behavior.MaliciousNodesIdProvider
+import org.palladiosimulator.blockchainsystems.doublespending.behavior.MaliciousNodesIdProviderImpl
 import java.util.HashSet
 
 /**
@@ -141,8 +144,10 @@ abstract class ThreesimBlockchainSystemFactory(
     val blockValidatorFactory = ThreesimBlockValidatorFactory(nodeAllocationResolver)
 
     val numberOfAttacker = if (attackSimulation == true) designBlockchainSystem.specification.numberOfAttacker else 0
+    val maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider = MaliciousNodesIdProviderImpl(mutableSetOf(), numberOfAttacker)
     val behaviorFactory = ThreesimBlockchainSystemNodeBehaviorFactory(resourcePowerCalculator, numberOfAttacker)
-    val tagProvider = ThreesimBlockchainSystemNodeTagProvider(behaviorFactory.maliciousNodesIdProvider)
+//    val tagProvider = ThreesimBlockchainSystemNodeTagProvider(behaviorFactory.maliciousNodesIdProvider)
+    val tagProvider = ThreesimBlockchainSystemNodeTagProvider(maliciousNodesIdProvider)
 
     return BlockchainSystemNodeFactory(
       blockFactory,
@@ -157,7 +162,8 @@ abstract class ThreesimBlockchainSystemFactory(
       behaviorFactory,
       geographicalRegionsResolver,
       resourcePowerCalculator,
-      tagProvider
+      tagProvider,
+      maliciousNodesIdProvider
     )
   }
 

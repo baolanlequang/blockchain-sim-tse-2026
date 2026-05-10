@@ -7,11 +7,12 @@ import java.util.stream.Collectors;
 
 import org.palladiosimulator.blockchainsystems.core.behavior.BehaviorUtils;
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block;
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider;
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeContext;
 
 public class MiningForkedBlocksPhase implements DoubleSpendingAttackPhase {
 
-	private final MaliciousNodesIdProvider _maliciousNodesIdProvider;
+	private final BlockchainMaliciousNodesIdProvider _maliciousNodesIdProvider;
 	private final DSAttackBlockStorage _attackBlockStorage;
 	private DoubleSpendingAttackPhase _nextPhase;
 	
@@ -20,7 +21,7 @@ public class MiningForkedBlocksPhase implements DoubleSpendingAttackPhase {
 	private int _numberOfForkedBlocksMined;
 	private static int _maxNumberOfForkedBlocksMined = 15;
 
-	public MiningForkedBlocksPhase(DSAttackBlockStorage attackBlockStorage, MaliciousNodesIdProvider maliciousNodesIdProvider) {
+	public MiningForkedBlocksPhase(DSAttackBlockStorage attackBlockStorage, BlockchainMaliciousNodesIdProvider maliciousNodesIdProvider) {
 		_attackBlockStorage = attackBlockStorage;
 		_maliciousNodesIdProvider = maliciousNodesIdProvider;
 		_nextPhase = this;

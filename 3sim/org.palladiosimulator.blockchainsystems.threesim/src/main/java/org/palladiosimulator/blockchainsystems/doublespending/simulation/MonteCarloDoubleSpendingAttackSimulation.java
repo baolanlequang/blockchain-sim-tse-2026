@@ -34,6 +34,7 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 		_simulationProgressMonitor = simulationProgressMonitor;
 		_maximumBlockchainLength = maximumBlockchainLength;
 		_numberOfSimulationRounds = numberOfSimulationRounds;
+
 	}
 	
 	public MonteCarloDoubleSpendingAttackSimulationResult run() {

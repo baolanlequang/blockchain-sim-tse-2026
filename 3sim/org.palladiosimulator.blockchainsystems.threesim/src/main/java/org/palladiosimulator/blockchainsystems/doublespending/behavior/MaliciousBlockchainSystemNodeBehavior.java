@@ -3,42 +3,49 @@ package org.palladiosimulator.blockchainsystems.doublespending.behavior;
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block;
 import org.palladiosimulator.blockchainsystems.core.common.BlockchainNodeObject;
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.Event;
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider;
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeBehavior;
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeContext;
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Transaction;
 
 public class MaliciousBlockchainSystemNodeBehavior extends BlockchainNodeObject implements BlockchainSystemNodeBehavior {
 
-	private final MaliciousNodesIdProvider _maliciousNodesIdProvider;
+	private final BlockchainMaliciousNodesIdProvider _maliciousNodesIdProvider;
 	private DoubleSpendingAttackPhase _currentAttackPhase;
 	
-	public MaliciousBlockchainSystemNodeBehavior(MaliciousNodesIdProvider maliciousNodesIdProvider) {
+	public MaliciousBlockchainSystemNodeBehavior(BlockchainMaliciousNodesIdProvider maliciousNodesIdProvider) {
 		_maliciousNodesIdProvider = maliciousNodesIdProvider;
 		_currentAttackPhase = new WaitingForFirstHonestBlockPhase(_maliciousNodesIdProvider);
 	}
 	
 	@Override
 	public void onBlockReceived(Block block, BlockchainSystemNodeContext context) {
-		if (block != null) {
-			_currentAttackPhase.onBlockReceived(block, context);
-			goToNextPhase(context);
-		}
+//		if (block != null) {
+//			_currentAttackPhase.onBlockReceived(block, context);
+//			goToNextPhase(context);
+//		}
+		_currentAttackPhase.onBlockReceived(block, context);
+		goToNextPhase(context);
 	}
 
 	@Override
 	public void onBlockValidated(Block block, boolean isValid, BlockchainSystemNodeContext context) {
-		if (block != null) {
-			_currentAttackPhase.onBlockValidated(block, isValid, context);
-			goToNextPhase(context);
-		}
+//		if (block != null) {
+//			_currentAttackPhase.onBlockValidated(block, isValid, context);
+//			goToNextPhase(context);
+//		}
+		_currentAttackPhase.onBlockValidated(block, isValid, context);
+		goToNextPhase(context);
 	}
 	
 	@Override
 	public void onBlockMined(Block block, BlockchainSystemNodeContext context) {
-		if (block != null) {
-			_currentAttackPhase.onBlockMined(block, context);
-			goToNextPhase(context);
-		}
+//		if (block != null) {
+//			_currentAttackPhase.onBlockMined(block, context);
+//			goToNextPhase(context);
+//		}
+		_currentAttackPhase.onBlockMined(block, context);
+		goToNextPhase(context);
 	}
 
 	@Override

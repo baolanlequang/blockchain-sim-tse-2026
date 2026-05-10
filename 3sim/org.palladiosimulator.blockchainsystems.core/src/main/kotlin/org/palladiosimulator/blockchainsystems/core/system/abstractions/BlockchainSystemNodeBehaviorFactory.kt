@@ -12,5 +12,5 @@ interface BlockchainSystemNodeBehaviorFactory {
    * @param nodeId the id of the node the created `BlockchainSystemNodeBehavior` belongs to
    * @return a `BlockchainSystemNodeBehavior` instance
    */
-  fun create(nodeId: String): BlockchainSystemNodeBehavior
+  fun create(nodeId: String, maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider): BlockchainSystemNodeBehavior
 }
