@@ -130,4 +130,7 @@ public class SimulationMonitor implements TraceEventSubscriber, TerminationCondi
 				.allMatch(x -> x.hasLongestChainWithDistance(distance));
 	}
 
+	public HashSet<Block> getForkedBlocks() {
+		return _forkedBlocks;
+	}
 }

@@ -10,17 +10,17 @@ public class SimulationRoundResult {
 	private final int _numberOfAttackerWonVotes;
 	private final int _numberOfSystemWonVotes;
 	private final int _numberOfBTONotIncludedVotes;
+	private final int _forkedBlockLength;
 	
-	public SimulationRoundResult(int numberOfAbstentedVotes, int numberOfAttackerWonVotes, int numberOfSystemWonVotes, int numberOfBTONotIncludedVotes) {
+	public SimulationRoundResult(int numberOfAbstentedVotes, int numberOfAttackerWonVotes, int numberOfSystemWonVotes, int numberOfBTONotIncludedVotes, int forkedBlockLength) {
 		_numberOfAbstentedVotes = numberOfAbstentedVotes;
 		_numberOfAttackerWonVotes = numberOfAttackerWonVotes;
 		_numberOfSystemWonVotes = numberOfSystemWonVotes;
 		_numberOfBTONotIncludedVotes = numberOfBTONotIncludedVotes;
+		_forkedBlockLength = forkedBlockLength;
 	}
-	
-	
-	
-	public static SimulationRoundResult create(Set<SimulationWinnerVote> winnerVotes) {
+
+	public static SimulationRoundResult create(Set<SimulationWinnerVote> winnerVotes, int forkedBlockLength) {
 		int numberOfAbstentedVotes = 0;
 		int numberOfAttackerWonVotes = 0;
 		int numberOfSystemWonVotes = 0;
@@ -49,30 +49,27 @@ public class SimulationRoundResult {
 				numberOfAbstentedVotes,
 				numberOfAttackerWonVotes,
 				numberOfSystemWonVotes,
-				numberOfBTONotIncludedVotes);
+				numberOfBTONotIncludedVotes,
+				forkedBlockLength);
 	}
-
-
 
 	public int getNumberOfAbstentedVotes() {
 		return _numberOfAbstentedVotes;
 	}
 
-
-
 	public int getNumberOfAttackerWonVotes() {
 		return _numberOfAttackerWonVotes;
 	}
-
-
 
 	public int getNumberOfSystemWonVotes() {
 		return _numberOfSystemWonVotes;
 	}
 
-
-
 	public int getNumberOfBTONotIncludedVotes() {
 		return _numberOfBTONotIncludedVotes;
+	}
+
+	public int getLengthOfForkedBlock() {
+		return _forkedBlockLength;
 	}
 }

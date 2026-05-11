@@ -72,13 +72,15 @@ public class DoubleSpendingAttackSimulationRound {
 
 		// Clean up the log ouptputs
 		_logOutputs.forEach(x -> x.cleanUp());
-		
 
 		Set<SimulationWinnerVoter> winnerVoters = _monitor.getWinnerVoters();
 		return SimulationRoundResult.create(
 				winnerVoters
 					.stream()
 					.map(x -> x.getWinnerVote())
-					.collect(Collectors.toSet()));
+					.collect(Collectors.toSet()),
+				_monitor.getForkedBlocks().size());
 	}
+
+
 }
