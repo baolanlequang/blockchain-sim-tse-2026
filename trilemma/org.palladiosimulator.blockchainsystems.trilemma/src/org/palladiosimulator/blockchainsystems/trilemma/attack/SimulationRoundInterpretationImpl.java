@@ -8,6 +8,8 @@ public class SimulationRoundInterpretationImpl implements SimulationRoundInterpr
 
 	public InterpretedResult interpretRoundResult(SimulationRoundResult roundResult) {
 		
+//		System.out.println("roundResult: " + roundResult.getLengthOfForkedBlock());
+		
 		if (areVotesUnambiguous(roundResult)) {
 			return InterpretedResult.Unambiguous;
 		}
