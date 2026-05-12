@@ -44,7 +44,7 @@ public class SelfishMiningSimulationFactory {
             montecarloSimulation = new MonteCarloDoubleSpendingAttackSimulation(
             		blockchainSystemFactory,
             		logOutputProvider,
-            		new SimulationRoundInterpretationImpl(),
+            		new SimulationRoundInterpretationImpl(runId),
             		null,
             		parameter.getMaxAllowedBlockchainLength(),
             		parameter.getNumberOfMonteCarloRounds()
@@ -54,7 +54,7 @@ public class SelfishMiningSimulationFactory {
         	singleSimulation = new SingleDoubleSpendingAttackSimulation(
         			blockchainSystemFactory,
             		logOutputProvider,
-            		new SimulationRoundInterpretationImpl(),
+            		new SimulationRoundInterpretationImpl(runId),
             		simulationParameters.getMaxAllowedBlockchainLength());
 
         }

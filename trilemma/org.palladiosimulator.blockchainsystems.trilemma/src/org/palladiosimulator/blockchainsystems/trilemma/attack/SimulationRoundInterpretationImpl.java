@@ -4,11 +4,25 @@ import org.palladiosimulator.blockchainsystems.doublespending.simulation.Interpr
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.SimulationRoundInterpretation;
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.SimulationRoundResult;
 
-public class SimulationRoundInterpretationImpl implements SimulationRoundInterpretation {
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
 
-	public InterpretedResult interpretRoundResult(SimulationRoundResult roundResult) {
+import org.palladiosimulator.blockchainsystems.doublespending.simulation.DoubleSpendingSimulationRoundResult;
+
+public class SimulationRoundInterpretationImpl implements SimulationRoundInterpretation {
+	
+	private int runId;
+	
+	public SimulationRoundInterpretationImpl(int runId) {
+		this.runId = runId;
+	}
+
+	@Override
+	public InterpretedResult interpretRoundResult(DoubleSpendingSimulationRoundResult roundResult) {
 		
-//		System.out.println("roundResult: " + roundResult.getLengthOfForkedBlock());
+		saveLogs(roundResult);
 		
 		if (areVotesUnambiguous(roundResult)) {
 			return InterpretedResult.Unambiguous;
@@ -29,7 +43,7 @@ public class SimulationRoundInterpretationImpl implements SimulationRoundInterpr
 		return InterpretedResult.Unambiguous;
 	}
 	
-	private static boolean areVotesUnambiguous(SimulationRoundResult roundResult) {
+	private static boolean areVotesUnambiguous(DoubleSpendingSimulationRoundResult roundResult) {
 		int numberOfVoteTypesGreaterThanZero = 0;
 		
 		if (roundResult.getNumberOfAttackerWonVotes() > 0) {
@@ -46,5 +60,27 @@ public class SimulationRoundInterpretationImpl implements SimulationRoundInterpr
 		
 		return numberOfVoteTypesGreaterThanZero != 1;
 	}
+
+	private void saveLogs(DoubleSpendingSimulationRoundResult roundResult) {
+		try {
+            // Create directory if it does not exist
+            File directory = new File("selfish_log");
+            if (!directory.exists()) {
+                directory.mkdirs();
+            }
+
+            // Write to file
+            String fileName = String.format("selfish_log/log_for_run_%d.txt", runId);
+            try (PrintWriter writer =
+                     new PrintWriter(new FileWriter(fileName, true))) {
+
+                writer.println("Forked length: " + roundResult.getLengthOfForkedBlock());
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+	}
+
 
 }

@@ -1,12 +1,10 @@
 package org.palladiosimulator.blockchainsystems.doublespending.simulation;
 
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem;
-import org.palladiosimulator.blockchainsystems.core.tracing.TraceEventLogOutput;
 //import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemFactory;
 //import org.palladiosimulator.blockchainsystems.doublespending.simulation.logoutputs.LogOutputProvider;
 import org.palladiosimulator.blockchainsystems.core.simulation.logoutputs.abstractions.LogOutputProvider;
@@ -39,6 +37,13 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 	public MonteCarloDoubleSpendingAttackSimulationResult run() {
 //		_simulationProgressMonitor.onSimulationStarted(_numberOfSimulationRounds);
 		System.out.println("simulation started with " + _numberOfSimulationRounds + " round(s)");
+
+		if (_blockchainSystemFactory.getBlockchainSystemSpecification().getNumberOfAttacker() <= 0) {
+			System.out.println("simulation stopped because there is no attacker");
+			return new MonteCarloDoubleSpendingAttackSimulationResult(
+					0, 0, _numberOfSimulationRounds
+			);
+		}
 		
 		List<InterpretedResult> results = Stream.iterate(0, n -> n + 1)
 			.parallel()
@@ -56,7 +61,7 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 				results.stream().filter(x -> x == InterpretedResult.Unambiguous).count());
 	}
 	
-	private SimulationRoundResult performSimulationRun() {
+	private DoubleSpendingSimulationRoundResult performSimulationRun() {
 		BlockchainSystem blockchainSystem = _blockchainSystemFactory.createBlockchainSystem();
 		
 		// Create simulation round
@@ -67,7 +72,7 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 				_blockchainSystemFactory.getBlockchainSystemSpecification().getMeanBlockTime());
 		
 		//Run simulation
-		SimulationRoundResult result = simulationRound.run();
+		DoubleSpendingSimulationRoundResult result = simulationRound.run();
 		
 //		_simulationProgressMonitor.onSimulationRoundFinished();
 //		System.out.println("simulation finished");
