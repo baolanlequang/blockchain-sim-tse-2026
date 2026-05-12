@@ -54,7 +54,7 @@ public class DoubleSpendingAttackSimulationRound {
 		_logOutputs.forEach(x -> _traceEventLoggerContainer.addSubscriber(x));
 	}
 	
-	public SimulationRoundResult run() {
+	public DoubleSpendingSimulationRoundResult run() {
 		//Initialize log outputs
 		_logOutputs.forEach(x -> x.initialize());
 		
@@ -74,7 +74,7 @@ public class DoubleSpendingAttackSimulationRound {
 		_logOutputs.forEach(x -> x.cleanUp());
 
 		Set<SimulationWinnerVoter> winnerVoters = _monitor.getWinnerVoters();
-		return SimulationRoundResult.create(
+		return DoubleSpendingSimulationRoundResult.create(
 				winnerVoters
 					.stream()
 					.map(x -> x.getWinnerVote())

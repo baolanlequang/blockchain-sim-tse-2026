@@ -34,7 +34,7 @@ public class SingleDoubleSpendingAttackSimulation {
 				_blockchainSystemFactory.getBlockchainSystemSpecification().getMeanBlockTime());
 		
 		//Run simulation
-		SimulationRoundResult roundResult = simulationRound.run();
+		DoubleSpendingSimulationRoundResult roundResult = simulationRound.run();
 		return _simulationRoundInterpretation.interpretRoundResult(roundResult);
 	}
 }
