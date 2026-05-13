@@ -75,6 +75,7 @@ public class SimulationRoundInterpretationImpl implements SimulationRoundInterpr
                      new PrintWriter(new FileWriter(fileName, true))) {
 
                 writer.println("Forked length: " + roundResult.getLengthOfForkedBlock());
+                writer.close();
             }
 
         } catch (IOException e) {

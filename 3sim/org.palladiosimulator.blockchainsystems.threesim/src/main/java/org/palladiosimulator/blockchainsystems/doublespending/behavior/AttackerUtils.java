@@ -42,7 +42,7 @@ public class AttackerUtils {
 		handler.initialize(simulationContext);
 		handler.logEvent();
 
-		System.out.println("blockchain length: " + context.getBlockchain().getLength());
+		// System.out.println("blockchain length: " + context.getBlockchain().getLength());
 
 		context.getBlockPropagationStrategy().distribute(block, maliciousNeighborEndpoints);
 	}

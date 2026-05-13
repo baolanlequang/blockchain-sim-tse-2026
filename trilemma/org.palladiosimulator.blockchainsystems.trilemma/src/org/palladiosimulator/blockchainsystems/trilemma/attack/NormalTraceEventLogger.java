@@ -36,6 +36,7 @@ public class NormalTraceEventLogger implements TraceEventLogOutput {
 	                     new PrintWriter(new FileWriter(fileName, true))) {
 
 	                writer.println("ResourcePower: " + maliciousTraceEvent.resourcePower());
+	                writer.close();
 	            }
 
 	        } catch (IOException e) {
