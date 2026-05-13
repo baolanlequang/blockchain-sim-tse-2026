@@ -38,9 +38,11 @@ public class AttackerUtils {
 				.filter(x -> maliciousMinerIds.contains(x.getEndpointId())) // Filter honest neighbors
 				.collect(Collectors.toSet());
 
+
 		MaliciousEventHandler handler = new MaliciousEventHandler(context.getResourcePower(), maliciousNeighborEndpoints);
 		handler.initialize(simulationContext);
 		handler.logEvent();
+
 
 		// System.out.println("blockchain length: " + context.getBlockchain().getLength());
 
