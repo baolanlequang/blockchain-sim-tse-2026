@@ -2,7 +2,6 @@ package org.palladiosimulator.blockchainsystems.trilemma.attack;
 
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.InterpretedResult;
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.SimulationRoundInterpretation;
-import org.palladiosimulator.blockchainsystems.doublespending.simulation.SimulationRoundResult;
 
 import java.io.File;
 import java.io.FileWriter;
