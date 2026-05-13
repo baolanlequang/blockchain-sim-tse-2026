@@ -14,9 +14,11 @@ class TraceEventLoggerImpl(
   override val logOrigin: TraceEventLogOrigin,
   private val traceEventConfiguration: TraceEventConfiguration
 ) : TraceEventLogger {
-  private val events: TreeSet<TraceEvent> = TreeSet<TraceEvent> { a, b ->
-    a.occurrenceTime.compareTo(b.occurrenceTime)
-  }
+//  private val events: TreeSet<TraceEvent> = TreeSet<TraceEvent> { a, b ->
+//    a.occurrenceTime.compareTo(b.occurrenceTime)
+//  }
+
+  private val events = TreeSet(compareBy<TraceEvent> { it.occurrenceTime })
 
   private var traceEventCallback: ((TraceEvent, TraceEventLogOrigin) -> Unit)? = null
 
