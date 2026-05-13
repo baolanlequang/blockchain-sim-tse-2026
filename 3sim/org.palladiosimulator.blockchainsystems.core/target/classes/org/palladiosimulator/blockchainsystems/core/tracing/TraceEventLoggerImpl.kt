@@ -21,9 +21,10 @@ class TraceEventLoggerImpl(
   private var traceEventCallback: ((TraceEvent, TraceEventLogOrigin) -> Unit)? = null
 
   override fun logEvent(traceEvent: TraceEvent) {
-    events.add(traceEvent)
-
-    notifyTraceEventOccurred(traceEvent)
+    if (traceEvent != null) {
+      events.add(traceEvent)
+      notifyTraceEventOccurred(traceEvent)
+    }
   }
 
   private fun notifyTraceEventOccurred(traceEvent: TraceEvent) {
