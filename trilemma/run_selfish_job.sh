@@ -2,8 +2,8 @@
 #SBATCH --job-name=run_selfishmining_job  # Name of the job
 #SBATCH --output=result_%j.out            # Standard output log (%j inserts JobID)
 #SBATCH --error=result_%j.err             # Error log
-#SBATCH --nodes=10                        # Number of nodes
-#SBATCH --ntasks=10                       # Number of tasks
+#SBATCH --nodes=1                         # Number of nodes
+#SBATCH --ntasks=1                        # Number of tasks
 #SBATCH --cpus-per-task=20                # Number of CPU cores per task
 #SBATCH --mem=380000                      # Total memory (RAM)
 #SBATCH --time=72:00:00                   # Time limit (HH:MM:SS)
