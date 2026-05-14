@@ -88,9 +88,10 @@ class EventCoordinatorImpl(
 
     eventsPerOrigin
       .getOrPut(event.origin) {
-        TreeSet<Event> { e1, e2 ->
-          e1.occurrenceTime.compareTo(e2.occurrenceTime)
-        }
+//        TreeSet<Event> { e1, e2 ->
+//          e1.occurrenceTime.compareTo(e2.occurrenceTime)
+//        }
+        TreeSet(compareBy<Event> { it.occurrenceTime })
       }.add(event)
   }
 
