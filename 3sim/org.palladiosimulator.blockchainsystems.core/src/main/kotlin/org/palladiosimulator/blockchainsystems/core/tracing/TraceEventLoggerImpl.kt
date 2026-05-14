@@ -4,6 +4,7 @@ import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEve
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEventLogOrigin
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEventLogger
 import java.util.*
+import java.util.concurrent.ConcurrentSkipListSet
 
 /**
  * The `TraceEventLoggerImpl` is an implementation of the `TraceEventLogger` interface.
@@ -18,7 +19,8 @@ class TraceEventLoggerImpl(
 //    a.occurrenceTime.compareTo(b.occurrenceTime)
 //  }
 
-  private val events = TreeSet(compareBy<TraceEvent> { it.occurrenceTime })
+//  private val events = TreeSet(compareBy<TraceEvent> { it.occurrenceTime })
+  private val events = ConcurrentSkipListSet(compareBy<TraceEvent> { it.occurrenceTime })
 
   private var traceEventCallback: ((TraceEvent, TraceEventLogOrigin) -> Unit)? = null
 
