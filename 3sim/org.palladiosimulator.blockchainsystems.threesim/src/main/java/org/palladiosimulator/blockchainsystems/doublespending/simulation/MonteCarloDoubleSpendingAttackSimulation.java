@@ -1,6 +1,7 @@
 package org.palladiosimulator.blockchainsystems.doublespending.simulation;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -49,7 +50,9 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 			.parallel()
 			.limit(_numberOfSimulationRounds)
 			.map(x -> performSimulationRun())
+				.filter(Objects::nonNull)
 			.map(x -> _simulationRoundInterpretation.interpretRoundResult(x))
+				.filter(Objects::nonNull)
 			.collect(Collectors.toList());
 		
 //		_simulationProgressMonitor.onSimulationFinished();
