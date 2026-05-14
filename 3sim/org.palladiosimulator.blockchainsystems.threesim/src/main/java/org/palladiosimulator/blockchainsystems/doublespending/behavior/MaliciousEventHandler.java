@@ -13,11 +13,11 @@ public class MaliciousEventHandler extends BlockchainSimulationObject {
     private Set<P2PNetworkEndpoint> maliciousNeighborEndpoints;
     private double resourcePower;
     MaliciousEventHandler() {
-        super("", "");
+        super("MaliciousEventHandler", "MaliciousEventHandler");
     }
 
     MaliciousEventHandler(double resourcePower, Set<P2PNetworkEndpoint> maliciousNeighborEndpoints) {
-        super("", "");
+        super("MaliciousEventHandler", "MaliciousEventHandler");
         this.resourcePower = resourcePower;
         this.maliciousNeighborEndpoints = maliciousNeighborEndpoints;
     }
