@@ -47,4 +47,6 @@ abstract class BlockchainSimulationObject protected constructor(
     val logger = loggerContainer.getLogger(logOrigin) ?: return
     this.traceEventLogger = logger
   }
+
+  fun hasLogger(): Boolean = this::traceEventLogger.isInitialized
 }

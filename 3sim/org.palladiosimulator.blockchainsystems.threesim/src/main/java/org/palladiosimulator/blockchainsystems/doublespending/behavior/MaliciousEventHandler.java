@@ -20,12 +20,15 @@ public class MaliciousEventHandler extends BlockchainSimulationObject {
         super("MaliciousEventHandler", "MaliciousEventHandler");
         this.resourcePower = resourcePower;
         this.maliciousNeighborEndpoints = maliciousNeighborEndpoints;
+
     }
 
     public void logEvent() {
         if (!maliciousNeighborEndpoints.isEmpty()) {
             MaliciousTraceEvent traceEvent = new MaliciousTraceEvent(getSimulationContext().getSystemClock().getCurrentTime(), resourcePower, maliciousNeighborEndpoints);
-            getTraceEventLogger().logEvent(traceEvent);
+            if (this.hasLogger()) {
+                getTraceEventLogger().logEvent(traceEvent);
+            }
         }
     }
 
