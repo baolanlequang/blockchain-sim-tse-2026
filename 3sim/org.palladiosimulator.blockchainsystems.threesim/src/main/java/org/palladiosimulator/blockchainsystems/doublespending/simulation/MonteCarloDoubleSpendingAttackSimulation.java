@@ -47,7 +47,6 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 		}
 		
 		List<InterpretedResult> results = Stream.iterate(0, n -> n + 1)
-			.parallel()
 			.limit(_numberOfSimulationRounds)
 			.map(x -> performSimulationRun())
 				.filter(Objects::nonNull)
