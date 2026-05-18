@@ -31,10 +31,11 @@ public class TrilemmaSimulationFactory implements Simulation {
 
     public TrilemmaSimulationFactory(
             SimulationParameters simulationParameters,
-            Map<String, String> configuration) {
+            Map<String, String> configuration,
+            int runId) {
 
         ThreesimBlockchainSystemFactory blockchainSystemFactory =
-                createBlockchainSystemFactory(simulationParameters, configuration);
+                createBlockchainSystemFactory(simulationParameters, configuration, runId);
         blockchainSystemFactory.createBlockchainSystem();
         
 
@@ -116,7 +117,8 @@ public class TrilemmaSimulationFactory implements Simulation {
 
     private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(
             SimulationParameters simulationParameters,
-            Map<String, String> configuration) {
+            Map<String, String> configuration,
+            int runId) {
 
         BlockchainSystemModelLoader loader =
                 new BlockchainSystemModelLoader();
@@ -124,7 +126,7 @@ public class TrilemmaSimulationFactory implements Simulation {
         BlockchainSystem designBlockchainSystem =
                 loader.load(
                         simulationParameters.getBlockchainSystemModelFilePath(),
-                        configuration);  
+                        configuration);
 
         var networkTopology =
                 designBlockchainSystem.getNetwork().getTopology();
@@ -133,14 +135,16 @@ public class TrilemmaSimulationFactory implements Simulation {
             return new ConnectedSubgraphNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ConnectedSubgraphsNetworkTopology) networkTopology,
-                    false);
+                    false,
+                    runId);
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {
             return new ExplicitNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ExplicitNetworkTopology) networkTopology,
-                    false);
+                    false,
+                    runId);
         }
 
         throw new IllegalStateException(

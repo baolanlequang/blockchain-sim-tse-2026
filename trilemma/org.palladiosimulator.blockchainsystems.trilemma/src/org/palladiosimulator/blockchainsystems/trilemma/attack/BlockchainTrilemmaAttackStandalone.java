@@ -108,9 +108,9 @@ public class BlockchainTrilemmaAttackStandalone {
         } catch (IOException e) {
             logger.error("Failed to write simulation result", e);
         }
-        
+
     }
-    
+
     private Path createOutputPath(int runId) {
         return Paths.get("result_selfishmining")
                 .resolve("result_run_" + runId + ".json");

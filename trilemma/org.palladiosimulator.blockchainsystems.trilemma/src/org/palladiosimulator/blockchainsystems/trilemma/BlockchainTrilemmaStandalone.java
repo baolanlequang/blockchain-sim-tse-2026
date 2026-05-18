@@ -74,7 +74,7 @@ public class BlockchainTrilemmaStandalone {
                 getSimulationParametersFromConfiguration(configuration);
 
         var simulationFactory =
-                new TrilemmaSimulationFactory(simulationParameters, configuration);
+                new TrilemmaSimulationFactory(simulationParameters, configuration, runId);
 
         var result = simulationFactory.run();
 
@@ -120,6 +120,7 @@ public class BlockchainTrilemmaStandalone {
         } catch (IOException e) {
             logger.error("Failed to write simulation result", e);
         }
+
     }
 
 /**
