@@ -13,6 +13,7 @@ import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNodeFactory
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.*
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNode
+import org.palladiosimulator.blockchainsystems.core.network.P2PNetworkImpl
 import org.palladiosimulator.blockchainsystems.core.transaction.TrxMemPoolFactoryImpl
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimBlockchainSystemNodeBehaviorFactory
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransactionSelectionProcessFactory
@@ -36,7 +37,8 @@ import java.util.HashSet
 abstract class ThreesimBlockchainSystemFactory(
   protected val designBlockchainSystem: DesignBlockchainSystem,
   protected val networkTopology: NetworkTopology,
-  protected val attackSimulation: Boolean
+  protected val attackSimulation: Boolean,
+  protected val runId: Int = 0
 ) {
   protected abstract fun createP2PNetworkFactory(): P2PNetworkFactory
 
@@ -68,13 +70,45 @@ abstract class ThreesimBlockchainSystemFactory(
       networkCreationResult
     )
 
-    return createBlockchainSystemInstance(
+    val blockchainSystem = createBlockchainSystemInstance(
       networkCreationResult.createdNetwork,
       blockFactory,
       nodeFactory,
       geographicalRegionsResolver,
       designBlockchainSystem.specification.blockReward
     )
+
+    logNodeInitializationInfo(blockchainSystem, networkCreationResult.createdNetwork)
+
+    return blockchainSystem
+  }
+
+  private fun logNodeInitializationInfo(blockchainSystem: BlockchainSystem, network: P2PNetwork) {
+    val networkImpl = network as? P2PNetworkImpl
+    val systemName = "run_$runId"
+
+    val nodesJson = blockchainSystem.nodes.sortedBy { it.id }.joinToString(separator = ",\n    ") { node ->
+      val outbound = networkImpl?.getNodeTotalOutgoingBandwidth(node.id) ?: Double.NaN
+      val inbound = networkImpl?.getNodeTotalIncomingBandwidth(node.id) ?: Double.NaN
+      """{"nodeId": "${node.id}", "resourcePower": ${node.resourcePower}, "totalOutboundBandwidth": $outbound, "totalInboundBandwidth": $inbound}"""
+    }
+
+    val json = """{
+  "systemName": "$systemName",
+  "totalNodes": ${blockchainSystem.nodes.size},
+  "nodes": [
+    $nodesJson
+  ]
+}"""
+
+    try {
+      val outputDir = java.nio.file.Paths.get("node_init")
+      java.nio.file.Files.createDirectories(outputDir)
+      val outputFile = outputDir.resolve("init_${systemName}_${blockchainSystem.id.substring(0, 8)}.json")
+      java.nio.file.Files.writeString(outputFile, json)
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
   }
 
   private fun createBlockchainSystemInstance(

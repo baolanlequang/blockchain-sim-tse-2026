@@ -17,8 +17,9 @@ import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainS
 class ExplicitNetworkBlockchainSystemFactory(
   designBlockchainSystem: DesignBlockchainSystem,
   explicitTopology: ExplicitNetworkTopology,
-  attackSimulation: Boolean
-) : ThreesimBlockchainSystemFactory(designBlockchainSystem, explicitTopology, attackSimulation) {
+  attackSimulation: Boolean,
+  runId: Int = 0
+) : ThreesimBlockchainSystemFactory(designBlockchainSystem, explicitTopology, attackSimulation, runId) {
 
   override fun createP2PNetworkFactory(): P2PNetworkFactory {
     return ExplicitTopologyP2PNetworkFactory(networkTopology as ExplicitNetworkTopology)

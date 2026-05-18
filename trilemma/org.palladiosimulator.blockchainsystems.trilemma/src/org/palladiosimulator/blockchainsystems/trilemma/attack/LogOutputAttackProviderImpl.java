@@ -74,7 +74,7 @@ public class LogOutputAttackProviderImpl implements LogOutputProvider {
 //		Json json = Json.Default;
 //		return new TraceEventConsoleLogger(json);
 		
-		return new NormalTraceEventLogger(_runId);
+		return new NormalTraceEventLogger();
 	}
 	
 	private TraceEventLogOutput createFileLogger() {

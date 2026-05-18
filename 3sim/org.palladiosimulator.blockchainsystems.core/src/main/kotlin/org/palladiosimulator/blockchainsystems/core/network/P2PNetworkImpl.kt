@@ -59,6 +59,18 @@ class P2PNetworkImpl internal constructor(
       .toMutableSet()
   }
 
+  fun getNodeTotalOutgoingBandwidth(nodeId: String): Double {
+    val node = networkGraph.vertexSet().find { it.endpointId == nodeId } ?: return 0.0
+    return networkGraph.outgoingEdgesOf(node)
+      .sumOf { it.bandwidthValueProvider.getValue() ?: 0.0 }
+  }
+
+  fun getNodeTotalIncomingBandwidth(nodeId: String): Double {
+    val node = networkGraph.vertexSet().find { it.endpointId == nodeId } ?: return 0.0
+    return networkGraph.incomingEdgesOf(node)
+      .sumOf { it.bandwidthValueProvider.getValue() ?: 0.0 }
+  }
+
   companion object {
     fun create(networkGraph: Graph<P2PNode, P2PLink>): P2PNetworkImpl {
       val p2pNetworkId = UUID.randomUUID().toString()

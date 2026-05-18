@@ -32,7 +32,7 @@ public class SelfishMiningSimulationFactory {
             int runId) {
 
     	ThreesimBlockchainSystemFactory blockchainSystemFactory =
-                createBlockchainSystemFactory(simulationParameters, configuration);
+                createBlockchainSystemFactory(simulationParameters, configuration, runId);
 
         LogOutputAttackProviderImpl logOutputProvider = new LogOutputAttackProviderImpl(true, false, "", false, "", 0, "", "","", runId);
 
@@ -106,7 +106,8 @@ public class SelfishMiningSimulationFactory {
 
     private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(
             SimulationParameters simulationParameters,
-            Map<String, String> configuration) {
+            Map<String, String> configuration,
+            int runId) {
 
         BlockchainSystemModelLoader loader =
                 new BlockchainSystemModelLoader();
@@ -114,7 +115,7 @@ public class SelfishMiningSimulationFactory {
         BlockchainSystem designBlockchainSystem =
                 loader.load(
                         simulationParameters.getBlockchainSystemModelFilePath(),
-                        configuration);        
+                        configuration);
 
         var networkTopology =
                 designBlockchainSystem.getNetwork().getTopology();
@@ -123,14 +124,16 @@ public class SelfishMiningSimulationFactory {
             return new ConnectedSubgraphNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ConnectedSubgraphsNetworkTopology) networkTopology,
-                    true);
+                    true,
+                    runId);
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {
             return new ExplicitNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ExplicitNetworkTopology) networkTopology,
-                    true);
+                    true,
+                    runId);
         }
 
         throw new IllegalStateException(

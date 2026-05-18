@@ -3,11 +3,6 @@ package org.palladiosimulator.blockchainsystems.trilemma.attack;
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.InterpretedResult;
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.SimulationRoundInterpretation;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
-
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.DoubleSpendingSimulationRoundResult;
 
 public class SimulationRoundInterpretationImpl implements SimulationRoundInterpretation {
@@ -61,25 +56,6 @@ public class SimulationRoundInterpretationImpl implements SimulationRoundInterpr
 	}
 
 	private void saveLogs(DoubleSpendingSimulationRoundResult roundResult) {
-		try {
-            // Create directory if it does not exist
-            File directory = new File("selfish_log");
-            if (!directory.exists()) {
-                directory.mkdirs();
-            }
-
-            // Write to file
-            String fileName = String.format("selfish_log/log_for_run_%d.txt", runId);
-            try (PrintWriter writer =
-                     new PrintWriter(new FileWriter(fileName, true))) {
-
-                writer.println("Forked length: " + roundResult.getLengthOfForkedBlock());
-                writer.close();
-            }
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
 	}
 
 

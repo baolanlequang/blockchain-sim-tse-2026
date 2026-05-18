@@ -54,14 +54,19 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 			.map(x -> _simulationRoundInterpretation.interpretRoundResult(x))
 				.filter(Objects::nonNull)
 			.collect(Collectors.toList());
-		
+
 //		_simulationProgressMonitor.onSimulationFinished();
 //		System.out.println("simulation finished");
-		
+
+		List<String> roundResultNames = results.stream()
+				.map(Enum::name)
+				.collect(Collectors.toList());
+
 		return new MonteCarloDoubleSpendingAttackSimulationResult(
 				results.stream().filter(x -> x == InterpretedResult.AttackerWon).count(),
 				results.stream().filter(x -> x == InterpretedResult.SystemWon).count(),
-				results.stream().filter(x -> x == InterpretedResult.Unambiguous).count());
+				results.stream().filter(x -> x == InterpretedResult.Unambiguous).count(),
+				roundResultNames);
 	}
 	
 	private DoubleSpendingSimulationRoundResult performSimulationRun() {
