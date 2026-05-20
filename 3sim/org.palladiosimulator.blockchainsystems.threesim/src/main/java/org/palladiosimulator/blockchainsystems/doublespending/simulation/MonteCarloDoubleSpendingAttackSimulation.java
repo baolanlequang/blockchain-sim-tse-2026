@@ -2,6 +2,9 @@ package org.palladiosimulator.blockchainsystems.doublespending.simulation;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -46,12 +49,25 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 			);
 		}
 		
-		List<InterpretedResult> results = Stream.iterate(0, n -> n + 1)
-			.limit(_numberOfSimulationRounds)
-			.map(x -> performSimulationRun())
-				.filter(Objects::nonNull)
+		int concurrency = Runtime.getRuntime().availableProcessors();
+		ExecutorService executor = Executors.newFixedThreadPool(concurrency);
+
+		List<Future<DoubleSpendingSimulationRoundResult>> futures =
+			Stream.iterate(0, n -> n + 1)
+				.limit(_numberOfSimulationRounds)
+				.map(x -> executor.submit(this::performSimulationRun))
+				.collect(Collectors.toList());
+
+		executor.shutdown();
+
+		List<InterpretedResult> results = futures.stream()
+			.map(f -> {
+				try { return f.get(); }
+				catch (Exception e) { Thread.currentThread().interrupt(); return null; }
+			})
+			.filter(Objects::nonNull)
 			.map(x -> _simulationRoundInterpretation.interpretRoundResult(x))
-				.filter(Objects::nonNull)
+			.filter(Objects::nonNull)
 			.collect(Collectors.toList());
 
 //		_simulationProgressMonitor.onSimulationFinished();

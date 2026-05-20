@@ -1,5 +1,12 @@
 package org.palladiosimulator.blockchainsystems.core.simulation.abstractions
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+
 /**
  * Represents a Monte-Carlo simulation with several rounds.
  * This class serves as a base for more specific simulations.
@@ -15,17 +22,29 @@ abstract class MonteCarloSimulation<R : SimulationRoundResult>(
 
   /**
    * Runs the Monte-Carlo simulation and returns the result.
-   * Rounds execute sequentially to avoid holding all blockchain systems in memory at once.
+   * Rounds run with bounded parallelism (capped at available CPU cores) to
+   * prevent OOM while still exploiting all available cores.
    *
    * @return The result of the simulation.
    */
   override fun run(): MonteCarloSimulationResult {
     progressMonitor.onSimulationStarted(numberOfRounds)
 
-    val results = (0 until numberOfRounds).map {
-      val result = performSimulationRound()
-      progressMonitor.onSimulationRoundFinished()
-      result
+    val concurrency = Runtime.getRuntime().availableProcessors()
+    val semaphore = Semaphore(concurrency)
+
+    val results = runBlocking {
+      coroutineScope {
+        (0 until numberOfRounds).map {
+          async {
+            semaphore.withPermit {
+              val result = performSimulationRound()
+              progressMonitor.onSimulationRoundFinished()
+              result
+            }
+          }
+        }.awaitAll()
+      }
     }
 
     progressMonitor.onSimulationFinished()
