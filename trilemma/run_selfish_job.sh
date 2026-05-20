@@ -5,7 +5,7 @@
 #SBATCH --nodes=1                        # Number of nodes
 #SBATCH --ntasks=1                        # Number of tasks
 #SBATCH --cpus-per-task=20                # Number of CPU cores per task
-#SBATCH --mem=2300000                      # Total memory (RAM)
+#SBATCH --mem=2200000                      # Total memory (RAM)
 #SBATCH --time=72:00:00                   # Time limit (HH:MM:SS)
 #SBATCH --partition=highmem                   # Partition/Queue name
 
