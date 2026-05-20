@@ -9,4 +9,4 @@
 #SBATCH --time=72:00:00                   # Time limit (HH:MM:SS)
 #SBATCH --partition=highmem                   # Partition/Queue name
 
-java -Xmx300G -XX:ParallelGCThreads=20 -jar selfishmining.jar org.palladiosimulator.blockchainsystems.trilemma/optimized_deterministic_lhs_configurations.csv org.palladiosimulator.blockchainsystems.trilemma/testmodels org.palladiosimulator.blockchainsystems.trilemma/testmodels/configuration.json
+java -Xmx240G -XX:ParallelGCThreads=20 -jar selfishmining.jar org.palladiosimulator.blockchainsystems.trilemma/optimized_deterministic_lhs_configurations.csv org.palladiosimulator.blockchainsystems.trilemma/testmodels org.palladiosimulator.blockchainsystems.trilemma/testmodels/configuration.json
