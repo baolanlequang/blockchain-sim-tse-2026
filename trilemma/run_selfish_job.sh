@@ -3,7 +3,7 @@
 #SBATCH --output=result_%j.out            # Standard output log (%j inserts JobID)
 #SBATCH --error=result_%j.err             # Error log
 #SBATCH --nodes=20                        # Number of nodes
-#SBATCH --ntasks=5                        # Number of tasks
+#SBATCH --ntasks=20                        # Number of tasks
 #SBATCH --cpus-per-task=20                # Number of CPU cores per task
 #SBATCH --tasks-per-node=50
 #SBATCH --mem=360000                      # Total memory (RAM)
