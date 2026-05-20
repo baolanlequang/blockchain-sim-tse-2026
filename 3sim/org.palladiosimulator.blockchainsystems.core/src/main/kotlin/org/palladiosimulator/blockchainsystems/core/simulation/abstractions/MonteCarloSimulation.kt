@@ -1,5 +1,6 @@
 package org.palladiosimulator.blockchainsystems.core.simulation.abstractions
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -30,13 +31,18 @@ abstract class MonteCarloSimulation<R : SimulationRoundResult>(
   override fun run(): MonteCarloSimulationResult {
     progressMonitor.onSimulationStarted(numberOfRounds)
 
-    val concurrency = Runtime.getRuntime().availableProcessors()
+    // Each round allocates a full blockchain system. Run at most CONCURRENCY rounds
+    // simultaneously to cap peak memory while still parallelising across CPU cores.
+    // Raise this value if you have ample heap; lower it if you still see OOM.
+    val concurrency = 2
     val semaphore = Semaphore(concurrency)
 
     val results = runBlocking {
       coroutineScope {
         (0 until numberOfRounds).map {
-          async {
+          // Dispatchers.Default puts work on the shared thread pool so rounds
+          // actually run in parallel (without it, runBlocking uses a single thread).
+          async(Dispatchers.Default) {
             semaphore.withPermit {
               val result = performSimulationRound()
               progressMonitor.onSimulationRoundFinished()
