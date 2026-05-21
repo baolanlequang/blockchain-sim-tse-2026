@@ -51,7 +51,7 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 		
 		// Keep at most 2 rounds running simultaneously to bound peak memory usage.
 		// Each round holds a full blockchain system; raise this if you have ample heap.
-		ExecutorService executor = Executors.newFixedThreadPool(100);
+		ExecutorService executor = Executors.newFixedThreadPool(500);
 
 		List<Future<DoubleSpendingSimulationRoundResult>> futures =
 			Stream.iterate(0, n -> n + 1)
