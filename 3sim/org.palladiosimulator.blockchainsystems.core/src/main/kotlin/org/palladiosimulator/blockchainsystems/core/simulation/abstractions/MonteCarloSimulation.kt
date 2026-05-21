@@ -34,7 +34,7 @@ abstract class MonteCarloSimulation<R : SimulationRoundResult>(
     // Each round allocates a full blockchain system. Run at most CONCURRENCY rounds
     // simultaneously to cap peak memory while still parallelising across CPU cores.
     // Raise this value if you have ample heap; lower it if you still see OOM.
-    val concurrency = 100
+    val concurrency = 500
     val semaphore = Semaphore(concurrency)
 
     val results = runBlocking {
