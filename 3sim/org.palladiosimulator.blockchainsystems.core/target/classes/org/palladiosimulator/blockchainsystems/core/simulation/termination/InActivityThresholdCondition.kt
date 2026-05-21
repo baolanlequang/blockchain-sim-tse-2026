@@ -11,7 +11,8 @@ class InActivityThresholdCondition (
     var lastLoggedSimulationClock: Long = simulationClock?.currentTime ?: 0
         private set
 
-    val inactivityThreshold =  -(blockCreationInterval * ln(0.01))
+//    val inactivityThreshold =  -(blockCreationInterval * ln(0.01))
+    val inactivityThreshold = blockCreationInterval + blockCreationInterval * 0.1
 
     fun restartLoggedSimulationClock() {
         lastLoggedSimulationClock = simulationClock?.currentTime ?: 0
