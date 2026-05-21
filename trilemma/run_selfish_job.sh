@@ -9,4 +9,12 @@
 #SBATCH --time=72:00:00                   # Time limit (HH:MM:SS)
 #SBATCH --partition=highmem                   # Partition/Queue name
 
-java -Xmx240G -XX:ParallelGCThreads=20 -jar selfishmining.jar org.palladiosimulator.blockchainsystems.trilemma/optimized_deterministic_lhs_configurations.csv org.palladiosimulator.blockchainsystems.trilemma/testmodels org.palladiosimulator.blockchainsystems.trilemma/testmodels/configuration.json
+java -Xms340G -Xmx360G \
+     -XX:+UseG1GC \
+     -XX:ParallelGCThreads=20 \
+     -XX:+HeapDumpOnOutOfMemoryError \
+     -XX:HeapDumpPath=heapdump_${SLURM_JOB_ID}.hprof \
+     -jar selfishmining.jar \
+     org.palladiosimulator.blockchainsystems.trilemma/optimized_deterministic_lhs_configurations.csv \
+     org.palladiosimulator.blockchainsystems.trilemma/testmodels \
+     org.palladiosimulator.blockchainsystems.trilemma/testmodels/configuration.json
