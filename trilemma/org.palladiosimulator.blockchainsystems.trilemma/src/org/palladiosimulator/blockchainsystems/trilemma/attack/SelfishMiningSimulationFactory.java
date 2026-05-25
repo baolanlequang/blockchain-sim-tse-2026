@@ -41,13 +41,16 @@ public class SelfishMiningSimulationFactory {
             MonteCarloSimulationProgressMonitorAdapter progressMonitor =
                     new MonteCarloSimulationProgressMonitorAdapter(null);
 
+            int concurrency = parseConcurrency(configuration);
+
             montecarloSimulation = new MonteCarloDoubleSpendingAttackSimulation(
             		blockchainSystemFactory,
             		logOutputProvider,
             		new SimulationRoundInterpretationImpl(runId),
             		null,
             		parameter.getMaxAllowedBlockchainLength(),
-            		parameter.getNumberOfMonteCarloRounds()
+            		parameter.getNumberOfMonteCarloRounds(),
+            		concurrency
             		);
 
         } else {
@@ -77,6 +80,20 @@ public class SelfishMiningSimulationFactory {
     	return null;
     }
     
+
+    private static int parseConcurrency(Map<String, String> configuration) {
+        String raw = configuration.get("monteCarloConcurrency");
+        int cores = Runtime.getRuntime().availableProcessors();
+        if (raw == null || raw.isBlank()) {
+            return cores;
+        }
+        try {
+            int requested = Integer.parseInt(raw.trim());
+            return Math.max(1, Math.min(requested, cores));
+        } catch (NumberFormatException e) {
+            return cores;
+        }
+    }
 
     private ThreesimSimulationParameters getThreesimSimulationParametersFromConfiguration(
             Map<String, String> configuration) {
