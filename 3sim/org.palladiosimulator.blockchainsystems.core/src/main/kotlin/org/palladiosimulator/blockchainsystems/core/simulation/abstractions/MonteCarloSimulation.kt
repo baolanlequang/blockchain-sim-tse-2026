@@ -19,23 +19,20 @@ import kotlinx.coroutines.sync.withPermit
 abstract class MonteCarloSimulation<R : SimulationRoundResult>(
   protected val numberOfRounds: Int,
   protected val progressMonitor: MonteCarloSimulationProgressMonitor,
+  private val concurrency: Int = Runtime.getRuntime().availableProcessors(),
 ) : Simulation {
 
   /**
    * Runs the Monte-Carlo simulation and returns the result.
-   * Rounds run with bounded parallelism (capped at available CPU cores) to
-   * prevent OOM while still exploiting all available cores.
+   * Rounds run with bounded parallelism (capped at [concurrency]) to
+   * prevent OOM. Default is available CPU cores.
    *
    * @return The result of the simulation.
    */
   override fun run(): MonteCarloSimulationResult {
     progressMonitor.onSimulationStarted(numberOfRounds)
 
-    // Each round allocates a full blockchain system. Run at most CONCURRENCY rounds
-    // simultaneously to cap peak memory while still parallelising across CPU cores.
-    // Raise this value if you have ample heap; lower it if you still see OOM.
-    val concurrency = 200
-    val semaphore = Semaphore(concurrency)
+    val semaphore = Semaphore(concurrency.coerceAtLeast(1))
 
     val results = runBlocking {
       coroutineScope {

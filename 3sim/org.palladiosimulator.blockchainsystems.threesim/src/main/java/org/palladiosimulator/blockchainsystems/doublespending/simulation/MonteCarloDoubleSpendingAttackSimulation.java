@@ -22,7 +22,8 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 	private final MonteCarloSimulationProgressMonitor _simulationProgressMonitor;
 	private final long _maximumBlockchainLength;
 	private final int _numberOfSimulationRounds;
-	
+	private final int _concurrency;
+
 	public MonteCarloDoubleSpendingAttackSimulation(
 			ThreesimBlockchainSystemFactory blockchainSystemFactory,
 			LogOutputProvider logOutputProvider,
@@ -30,12 +31,26 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 			MonteCarloSimulationProgressMonitor simulationProgressMonitor,
 			long maximumBlockchainLength,
 			int numberOfSimulationRounds) {
+		this(blockchainSystemFactory, logOutputProvider, simulationRoundInterpretation,
+				simulationProgressMonitor, maximumBlockchainLength, numberOfSimulationRounds,
+				Runtime.getRuntime().availableProcessors());
+	}
+
+	public MonteCarloDoubleSpendingAttackSimulation(
+			ThreesimBlockchainSystemFactory blockchainSystemFactory,
+			LogOutputProvider logOutputProvider,
+			SimulationRoundInterpretation simulationRoundInterpretation,
+			MonteCarloSimulationProgressMonitor simulationProgressMonitor,
+			long maximumBlockchainLength,
+			int numberOfSimulationRounds,
+			int concurrency) {
 		_blockchainSystemFactory = blockchainSystemFactory;
 		_logOutputProvider = logOutputProvider;
 		_simulationRoundInterpretation = simulationRoundInterpretation;
 		_simulationProgressMonitor = simulationProgressMonitor;
 		_maximumBlockchainLength = maximumBlockchainLength;
 		_numberOfSimulationRounds = numberOfSimulationRounds;
+		_concurrency = Math.max(1, concurrency);
 	}
 	
 	public MonteCarloDoubleSpendingAttackSimulationResult run() {
@@ -49,9 +64,9 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 			);
 		}
 		
-		// Keep at most 2 rounds running simultaneously to bound peak memory usage.
-		// Each round holds a full blockchain system; raise this if you have ample heap.
-		ExecutorService executor = Executors.newFixedThreadPool(200);
+		// Each round holds a full blockchain system; cap in-flight rounds to bound peak memory.
+		// Default is available CPU cores; override via configuration key "monteCarloConcurrency".
+		ExecutorService executor = Executors.newFixedThreadPool(_concurrency);
 
 		List<Future<DoubleSpendingSimulationRoundResult>> futures =
 			Stream.iterate(0, n -> n + 1)
