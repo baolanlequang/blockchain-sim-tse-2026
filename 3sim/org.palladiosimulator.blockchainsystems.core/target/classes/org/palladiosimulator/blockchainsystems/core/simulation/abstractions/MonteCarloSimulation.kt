@@ -19,8 +19,12 @@ import kotlinx.coroutines.sync.withPermit
 abstract class MonteCarloSimulation<R : SimulationRoundResult>(
   protected val numberOfRounds: Int,
   protected val progressMonitor: MonteCarloSimulationProgressMonitor,
-  private val concurrency: Int = Runtime.getRuntime().availableProcessors(),
+  private val concurrency: Int = DEFAULT_CONCURRENCY,
 ) : Simulation {
+
+  companion object {
+    const val DEFAULT_CONCURRENCY: Int = 150
+  }
 
   /**
    * Runs the Monte-Carlo simulation and returns the result.
@@ -33,8 +37,7 @@ abstract class MonteCarloSimulation<R : SimulationRoundResult>(
     progressMonitor.onSimulationStarted(numberOfRounds)
 
     val semaphore = Semaphore(concurrency.coerceAtLeast(1))
-
-    /*
+    
     val results = runBlocking {
       coroutineScope {
         (0 until numberOfRounds).map {
@@ -48,22 +51,6 @@ abstract class MonteCarloSimulation<R : SimulationRoundResult>(
             }
           }
         }.awaitAll()
-      }
-    }
-    */
-
-    val results = runBlocking {
-      // Create a list of round indices (e.g., 0 until 10_000) and split into groups of 100
-      (0 until numberOfRounds).chunked(100).flatMap { chunk ->
-        coroutineScope {
-          chunk.map { _ ->
-            async(Dispatchers.Default) {
-              val result = performSimulationRound()
-              progressMonitor.onSimulationRoundFinished()
-              result
-            }
-          }.awaitAll() // Waits for all 100 rounds in the current chunk to finish before moving to the next
-        }
       }
     }
 
