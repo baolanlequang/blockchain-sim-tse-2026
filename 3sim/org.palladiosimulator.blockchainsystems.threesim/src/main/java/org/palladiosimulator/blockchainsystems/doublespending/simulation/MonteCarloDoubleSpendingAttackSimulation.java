@@ -1,6 +1,5 @@
 package org.palladiosimulator.blockchainsystems.doublespending.simulation;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
@@ -25,6 +24,8 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 	private final int _numberOfSimulationRounds;
 	private final int _concurrency;
 
+	private static final int DEFAULT_CONCURRENCY = 150;
+
 	public MonteCarloDoubleSpendingAttackSimulation(
 			ThreesimBlockchainSystemFactory blockchainSystemFactory,
 			LogOutputProvider logOutputProvider,
@@ -34,7 +35,7 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 			int numberOfSimulationRounds) {
 		this(blockchainSystemFactory, logOutputProvider, simulationRoundInterpretation,
 				simulationProgressMonitor, maximumBlockchainLength, numberOfSimulationRounds,
-				Runtime.getRuntime().availableProcessors());
+				DEFAULT_CONCURRENCY);
 	}
 
 	public MonteCarloDoubleSpendingAttackSimulation(
@@ -64,94 +65,41 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 					0, 0, _numberOfSimulationRounds
 			);
 		}
-
-    // Fixed thread pool now uses a size of 100 to process the batch efficiently in parallel
-    ExecutorService executor = Executors.newFixedThreadPool(100);
-    List<DoubleSpendingSimulationRoundResult> roundResults = new ArrayList<>();
-
-    try {
-      int roundsProcessed = 0;
-      
-      // Process in chunks of 100
-      while (roundsProcessed < _numberOfSimulationRounds) {
-        int currentBatchSize = Math.min(100, _numberOfSimulationRounds - roundsProcessed);
-        
-        // 1. Submit a batch of 100 tasks
-        List<Future<DoubleSpendingSimulationRoundResult>> futures = Stream.generate(() -> (Runnable) null)
-            .limit(currentBatchSize)
-            .map(x -> executor.submit(this::performSimulationRun))
-            .collect(Collectors.toList());
-
-        // 2. Wait for this entire batch of 100 to complete before moving to the next iteration
-        for (Future<DoubleSpendingSimulationRoundResult> future : futures) {
-          try {
-            DoubleSpendingSimulationRoundResult res = future.get(); // Blocks until this task is done
-            if (res != null) {
-              roundResults.add(res);
-            }
-          } catch (Exception e) {
-            Thread.currentThread().interrupt();
-            // Handle or log exception if a specific round fails
-          }
-        }
-
-        roundsProcessed += currentBatchSize;
-      }
-    } finally {
-      executor.shutdown(); // Ensure the executor is always cleaned up
-    }
-
-    // 3. Interpret all results sequentially after all chunks complete
-    List<InterpretedResult> results = roundResults.stream()
-        .map(x -> _simulationRoundInterpretation.interpretRoundResult(x))
-        .filter(Objects::nonNull)
-        .collect(Collectors.toList());
-
-    List<String> roundResultNames = results.stream()
-        .map(Enum::name)
-        .collect(Collectors.toList());
-
-    return new MonteCarloDoubleSpendingAttackSimulationResult(
-        results.stream().filter(x -> x == InterpretedResult.AttackerWon).count(),
-        results.stream().filter(x -> x == InterpretedResult.SystemWon).count(),
-        results.stream().filter(x -> x == InterpretedResult.Unambiguous).count(),
-        roundResultNames
-    );
 		
-		// // Each round holds a full blockchain system; cap in-flight rounds to bound peak memory.
-		// // Default is available CPU cores; override via configuration key "monteCarloConcurrency".
-		// ExecutorService executor = Executors.newFixedThreadPool(_concurrency);
+		// Each round holds a full blockchain system; cap in-flight rounds to bound peak memory.
+		// Default is available CPU cores; override via configuration key "monteCarloConcurrency".
+		ExecutorService executor = Executors.newFixedThreadPool(_concurrency);
 
-		// List<Future<DoubleSpendingSimulationRoundResult>> futures =
-		// 	Stream.iterate(0, n -> n + 1)
-		// 		.limit(_numberOfSimulationRounds)
-		// 		.map(x -> executor.submit(this::performSimulationRun))
-		// 		.collect(Collectors.toList());
+		List<Future<DoubleSpendingSimulationRoundResult>> futures =
+			Stream.iterate(0, n -> n + 1)
+				.limit(_numberOfSimulationRounds)
+				.map(x -> executor.submit(this::performSimulationRun))
+				.collect(Collectors.toList());
 
-		// executor.shutdown();
+		executor.shutdown();
 
-		// List<InterpretedResult> results = futures.stream()
-		// 	.map(f -> {
-		// 		try { return f.get(); }
-		// 		catch (Exception e) { Thread.currentThread().interrupt(); return null; }
-		// 	})
-		// 	.filter(Objects::nonNull)
-		// 	.map(x -> _simulationRoundInterpretation.interpretRoundResult(x))
-		// 	.filter(Objects::nonNull)
-		// 	.collect(Collectors.toList());
+		List<InterpretedResult> results = futures.stream()
+			.map(f -> {
+				try { return f.get(); }
+				catch (Exception e) { Thread.currentThread().interrupt(); return null; }
+			})
+			.filter(Objects::nonNull)
+			.map(x -> _simulationRoundInterpretation.interpretRoundResult(x))
+			.filter(Objects::nonNull)
+			.collect(Collectors.toList());
 
 //		_simulationProgressMonitor.onSimulationFinished();
 //		System.out.println("simulation finished");
 
-		// List<String> roundResultNames = results.stream()
-		// 		.map(Enum::name)
-		// 		.collect(Collectors.toList());
+		List<String> roundResultNames = results.stream()
+				.map(Enum::name)
+				.collect(Collectors.toList());
 
-		// return new MonteCarloDoubleSpendingAttackSimulationResult(
-		// 		results.stream().filter(x -> x == InterpretedResult.AttackerWon).count(),
-		// 		results.stream().filter(x -> x == InterpretedResult.SystemWon).count(),
-		// 		results.stream().filter(x -> x == InterpretedResult.Unambiguous).count(),
-		// 		roundResultNames);
+		return new MonteCarloDoubleSpendingAttackSimulationResult(
+				results.stream().filter(x -> x == InterpretedResult.AttackerWon).count(),
+				results.stream().filter(x -> x == InterpretedResult.SystemWon).count(),
+				results.stream().filter(x -> x == InterpretedResult.Unambiguous).count(),
+				roundResultNames);
 	}
 	
 	private DoubleSpendingSimulationRoundResult performSimulationRun() {
