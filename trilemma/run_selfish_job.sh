@@ -5,13 +5,13 @@
 #SBATCH --partition=highmem
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=96
+#SBATCH --cpus-per-task=48
 #SBATCH --mem-per-cpu=12090mb
 #SBATCH --time=72:00:00
 
 java -Xms1000G -Xmx1000G \
      -XX:+UseG1GC \
-     -XX:ParallelGCThreads=96 \
+     -XX:ParallelGCThreads=48 \
      -XX:+HeapDumpOnOutOfMemoryError \
      -XX:HeapDumpPath=heapdump_${SLURM_JOB_ID}.hprof \
      -jar selfishmining.jar \
