@@ -9,9 +9,6 @@
 #SBATCH --mem-per-cpu=12090mb
 #SBATCH --time=72:00:00
 
-# Always run from the directory containing this script and selfishmining.jar
-cd "$(dirname "$(realpath "$0")")"
-
 # highmem half-node: 48 cores, 48 x 12090 MB = ~566 GB allocated.
 # 96 concurrent MC rounds x ~3.2 GB/round = ~307 GB peak heap — fits within 566 GB.
 # -Xmx450G caps the JVM safely under the 566 GB budget.
