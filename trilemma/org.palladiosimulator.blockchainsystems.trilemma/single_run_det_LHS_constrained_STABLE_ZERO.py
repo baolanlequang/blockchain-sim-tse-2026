@@ -21,13 +21,13 @@ rng = np.random.default_rng(SEED)
 param_ranges = {
     "Hnode": (0.1, 10.0),
     "Hlink": (0.1, 10.0),
-    "block_creation_interval": (60, 1200),
+    "block_creation_interval": (60, 00),
     "hashrate_concentration": (0.0, 1.0),
     "max_block_size": (0.25, 8.0),
     "inbound_connections": (1, 250),
     "outbound_connections": (1, 16),
     "attacker_fraction": (0.0, ATTACKER_FRACTION_MAX),
-    "validator_count": (20, 5000),
+    "validator_count": (20, 3000),
 }
 
 param_names = list(param_ranges.keys())
@@ -113,7 +113,7 @@ df.loc[zero_idx, "number_of_attackers"] = 0
 # Enforce exact 25% cases by making validator_count divisible by 4.
 vc = df.loc[exact_25_idx, "validator_count"].to_numpy()
 vc4 = np.rint(vc / 4).astype(int) * 4
-vc4 = np.clip(vc4, 20, 5000)
+vc4 = np.clip(vc4, 20, 3000) # ensures values stay within validaing-node counts
 vc4 = (vc4 // 4) * 4
 vc4 = np.maximum(vc4, 20)
 
