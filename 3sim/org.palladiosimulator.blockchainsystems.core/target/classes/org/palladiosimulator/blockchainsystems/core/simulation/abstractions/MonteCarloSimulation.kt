@@ -23,7 +23,7 @@ abstract class MonteCarloSimulation<R : SimulationRoundResult>(
 ) : Simulation {
 
   companion object {
-    const val DEFAULT_CONCURRENCY: Int = 150
+    const val DEFAULT_CONCURRENCY: Int = 96
   }
 
   /**

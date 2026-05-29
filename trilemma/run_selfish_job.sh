@@ -9,7 +9,7 @@
 #SBATCH --mem-per-cpu=12090mb
 #SBATCH --time=72:00:00
 
-java -Xms1000G -Xmx1000G \
+java -Xmx450G \
      -XX:+UseG1GC \
      -XX:ParallelGCThreads=48 \
      -XX:+HeapDumpOnOutOfMemoryError \
