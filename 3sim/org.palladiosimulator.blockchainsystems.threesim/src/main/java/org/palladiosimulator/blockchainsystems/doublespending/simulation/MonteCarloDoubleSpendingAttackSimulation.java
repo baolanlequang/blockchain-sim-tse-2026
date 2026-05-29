@@ -24,7 +24,7 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 	private final int _numberOfSimulationRounds;
 	private final int _concurrency;
 
-	private static final int DEFAULT_CONCURRENCY = 150;
+	private static final int DEFAULT_CONCURRENCY = 96;
 
 	public MonteCarloDoubleSpendingAttackSimulation(
 			ThreesimBlockchainSystemFactory blockchainSystemFactory,
