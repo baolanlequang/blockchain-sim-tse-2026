@@ -87,9 +87,14 @@ abstract class ThreesimBlockchainSystemFactory(
     val networkImpl = network as? P2PNetworkImpl
     val systemName = "run_$runId"
 
+    // Compute all node bandwidths in a single pass over the edges (O(N)) instead of
+    // calling the per-node lookups (each an O(N) vertex scan) for every node (O(N²)).
+    val (outgoingBandwidths, incomingBandwidths) =
+      networkImpl?.computeTotalBandwidths() ?: (emptyMap<String, Double>() to emptyMap())
+
     val nodesJson = blockchainSystem.nodes.sortedBy { it.id }.joinToString(separator = ",\n    ") { node ->
-      val outbound = networkImpl?.getNodeTotalOutgoingBandwidth(node.id) ?: Double.NaN
-      val inbound = networkImpl?.getNodeTotalIncomingBandwidth(node.id) ?: Double.NaN
+      val outbound = if (networkImpl != null) outgoingBandwidths[node.id] ?: 0.0 else Double.NaN
+      val inbound = if (networkImpl != null) incomingBandwidths[node.id] ?: 0.0 else Double.NaN
       """{"nodeId": "${node.id}", "resourcePower": ${node.resourcePower}, "totalOutboundBandwidth": $outbound, "totalInboundBandwidth": $inbound}"""
     }
 
