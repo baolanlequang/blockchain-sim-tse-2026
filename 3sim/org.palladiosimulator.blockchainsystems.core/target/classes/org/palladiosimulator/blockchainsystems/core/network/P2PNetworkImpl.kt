@@ -71,6 +71,23 @@ class P2PNetworkImpl internal constructor(
       .sumOf { it.bandwidthValueProvider.getValue() ?: 0.0 }
   }
 
+  /**
+   * Computes the total outgoing and incoming bandwidth for every node in a single
+   * pass over the edge set. Returns a pair of (outgoing, incoming) maps keyed by
+   * node id. This avoids the O(N²) cost of calling the per-node lookups (which each
+   * scan the full vertex set) once for every node.
+   */
+  fun computeTotalBandwidths(): Pair<Map<String, Double>, Map<String, Double>> {
+    val outgoing = HashMap<String, Double>()
+    val incoming = HashMap<String, Double>()
+    networkGraph.edgeSet().forEach { edge ->
+      val bandwidth = edge.bandwidthValueProvider.getValue() ?: 0.0
+      outgoing.merge(edge.fromNode.endpointId, bandwidth, Double::plus)
+      incoming.merge(edge.toNode.endpointId, bandwidth, Double::plus)
+    }
+    return outgoing to incoming
+  }
+
   companion object {
     fun create(networkGraph: Graph<P2PNode, P2PLink>): P2PNetworkImpl {
       val p2pNetworkId = UUID.randomUUID().toString()
