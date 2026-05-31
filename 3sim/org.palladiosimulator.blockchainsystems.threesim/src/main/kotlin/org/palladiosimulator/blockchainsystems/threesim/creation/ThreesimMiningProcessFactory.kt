@@ -23,11 +23,20 @@ class ThreesimMiningProcessFactory(
 
     val nodeResourcePowerShare = nodeResourcePower / resourcePowerCalculator.calculateGlobalResourcePower()
 
-    val nodeAverageBlockArrivalTime = meanBlockTime / nodeResourcePowerShare
+    // meanBlockTime is specified in SECONDS, but the simulation clock runs in
+    // MILLISECONDS (network latency and transmission durations are in ms). Convert to
+    // ms here so block production and block propagation share the same time unit.
+    // Without this, mined blocks land on the clock ~1000x too early, making propagation
+    // appear far slower than block production -> pathological forking -> event explosion.
+    val nodeAverageBlockArrivalTimeMs = (meanBlockTime * MILLIS_PER_SECOND) / nodeResourcePowerShare
 
     return MiningProcessImpl(
-      nodeAverageBlockArrivalTime,
+      nodeAverageBlockArrivalTimeMs,
       RandomGenerator.of("Random")
     )
+  }
+
+  companion object {
+    private const val MILLIS_PER_SECOND = 1000.0
   }
 }
