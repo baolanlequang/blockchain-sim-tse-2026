@@ -134,7 +134,9 @@ abstract class ThreesimBlockchainSystemFactory(
 
 
     val trxPropSpec = designBlockchainSystem.transactionsSpecification.transactionPropertiesSpecification
-    val meanTrxCreationInterval = designBlockchainSystem.transactionsSpecification.meanTransactionCreationInterval
+    // Specified in SECONDS; convert to MILLISECONDS to match the simulation clock
+    // (same reasoning as block time in ThreesimMiningProcessFactory).
+    val meanTrxCreationInterval = designBlockchainSystem.transactionsSpecification.meanTransactionCreationInterval * 1000.0
 
     val transactionSubmissionProcess = ThreesimTransactionSubmissionProcess(
       blockchainSystemId,
