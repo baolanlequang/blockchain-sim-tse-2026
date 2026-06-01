@@ -15,8 +15,9 @@ import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainS
 class ConnectedSubgraphNetworkBlockchainSystemFactory(
   designBlockchainSystem: DesignBlockchainSystem,
   connectedSubgraphsTopology: ConnectedSubgraphsNetworkTopology,
-  attackSimulation: Boolean
-) : ThreesimBlockchainSystemFactory(designBlockchainSystem, connectedSubgraphsTopology, attackSimulation) {
+  attackSimulation: Boolean,
+  runId: Int = 0
+) : ThreesimBlockchainSystemFactory(designBlockchainSystem, connectedSubgraphsTopology, attackSimulation, runId) {
   override fun createP2PNetworkFactory(): P2PNetworkFactory {
     return ConnectedSubgraphP2PNetworkFactory(
       networkTopology as ConnectedSubgraphsNetworkTopology

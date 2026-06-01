@@ -28,32 +28,36 @@ public class SelfishMiningSimulationFactory {
 
     public SelfishMiningSimulationFactory(
             SimulationParameters simulationParameters,
-            Map<String, String> configuration) {
+            Map<String, String> configuration,
+            int runId) {
 
     	ThreesimBlockchainSystemFactory blockchainSystemFactory =
-                createBlockchainSystemFactory(simulationParameters, configuration);
+                createBlockchainSystemFactory(simulationParameters, configuration, runId);
 
-        LogOutputAttackProviderImpl logOutputProvider = new LogOutputAttackProviderImpl(false, false, "", false, "", 0, "", "","");
+        LogOutputAttackProviderImpl logOutputProvider = new LogOutputAttackProviderImpl(true, false, "", false, "", 0, "", "","", runId);
 
         if (simulationParameters instanceof MonteCarloSimulationParameters parameter) {
 
             MonteCarloSimulationProgressMonitorAdapter progressMonitor =
                     new MonteCarloSimulationProgressMonitorAdapter(null);
 
+            int concurrency = parseConcurrency(configuration);
+
             montecarloSimulation = new MonteCarloDoubleSpendingAttackSimulation(
             		blockchainSystemFactory,
             		logOutputProvider,
-            		new SimulationRoundInterpretationImpl(),
+            		new SimulationRoundInterpretationImpl(runId),
             		null,
             		parameter.getMaxAllowedBlockchainLength(),
-            		parameter.getNumberOfMonteCarloRounds()
+            		parameter.getNumberOfMonteCarloRounds(),
+            		concurrency
             		);
 
         } else {
         	singleSimulation = new SingleDoubleSpendingAttackSimulation(
         			blockchainSystemFactory,
             		logOutputProvider,
-            		new SimulationRoundInterpretationImpl(),
+            		new SimulationRoundInterpretationImpl(runId),
             		simulationParameters.getMaxAllowedBlockchainLength());
 
         }
@@ -76,6 +80,20 @@ public class SelfishMiningSimulationFactory {
     	return null;
     }
     
+
+    private static int parseConcurrency(Map<String, String> configuration) {
+        String raw = configuration.get("monteCarloConcurrency");
+        int cores = Runtime.getRuntime().availableProcessors();
+        if (raw == null || raw.isBlank()) {
+            return cores;
+        }
+        try {
+            int requested = Integer.parseInt(raw.trim());
+            return Math.max(1, Math.min(requested, cores));
+        } catch (NumberFormatException e) {
+            return cores;
+        }
+    }
 
     private ThreesimSimulationParameters getThreesimSimulationParametersFromConfiguration(
             Map<String, String> configuration) {
@@ -105,7 +123,8 @@ public class SelfishMiningSimulationFactory {
 
     private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(
             SimulationParameters simulationParameters,
-            Map<String, String> configuration) {
+            Map<String, String> configuration,
+            int runId) {
 
         BlockchainSystemModelLoader loader =
                 new BlockchainSystemModelLoader();
@@ -113,7 +132,7 @@ public class SelfishMiningSimulationFactory {
         BlockchainSystem designBlockchainSystem =
                 loader.load(
                         simulationParameters.getBlockchainSystemModelFilePath(),
-                        configuration);        
+                        configuration);
 
         var networkTopology =
                 designBlockchainSystem.getNetwork().getTopology();
@@ -122,14 +141,16 @@ public class SelfishMiningSimulationFactory {
             return new ConnectedSubgraphNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ConnectedSubgraphsNetworkTopology) networkTopology,
-                    true);
+                    true,
+                    runId);
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {
             return new ExplicitNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ExplicitNetworkTopology) networkTopology,
-                    true);
+                    true,
+                    runId);
         }
 
         throw new IllegalStateException(

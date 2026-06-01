@@ -10,6 +10,7 @@ import org.palladiosimulator.blockchainsystems.core.simulation.termination.InAct
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem;
 import org.palladiosimulator.blockchainsystems.core.tracing.TraceEventLogOutput;
 import org.palladiosimulator.blockchainsystems.core.tracing.TraceEventLoggerContainerImpl;
+import org.palladiosimulator.blockchainsystems.doublespending.behavior.AttackerUtils;
 import org.palladiosimulator.blockchainsystems.doublespending.monitoring.SimulationMonitor;
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.termination.LongestChainExceededMaxLengthCondition;
 import org.palladiosimulator.blockchainsystems.doublespending.simulation.termination.SimulationWinnerVoter;
@@ -43,6 +44,8 @@ public class DoubleSpendingAttackSimulationRound {
 				_eventCoordinator,
 				_clock,
 				_traceEventLoggerContainer);
+
+		AttackerUtils.simulationContext = _context;
 		
 		_logOutputs = logOutputs;
 		_blockchainSystem = blockchainSystem;
@@ -51,7 +54,7 @@ public class DoubleSpendingAttackSimulationRound {
 		_logOutputs.forEach(x -> _traceEventLoggerContainer.addSubscriber(x));
 	}
 	
-	public SimulationRoundResult run() {
+	public DoubleSpendingSimulationRoundResult run() {
 		//Initialize log outputs
 		_logOutputs.forEach(x -> x.initialize());
 		
@@ -69,13 +72,15 @@ public class DoubleSpendingAttackSimulationRound {
 
 		// Clean up the log ouptputs
 		_logOutputs.forEach(x -> x.cleanUp());
-		
 
 		Set<SimulationWinnerVoter> winnerVoters = _monitor.getWinnerVoters();
-		return SimulationRoundResult.create(
+		return DoubleSpendingSimulationRoundResult.create(
 				winnerVoters
 					.stream()
 					.map(x -> x.getWinnerVote())
-					.collect(Collectors.toSet()));
+					.collect(Collectors.toSet()),
+				_monitor.getForkedBlocks().size());
 	}
+
+
 }

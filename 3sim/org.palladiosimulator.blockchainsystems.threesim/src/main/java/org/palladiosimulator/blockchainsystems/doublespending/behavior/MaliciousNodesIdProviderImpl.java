@@ -3,9 +3,10 @@ package org.palladiosimulator.blockchainsystems.doublespending.behavior;
 import java.util.Set;
 
 import org.palladiosimulator.blockchainsystems.doublespending.behavior.MaliciousNodesIdProvider;
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider;
 
 
-public class MaliciousNodesIdProviderImpl implements MaliciousNodesIdProvider {
+public class MaliciousNodesIdProviderImpl implements BlockchainMaliciousNodesIdProvider {
 
     private Set<String> _maliciousNodeIds;
     private int _numberOfAttacker;

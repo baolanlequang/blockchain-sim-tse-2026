@@ -8,6 +8,7 @@ import org.palladiosimulator.blockchainsystems.core.simulation.logoutputs.abstra
 import org.palladiosimulator.blockchainsystems.loggers.TraceEventConsoleLogger;
 
 import kotlinx.serialization.json.Json;
+import kotlinx.serialization.json.JsonKt;
 
 import org.palladiosimulator.blockchainsystems.loggers.*;
 
@@ -24,6 +25,7 @@ public class LogOutputAttackProviderImpl implements LogOutputProvider {
 	private final int _dbPort;
 	private final String _dbUsername;
 	private final String _dbPassword;
+	private final int _runId;
 	
 	public LogOutputAttackProviderImpl(
 			boolean useConsoleLogging,
@@ -34,7 +36,8 @@ public class LogOutputAttackProviderImpl implements LogOutputProvider {
 			int dbPort,
 			String dbName,
 			String dbUsername,
-			String dbPassword) {
+			String dbPassword,
+			int runId) {
 		_useConsoleLogging = useConsoleLogging;
 		_useFileLogging = useFileLogging;
 		_fileLoggingDirectoryPath = fileLoggingDirectoryPath;
@@ -44,6 +47,7 @@ public class LogOutputAttackProviderImpl implements LogOutputProvider {
 		_dbPort = dbPort;
 		_dbUsername = dbUsername;
 		_dbPassword = dbPassword;
+		_runId = runId;
 	}
 
 
@@ -67,11 +71,15 @@ public class LogOutputAttackProviderImpl implements LogOutputProvider {
 	}
 
 	private TraceEventLogOutput createConsoleLogger() {
-		return new TraceEventConsoleLogger(null);
+//		Json json = Json.Default;
+//		return new TraceEventConsoleLogger(json);
+		
+		return new NormalTraceEventLogger();
 	}
 	
 	private TraceEventLogOutput createFileLogger() {
-		return new TraceEventFileLogger(null, _fileLoggingDirectoryPath);
+		Json json = Json.Default;
+		return new TraceEventFileLogger(json, _fileLoggingDirectoryPath);
 	}
 	
 	private TraceEventLogOutput createDatabaseLogger() {

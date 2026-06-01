@@ -13,6 +13,7 @@ import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNodeFactory
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.*
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNode
+import org.palladiosimulator.blockchainsystems.core.network.P2PNetworkImpl
 import org.palladiosimulator.blockchainsystems.core.transaction.TrxMemPoolFactoryImpl
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimBlockchainSystemNodeBehaviorFactory
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransactionSelectionProcessFactory
@@ -23,6 +24,9 @@ import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransac
 import org.palladiosimulator.blockchainsystems.threesim.creation.abstractions.NodeAllocationResolver
 import java.util.UUID
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.NetworkTopology
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider
+import org.palladiosimulator.blockchainsystems.doublespending.behavior.MaliciousNodesIdProvider
+import org.palladiosimulator.blockchainsystems.doublespending.behavior.MaliciousNodesIdProviderImpl
 import java.util.HashSet
 
 /**
@@ -33,7 +37,8 @@ import java.util.HashSet
 abstract class ThreesimBlockchainSystemFactory(
   protected val designBlockchainSystem: DesignBlockchainSystem,
   protected val networkTopology: NetworkTopology,
-  protected val attackSimulation: Boolean
+  protected val attackSimulation: Boolean,
+  protected val runId: Int = 0
 ) {
   protected abstract fun createP2PNetworkFactory(): P2PNetworkFactory
 
@@ -65,13 +70,50 @@ abstract class ThreesimBlockchainSystemFactory(
       networkCreationResult
     )
 
-    return createBlockchainSystemInstance(
+    val blockchainSystem = createBlockchainSystemInstance(
       networkCreationResult.createdNetwork,
       blockFactory,
       nodeFactory,
       geographicalRegionsResolver,
       designBlockchainSystem.specification.blockReward
     )
+
+    logNodeInitializationInfo(blockchainSystem, networkCreationResult.createdNetwork)
+
+    return blockchainSystem
+  }
+
+  private fun logNodeInitializationInfo(blockchainSystem: BlockchainSystem, network: P2PNetwork) {
+    val networkImpl = network as? P2PNetworkImpl
+    val systemName = "run_$runId"
+
+    // Compute all node bandwidths in a single pass over the edges (O(N)) instead of
+    // calling the per-node lookups (each an O(N) vertex scan) for every node (O(N²)).
+    val (outgoingBandwidths, incomingBandwidths) =
+      networkImpl?.computeTotalBandwidths() ?: (emptyMap<String, Double>() to emptyMap())
+
+    val nodesJson = blockchainSystem.nodes.sortedBy { it.id }.joinToString(separator = ",\n    ") { node ->
+      val outbound = if (networkImpl != null) outgoingBandwidths[node.id] ?: 0.0 else Double.NaN
+      val inbound = if (networkImpl != null) incomingBandwidths[node.id] ?: 0.0 else Double.NaN
+      """{"nodeId": "${node.id}", "resourcePower": ${node.resourcePower}, "totalOutboundBandwidth": $outbound, "totalInboundBandwidth": $inbound}"""
+    }
+
+    val json = """{
+  "systemName": "$systemName",
+  "totalNodes": ${blockchainSystem.nodes.size},
+  "nodes": [
+    $nodesJson
+  ]
+}"""
+
+    try {
+      val outputDir = java.nio.file.Paths.get("node_init")
+      java.nio.file.Files.createDirectories(outputDir)
+      val outputFile = outputDir.resolve("init_${systemName}_${blockchainSystem.id.substring(0, 8)}.json")
+      java.nio.file.Files.writeString(outputFile, json)
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
   }
 
   private fun createBlockchainSystemInstance(
@@ -92,7 +134,9 @@ abstract class ThreesimBlockchainSystemFactory(
 
 
     val trxPropSpec = designBlockchainSystem.transactionsSpecification.transactionPropertiesSpecification
-    val meanTrxCreationInterval = designBlockchainSystem.transactionsSpecification.meanTransactionCreationInterval
+    // Specified in SECONDS; convert to MILLISECONDS to match the simulation clock
+    // (same reasoning as block time in ThreesimMiningProcessFactory).
+    val meanTrxCreationInterval = designBlockchainSystem.transactionsSpecification.meanTransactionCreationInterval * 1000.0
 
     val transactionSubmissionProcess = ThreesimTransactionSubmissionProcess(
       blockchainSystemId,
@@ -141,8 +185,10 @@ abstract class ThreesimBlockchainSystemFactory(
     val blockValidatorFactory = ThreesimBlockValidatorFactory(nodeAllocationResolver)
 
     val numberOfAttacker = if (attackSimulation == true) designBlockchainSystem.specification.numberOfAttacker else 0
+    val maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider = MaliciousNodesIdProviderImpl(mutableSetOf(), numberOfAttacker)
     val behaviorFactory = ThreesimBlockchainSystemNodeBehaviorFactory(resourcePowerCalculator, numberOfAttacker)
-    val tagProvider = ThreesimBlockchainSystemNodeTagProvider(behaviorFactory.maliciousNodesIdProvider)
+//    val tagProvider = ThreesimBlockchainSystemNodeTagProvider(behaviorFactory.maliciousNodesIdProvider)
+    val tagProvider = ThreesimBlockchainSystemNodeTagProvider(maliciousNodesIdProvider)
 
     return BlockchainSystemNodeFactory(
       blockFactory,
@@ -157,7 +203,8 @@ abstract class ThreesimBlockchainSystemFactory(
       behaviorFactory,
       geographicalRegionsResolver,
       resourcePowerCalculator,
-      tagProvider
+      tagProvider,
+      maliciousNodesIdProvider
     )
   }
 

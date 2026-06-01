@@ -68,7 +68,7 @@ public class BlockchainTrilemmaAttackStandalone {
                 getSimulationParametersFromConfiguration(configuration);
 
         var simulationFactory =
-                new SelfishMiningSimulationFactory(simulationParameters, configuration);
+                new SelfishMiningSimulationFactory(simulationParameters, configuration, runId);
 
         String simulationJson = simulationFactory.run();
         
@@ -108,9 +108,9 @@ public class BlockchainTrilemmaAttackStandalone {
         } catch (IOException e) {
             logger.error("Failed to write simulation result", e);
         }
-        
+
     }
-    
+
     private Path createOutputPath(int runId) {
         return Paths.get("result_selfishmining")
                 .resolve("result_run_" + runId + ".json");

@@ -82,6 +82,9 @@ public class SimulationMonitor implements TraceEventSubscriber, TerminationCondi
 
 	@Override
 	public boolean shouldTerminate() {
+    if (_inactivityThresholdCondition.hasProlongedInactivityExceeded()) {
+      return true;
+    }
 		// Check if attackers have published all of their blocks
 		if (didAllMaliciousNodesReachFinalPhase()) {
 			// Require honest nodes to receive all forked blocks
@@ -94,7 +97,7 @@ public class SimulationMonitor implements TraceEventSubscriber, TerminationCondi
 			}
 		}
 
-		return _maxBlockchainLengthCondition.hasLengthExceeded() || _inactivityThresholdCondition.hasProlongedInactivityExceeded();
+		return _maxBlockchainLengthCondition.hasLengthExceeded();
 	}
 
 	public void setSimulationClock(SimulationClock simulationClock) {
@@ -130,4 +133,7 @@ public class SimulationMonitor implements TraceEventSubscriber, TerminationCondi
 				.allMatch(x -> x.hasLongestChainWithDistance(distance));
 	}
 
+	public HashSet<Block> getForkedBlocks() {
+		return _forkedBlocks;
+	}
 }
