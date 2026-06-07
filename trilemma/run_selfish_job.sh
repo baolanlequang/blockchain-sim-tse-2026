@@ -8,6 +8,8 @@
 #SBATCH --cpus-per-task=48
 #SBATCH --mem-per-cpu=12090mb
 #SBATCH --time=72:00:00
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=baolan2005@gmail.com
 
 # highmem half-node: 48 cores, 48 x 12090 MB = ~566 GB allocated.
 # 96 concurrent MC rounds x ~3.2 GB/round = ~307 GB peak heap — fits within 566 GB.
