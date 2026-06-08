@@ -8,6 +8,8 @@
 #SBATCH --cpus-per-task=48
 #SBATCH --mem-per-cpu=12090mb
 #SBATCH --time=72:00:00
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=baolan2005@gmail.com
 
 java -Xmx450G \
      -XX:+UseG1GC \
