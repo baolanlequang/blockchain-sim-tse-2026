@@ -27,7 +27,7 @@ param_ranges = {
     "inbound_connections": (1, 250),
     "outbound_connections": (1, 16),
     "attacker_fraction": (0.0, ATTACKER_FRACTION_MAX),
-    "validator_count": (20, 3000),
+    "validator_count": (20, 2500),
 }
 
 param_names = list(param_ranges.keys())
