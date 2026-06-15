@@ -67,7 +67,7 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 		}
 		
 		// Each round holds a full blockchain system; cap in-flight rounds to bound peak memory.
-		// Default is available CPU cores; override via configuration key "monteCarloConcurrency".
+		// Default is available CPU cores; override via configuration key "numberOfParallelTasks".
 		ExecutorService executor = Executors.newFixedThreadPool(_concurrency);
 
 		List<Future<DoubleSpendingSimulationRoundResult>> futures =
