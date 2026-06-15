@@ -22,10 +22,12 @@ class ThreesimMonteCarloSimulation(
   private val logOutputProvider: LogOutputProvider,
   private val maxAllowedBlockchainLength: Long,
   private val simulationParameters: MonteCarloSimulationParameters,
-  private val threesimSimulationParameters: ThreesimSimulationParameters
+  private val threesimSimulationParameters: ThreesimSimulationParameters,
+  concurrency: Int = MonteCarloSimulation.DEFAULT_CONCURRENCY
 ) : MonteCarloSimulation<ThreesimSimulationRoundResult>(
   simulationParameters.numberOfMonteCarloRounds,
-  progressMonitor
+  progressMonitor,
+  concurrency
 ) {
 
   override fun performSimulationRound(): ThreesimSimulationRoundResult {
