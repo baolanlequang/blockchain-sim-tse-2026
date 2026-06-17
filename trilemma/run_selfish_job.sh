@@ -12,7 +12,10 @@
 #SBATCH --mail-user=baolan2005@gmail.com
 
 # highmem half-node: 48 cores, 48 x 12090 MB = ~566 GB allocated.
-# 96 concurrent MC rounds x ~3.2 GB/round = ~307 GB peak heap — fits within 566 GB.
+# configuration.json sets numberOfParallelTasks=48 (one round per allocated core);
+# 48 concurrent MC rounds x ~3.2 GB/round = ~154 GB peak heap — well within 566 GB.
+# Running more threads than cores (e.g. the old default of 96) only adds context-
+# switching overhead for this CPU-bound workload, so we match the core count.
 # -Xmx450G caps the JVM safely under the 566 GB budget.
 java -Xmx450G \
      -XX:+UseG1GC \

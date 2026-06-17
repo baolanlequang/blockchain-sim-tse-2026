@@ -159,20 +159,32 @@ class ConnectedSubgraphP2PNetworkFactory(
           initialDegrees.decrement(secondNode)
         }
 
-      // Enhance with random bidirectional edges
+      // Enhance with random bidirectional edges.
+      //
+      // Performance: the original code rebuilt a filtered candidate list over *all* still-
+      // unsaturated nodes on every single edge addition (O(N) per edge), giving O(N^2 * degree)
+      // per network. With N up to ~2000 and inbound degree up to ~250, this construction
+      // dominated the whole simulation runtime. We instead build each node's candidate list
+      // once and maintain it incrementally with O(1) swap-removes, giving O(N) per node.
+      // Selection remains a uniform draw over the exact same candidate set at each step, so the
+      // generated network distribution is unchanged (the generator is unseeded, so only the
+      // distribution -- not a fixed sequence -- is observable). CounterMap.decrement removes a
+      // node once its remaining degree reaches 0, so within a node's loop only that node and the
+      // nodes it connects to ever change degree, which is what makes incremental upkeep exact.
       val nodesToEnhance = initialDegrees.keys.toTypedArray()
 
       nodesToEnhance.forEach { currentNode ->
-        // create outbound connection
-        while (initialDegrees.get(currentNode) > numberOfInbound) {
-          val potentialNodes = initialDegrees.keys
-            .filterNot {
-              it == currentNode
-                || networkGraph.containsEdge(it, currentNode)
-                || networkGraph.containsEdge(currentNode, it)
-            }
+        // Outbound candidates: unsaturated nodes with no existing edge to/from currentNode.
+        // A node only leaves this set when currentNode connects to it, so swap-removing the
+        // selected node keeps the list exactly in sync with the original per-iteration filter.
+        val outboundCandidates = initialDegrees.keys.filterNot {
+          it == currentNode
+            || networkGraph.containsEdge(it, currentNode)
+            || networkGraph.containsEdge(currentNode, it)
+        }.toMutableList()
 
-          if (potentialNodes.isEmpty()) {
+        while (initialDegrees.get(currentNode) > numberOfInbound) {
+          if (outboundCandidates.isEmpty()) {
             // Sometimes each node except for the last one has reached the maximum degree
             // The strategy here is to neglect the range parameters for the last node
             initialDegrees.decrement(currentNode)
@@ -185,7 +197,11 @@ class ConnectedSubgraphP2PNetworkFactory(
           val outBoundBandwidth = outBoundBandwidthMapping.get(currentNode.endpointId)?.get(indexOfEdge) ?: 0.0
           bandwidthValueProvider = createBandwidthValueProviderWithValue(outBoundBandwidth)
 
-          val selectedNode = potentialNodes.random()
+          val selectedIndex = outboundCandidates.indices.random()
+          val selectedNode = outboundCandidates[selectedIndex]
+          // selectedNode now shares an edge with currentNode -> drop it from the candidate pool
+          outboundCandidates[selectedIndex] = outboundCandidates[outboundCandidates.size - 1]
+          outboundCandidates.removeAt(outboundCandidates.size - 1)
 
           networkGraph.addBidirectionalEdge(
             currentNode,
@@ -203,25 +219,23 @@ class ConnectedSubgraphP2PNetworkFactory(
           initialDegrees.decrement(selectedNode)
         }
 
-        // create inbound connection
-        val checkingArrayList: ArrayList<P2PNode> = ArrayList()
+        // Inbound candidates: unsaturated nodes (excluding self) that have not yet been
+        // "checked". Unlike the outbound case a node may be re-selected after a plain new edge
+        // (the re-selection then enters the bandwidth-comparison branch), so a node only leaves
+        // the pool when it is checked or its remaining degree reaches 0. This mirrors the
+        // original filter `it != self && degree(it) != 0 && it !in checkingArrayList`.
+        val inboundCandidates = initialDegrees.keys.filterNot { it == currentNode }.toMutableList()
 
         while (initialDegrees.get(currentNode) > 0) {
-          val potentialNodes = initialDegrees.keys
-            .filterNot {
-              it == currentNode
-                      || initialDegrees.get(it) == 0 // the neigbors reached the capacity
-                      || checkingArrayList.contains(it)
-            }
-
-          if (potentialNodes.isEmpty()) {
+          if (inboundCandidates.isEmpty()) {
             // Sometimes each node except for the last one has reached the maximum degree
             // The strategy here is to neglect the range parameters for the last node
             initialDegrees.decrement(currentNode)
             continue
           }
 
-          val selectedNode = potentialNodes.random()
+          val selectedIndex = inboundCandidates.indices.random()
+          val selectedNode = inboundCandidates[selectedIndex]
 
           val currentDegrees = initialDegrees.get(currentNode)
           val indexOfEdge = numberOfInbound - currentDegrees
@@ -236,7 +250,9 @@ class ConnectedSubgraphP2PNetworkFactory(
             val firstEdge = currEdges.first()
             val currBandwidth = firstEdge.bandwidthValueProvider.getValue()
 
-            checkingArrayList.add(selectedNode)
+            // selectedNode is now "checked" -> exclude it from future draws for currentNode
+            inboundCandidates[selectedIndex] = inboundCandidates[inboundCandidates.size - 1]
+            inboundCandidates.removeAt(inboundCandidates.size - 1)
 
             if (currBandwidth >= inBoundBandwidth) {
               networkGraph.removeEdge(firstEdge)
@@ -272,6 +288,12 @@ class ConnectedSubgraphP2PNetworkFactory(
 
             initialDegrees.decrement(currentNode)
             initialDegrees.decrement(selectedNode)
+
+            // selectedNode keeps an edge now but stays selectable unless it just saturated
+            if (initialDegrees.get(selectedNode) == 0) {
+              inboundCandidates[selectedIndex] = inboundCandidates[inboundCandidates.size - 1]
+              inboundCandidates.removeAt(inboundCandidates.size - 1)
+            }
           }
 
         }
