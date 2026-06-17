@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=48
 #SBATCH --mem-per-cpu=12090mb
 #SBATCH --time=72:00:00
-#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=baolan2005@gmail.com
 
 # highmem half-node: 48 cores, 48 x 12090 MB = ~566 GB allocated.
@@ -20,6 +20,6 @@ java -Xmx450G \
      -XX:+HeapDumpOnOutOfMemoryError \
      -XX:HeapDumpPath=heapdump_${SLURM_JOB_ID}.hprof \
      -jar selfishmining.jar \
-     org.palladiosimulator.blockchainsystems.trilemma/optimized_deterministic_lhs_configurations.csv \
+     org.palladiosimulator.blockchainsystems.trilemma/optimized_selfish.csv \
      org.palladiosimulator.blockchainsystems.trilemma/testmodels \
      org.palladiosimulator.blockchainsystems.trilemma/testmodels/configuration.json

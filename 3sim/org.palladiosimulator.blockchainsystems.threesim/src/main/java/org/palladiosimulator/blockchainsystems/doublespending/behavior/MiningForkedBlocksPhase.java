@@ -39,7 +39,7 @@ public class MiningForkedBlocksPhase implements DoubleSpendingAttackPhase {
 			_attackBlockStorage.addBlock(block);
 			
 			String nextMiningPreviousBlockHash = _attackBlockStorage.getHashOfLatestForkedBlock();
-			if (_currentMiningPreviousBlockHash != nextMiningPreviousBlockHash && nextMiningPreviousBlockHash != null) {
+			if (nextMiningPreviousBlockHash != null && !nextMiningPreviousBlockHash.equals(_currentMiningPreviousBlockHash)) {
 				_currentMiningPreviousBlockHash = nextMiningPreviousBlockHash;
 				context.getMiningProcess().restartMining();
 			}
@@ -62,7 +62,7 @@ public class MiningForkedBlocksPhase implements DoubleSpendingAttackPhase {
 		_attackBlockStorage.addBlock(block);
 		
 		String nextMiningPreviousBlockHash = _attackBlockStorage.getHashOfLatestForkedBlock();
-		if (_currentMiningPreviousBlockHash != nextMiningPreviousBlockHash && nextMiningPreviousBlockHash != null) {
+		if (nextMiningPreviousBlockHash != null && !nextMiningPreviousBlockHash.equals(_currentMiningPreviousBlockHash)) {
 			_currentMiningPreviousBlockHash = nextMiningPreviousBlockHash;
 		}
 		
@@ -166,15 +166,15 @@ public class MiningForkedBlocksPhase implements DoubleSpendingAttackPhase {
 	private Set<Block> getImmediateSuccessorBlocksToOverride(String blockHash, long blockPosition, BlockchainSystemNodeContext context) {
 		return context.getBlockchain().getBlocksAtPosition(blockPosition + 1)
 				.stream()
-			 	.filter(x -> x.getPreviousHash() == blockHash)
+			 	.filter(x -> blockHash.equals(x.getPreviousHash()))
 			 	.filter(x -> AttackerUtils.isBlockABlockToOverride(x))
 			 	.collect(Collectors.toSet());
 	}
-	
+
 	private Set<Block> getImmediateSuccessorForkedBlocks(String blockHash, long blockPosition, BlockchainSystemNodeContext context) {
 		return context.getBlockchain().getBlocksAtPosition(blockPosition + 1)
 				.stream()
-			 	.filter(x -> x.getPreviousHash() == blockHash)
+			 	.filter(x -> blockHash.equals(x.getPreviousHash()))
 			 	.filter(x -> AttackerUtils.isBlockABlockForkedBlock(x))
 			 	.collect(Collectors.toSet());
 	}
