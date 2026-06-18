@@ -38,7 +38,9 @@ class ConnectedSubgraphNetworkResourcePowerCalculator(
     val numberOfNodes = connectedSubgraphsTopology
       .subgraphs.flatMap { it.nodeTemplates }
       .sumOf { it.numberOfNodeOccurences }
-    val hStar = (hashRateConcentration - 1/numberOfNodes)/(1 - 1/numberOfNodes)
+    // Use floating-point division: 1/numberOfNodes with an Int operand is integer division,
+    // which evaluates to 0 for any n > 1 and silently turns this normalization into a no-op.
+    val hStar = (hashRateConcentration - 1.0 / numberOfNodes) / (1.0 - 1.0 / numberOfNodes)
     val alpha = DirichletUtils.calibrateAlpha(hStar, numberOfNodes)
     val distributions = DirichletUtils.generateDirichlet(alpha, numberOfNodes)
     return@lazy distributions
