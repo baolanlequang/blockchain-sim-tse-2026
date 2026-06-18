@@ -23,7 +23,13 @@ class ConnectedSubgraphP2PNetworkFactory(
 ) : AbstractThreesimP2PNetworkFactory() {
   override fun createP2PNetwork(): P2PNetworkCreationResult {
     val nodeIdToNodeTemplateIdMapping = HashMap<String, String>()
+    // Unique, global per-node index (0 until total node count). This MUST be a running node
+    // index, not the per-template occurrence index: the resource-power Dirichlet generates one
+    // weight per node and is looked up by this value (see ConnectedSubgraphNetworkResourcePower-
+    // Calculator). Using the occurrence index (0..numberOfNodeOccurences-1) collapsed the whole
+    // hashrate distribution onto only a handful of distinct weights.
     val nodeIdToIndexMapping = HashMap<String, Int>()
+    var globalNodeIndex = 0
 
     // Store attacker information
     val attackerNodeIds = ArrayList<String>()
@@ -39,8 +45,7 @@ class ConnectedSubgraphP2PNetworkFactory(
       subGraphIdToLinkSpecificationMapping.put(subgraphSpec.id, subgraphSpec)
 
       subgraphSpec.nodeTemplates.forEach { nodeTemplate ->
-        (0 until nodeTemplate.numberOfNodeOccurences).forEach { idx ->
-//          println("nodeindex: " + idx)
+        (0 until nodeTemplate.numberOfNodeOccurences).forEach { _ ->
           val p2pNodeId = UUID.randomUUID().toString()
           val node = P2PNode(p2pNodeId)
 
@@ -51,7 +56,8 @@ class ConnectedSubgraphP2PNetworkFactory(
           }
 
           nodeIdToNodeTemplateIdMapping.put(p2pNodeId, nodeTemplate.id)
-          nodeIdToIndexMapping.put(p2pNodeId, idx)
+          nodeIdToIndexMapping.put(p2pNodeId, globalNodeIndex)
+          globalNodeIndex++
         }
       }
     }
