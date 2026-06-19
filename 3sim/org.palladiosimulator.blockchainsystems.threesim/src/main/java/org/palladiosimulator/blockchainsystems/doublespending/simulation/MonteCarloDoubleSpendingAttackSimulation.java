@@ -5,6 +5,7 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -23,6 +24,9 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 	private final long _maximumBlockchainLength;
 	private final int _numberOfSimulationRounds;
 	private final int _concurrency;
+
+	// Counts finished rounds across the parallel workers so progress can be logged per round.
+	private final AtomicInteger _completedRounds = new AtomicInteger(0);
 
 	private static final int DEFAULT_CONCURRENCY = 96;
 
@@ -114,10 +118,18 @@ public class MonteCarloDoubleSpendingAttackSimulation {
 		
 		//Run simulation
 		DoubleSpendingSimulationRoundResult result = simulationRound.run();
-		
-//		_simulationProgressMonitor.onSimulationRoundFinished();
-//		System.out.println("simulation finished");
-		
+
+		int completed = _completedRounds.incrementAndGet();
+		System.out.printf(
+				"✔ Round %d/%d finished — attackerWon=%d, systemWon=%d, abstained=%d, btoNotIncluded=%d, forkedLen=%d%n",
+				completed,
+				_numberOfSimulationRounds,
+				result.getNumberOfAttackerWonVotes(),
+				result.getNumberOfSystemWonVotes(),
+				result.getNumberOfAbstentedVotes(),
+				result.getNumberOfBTONotIncludedVotes(),
+				result.getLengthOfForkedBlock());
+
 		return result;
 	}
 }

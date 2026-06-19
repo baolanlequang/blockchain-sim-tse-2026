@@ -107,7 +107,10 @@ abstract class ThreesimBlockchainSystemFactory(
 }"""
 
     try {
-      val outputDir = java.nio.file.Paths.get("node_init")
+      // Keep selfish-mining and trilemma node-init logs in separate folders. attackSimulation
+      // is true only for the selfish-mining attack runs and false for the trilemma runs.
+      val nodeInitDir = if (attackSimulation) "node_init_selfishmining" else "node_init_trilemma"
+      val outputDir = java.nio.file.Paths.get(nodeInitDir)
       java.nio.file.Files.createDirectories(outputDir)
       val outputFile = outputDir.resolve("init_${systemName}_${blockchainSystem.id.substring(0, 8)}.json")
       java.nio.file.Files.writeString(outputFile, json)
