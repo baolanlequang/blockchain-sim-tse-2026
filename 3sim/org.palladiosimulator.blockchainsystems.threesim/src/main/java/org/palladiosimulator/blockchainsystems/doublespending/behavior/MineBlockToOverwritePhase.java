@@ -46,10 +46,10 @@ public class MineBlockToOverwritePhase implements DoubleSpendingAttackPhase {
 		
 		context.getBlockchain().appendBlock(block);
 		_attackBlockStorage.addBlock(block);
-		
-		// Send to all nodes
-		context.getBlockPropagationStrategy().distribute(block);
-		
+
+		// Withhold from honest nodes, same as subsequent forked blocks
+		AttackerUtils.distributeBlockToMaliciousNodes(block, context, _maliciousNodesIdProvider);
+
 		_nextPhase = new MiningForkedBlocksPhase(_attackBlockStorage, _maliciousNodesIdProvider);
 		
 	}

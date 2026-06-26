@@ -94,7 +94,7 @@ public class BlockchainTrilemmaAttackStandalone {
                 .toJson(finalResult);
         
         try {
-            Path outputFile = createOutputPath(runId);
+            Path outputFile = createOutputPath(configuration.get("config_id"), runId);
             Files.createDirectories(outputFile.getParent());
 
             try (BufferedWriter writer =
@@ -111,9 +111,14 @@ public class BlockchainTrilemmaAttackStandalone {
 
     }
 
-    private Path createOutputPath(int runId) {
+    private Path createOutputPath(String configId, int runId) {
+        // Name results by config_id, which is globally unique across the whole CSV. runId
+        // restarts at 1 in every jar invocation, so a runId-based name would collide when the
+        // 500 configs are split across SLURM array tasks. Fall back to runId only if config_id
+        // is somehow absent.
+        String key = (configId == null || configId.isBlank()) ? ("run_" + runId) : ("config_" + configId);
         return Paths.get("result_selfishmining")
-                .resolve("result_run_" + runId + ".json");
+                .resolve("result_" + key + ".json");
     }
     
     private SimulationParameters getSimulationParametersFromConfiguration(
