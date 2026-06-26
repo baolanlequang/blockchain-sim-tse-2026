@@ -35,7 +35,7 @@ public class DSAttackBlockStorage {
 		String hashOfLatestForkedBlock = _forkedBlockInfoByForkedBlockHashes
 			.entrySet()
 			.stream()
-			.filter(x -> x.getValue().attackOriginBlockHash() == attackOriginBlockHash)
+			.filter(x -> x.getValue().attackOriginBlockHash().equals(attackOriginBlockHash))
 			// Note that the x1 and x2 are switched in the comparison to achieve reversed sort order
 			.sorted((x1, x2) -> Integer.compare(x2.getValue().attackOriginBlockOffset(), x1.getValue().attackOriginBlockOffset()))
 			.map(x -> x.getKey())

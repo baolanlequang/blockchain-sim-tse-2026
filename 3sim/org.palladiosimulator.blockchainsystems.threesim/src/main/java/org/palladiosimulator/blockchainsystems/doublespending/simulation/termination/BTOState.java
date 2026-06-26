@@ -34,7 +34,7 @@ public class BTOState {
 	}
 	
 	public boolean isBlockSuccessorOfBTO(Block block) {
-		return _btoState.getBlock().getHash() == block.getPreviousHash()
+		return _btoState.getBlock().getHash().equals(block.getPreviousHash())
 				|| _btoSuccessessorsByHashes.containsKey(block.getPreviousHash());
 	}
 	

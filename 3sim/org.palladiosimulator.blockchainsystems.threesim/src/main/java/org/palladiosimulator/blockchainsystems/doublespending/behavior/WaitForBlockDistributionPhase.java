@@ -41,7 +41,7 @@ public class WaitForBlockDistributionPhase implements DoubleSpendingAttackPhase 
 			currentBlock = context.getBlockchain().getBlock(currentBlock.getPreviousHash());
 			counter--;
 			
-		} while (currentBlock.getHash() != firstMinedAttackOriginBlockHash && counter >= firstMinedAttackOriginBlockPosition);
+		} while (!currentBlock.getHash().equals(firstMinedAttackOriginBlockHash) && counter >= firstMinedAttackOriginBlockPosition);
 		
 		
 		maliciousBlocks.entrySet()
