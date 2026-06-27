@@ -135,33 +135,37 @@ public class MiningForkedBlocksPhase implements DoubleSpendingAttackPhase {
 			 return false;
 		 }
 
+		 // Attacker's own withheld fork: the BTO block plus any forked blocks mined on top of it.
+		 // (isBlockABlockToOverride finds the BTO block; the walk below follows its descendants,
+		 // which carry the "ForkedBlock" tag, regardless of tag.)
 		 Set<Block> blocksToOverride = getImmediateSuccessorBlocksToOverride(
-				 attackOriginBlock.getHash(), 
-				 attackOriginBlockPosition,
-				 context);
-		 	
-		 long blockToOverrideSuccessorCounts = getLongestSuccessorChainLength(
-				 blocksToOverride.stream().map(x -> x.getHash()).collect(Collectors.toSet()),
-				 attackOriginBlockPosition + 1,
-				 context);
-		 
-		 Set<Block> forkedBlocks = getImmediateSuccessorForkedBlocks(
 				 attackOriginBlock.getHash(),
 				 attackOriginBlockPosition,
 				 context);
-		 
+
 		 long maliciousForkBlockCounts = getLongestSuccessorChainLength(
-				 forkedBlocks.stream().map(x -> x.getHash()).collect(Collectors.toSet()),
+				 blocksToOverride.stream().map(x -> x.getHash()).collect(Collectors.toSet()),
 				 attackOriginBlockPosition + 1,
 				 context);
-		 
-		 if (blockToOverrideSuccessorCounts < MINIMUM_NUMBER_OF_BLOCKS_TO_OVERRIDE) {
+
+		 // Honest network's competing chain, mined in parallel without knowledge of the private fork
+		 Set<Block> honestBlocks = getImmediateSuccessorHonestBlocks(
+				 attackOriginBlock.getHash(),
+				 attackOriginBlockPosition,
+				 context);
+
+		 long honestSuccessorCounts = getLongestSuccessorChainLength(
+				 honestBlocks.stream().map(x -> x.getHash()).collect(Collectors.toSet()),
+				 attackOriginBlockPosition + 1,
+				 context);
+
+		 if (honestSuccessorCounts < MINIMUM_NUMBER_OF_BLOCKS_TO_OVERRIDE) {
 			 return false;
 		 }
-		 
-		 return maliciousForkBlockCounts > blockToOverrideSuccessorCounts + 1;
+
+		 return maliciousForkBlockCounts > honestSuccessorCounts + 1;
 	}
-	
+
 
 	private Set<Block> getImmediateSuccessorBlocksToOverride(String blockHash, long blockPosition, BlockchainSystemNodeContext context) {
 		return context.getBlockchain().getBlocksAtPosition(blockPosition + 1)
@@ -171,11 +175,11 @@ public class MiningForkedBlocksPhase implements DoubleSpendingAttackPhase {
 			 	.collect(Collectors.toSet());
 	}
 
-	private Set<Block> getImmediateSuccessorForkedBlocks(String blockHash, long blockPosition, BlockchainSystemNodeContext context) {
+	private Set<Block> getImmediateSuccessorHonestBlocks(String blockHash, long blockPosition, BlockchainSystemNodeContext context) {
 		return context.getBlockchain().getBlocksAtPosition(blockPosition + 1)
 				.stream()
 			 	.filter(x -> blockHash.equals(x.getPreviousHash()))
-			 	.filter(x -> AttackerUtils.isBlockABlockForkedBlock(x))
+			 	.filter(x -> !AttackerUtils.isMaliciousBlock(x))
 			 	.collect(Collectors.toSet());
 	}
 	
