@@ -1,7 +1,6 @@
 package org.palladiosimulator.blockchainsystems.doublespending.simulation.termination;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -96,28 +95,25 @@ public class HonestNodeTerminationState implements NodeTerminationState {
 	@Override
 	public SimulationWinnerVote getWinnerVote() {
 		BTOState selectedBTOState = getFirstBlockToOverride();
-		
+
 		if (selectedBTOState == null || !selectedBTOState.wasBTOAccepted()) {
 			return SimulationWinnerVote.BTONotIncluded;
 		}
-		
+
 		String attackOriginBlockHash = selectedBTOState.getBTO().getBlock().getPreviousHash();
-		
+
 		Set<Block> attackOriginBlockSuccessors = _node.getBlockchain()
 				.getImmediateSuccessorBlocks(attackOriginBlockHash);
 
 		Set<Block> honestSuccessorChains = getHonestBlocks(attackOriginBlockSuccessors);
-		Set<Block> malicoiusSuccessorChains = getForkedBlocks(attackOriginBlockSuccessors);
-		
+
 		long btoForkLength = selectedBTOState.getNumberOfLongestChainSuccessors() + 1;
 		long longestHonestSuccessorChainLength = getLongestSuccessorChainLength(honestSuccessorChains) + 1;
-		long longestMaliciousSuccessorChainLength = getLongestSuccessorChainLength(malicoiusSuccessorChains) + 1;;
-		
-		if (longestMaliciousSuccessorChainLength > btoForkLength
-				&& longestMaliciousSuccessorChainLength > longestHonestSuccessorChainLength) {
+
+		if (btoForkLength > longestHonestSuccessorChainLength) {
 			return SimulationWinnerVote.AttackerWon;
 		}
-		
+
 		return SimulationWinnerVote.SystemWon;
 	}
 
@@ -135,40 +131,25 @@ public class HonestNodeTerminationState implements NodeTerminationState {
 		}
 		
 		String attackOriginBlockHash = selectedBTOState.getBTO().getBlock().getPreviousHash();
-		
+
 		Set<Block> attackOriginBlockSuccessors = _node.getBlockchain()
 				.getImmediateSuccessorBlocks(attackOriginBlockHash);
 
 		Set<Block> honestSuccessorChains = getHonestBlocks(attackOriginBlockSuccessors);
-		Set<Block> malicoiusSuccessorChains = getForkedBlocks(attackOriginBlockSuccessors);
-		
+
 		long btoForkLength = selectedBTOState.getNumberOfLongestChainSuccessors() + 1;
 		long longestHonestSuccessorChainLength = getLongestSuccessorChainLength(honestSuccessorChains) + 1;
-		long longestMaliciousSuccessorChainLength = getLongestSuccessorChainLength(malicoiusSuccessorChains) + 1;
-		
-		List<Long> longestLengths = List.of(btoForkLength, longestHonestSuccessorChainLength, longestMaliciousSuccessorChainLength)
-			.stream()
-			.sorted()
-			.limit(2)
-			.collect(Collectors.toList());
-		
-		return Math.abs(longestLengths.get(0) - longestLengths.get(1)) >= distance;
+
+		return Math.abs(btoForkLength - longestHonestSuccessorChainLength) >= distance;
 	}
-	
+
 	private Set<Block> getHonestBlocks(Set<Block> blocks) {
 		return blocks
 				.stream()
 				.filter(x -> !AttackerUtils.isMaliciousBlock(x))
 				.collect(Collectors.toSet());
 	}
-	
-	private Set<Block> getForkedBlocks(Set<Block> blocks) {
-		return blocks
-				.stream()
-				.filter(x -> AttackerUtils.isBlockABlockForkedBlock(x))
-				.collect(Collectors.toSet());
-	}
-	
+
 	private long getLongestSuccessorChainLength(Set<Block> blocks) {
 		return blocks.stream()
 				.mapToLong(x -> _node.getBlockchain().getLongestSuccessorChainLength(x.getHash()))

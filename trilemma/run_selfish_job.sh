@@ -50,7 +50,6 @@ java -Xms256G -Xmx900G \
      -XX:ParallelGCThreads=96 \
      -XX:+HeapDumpOnOutOfMemoryError \
      -XX:HeapDumpPath=heapdump_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.hprof \
-     -Xlog:gc:gc_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.log \
      -jar selfishmining.jar \
      "$SLICE_CSV" \
      "$TESTMODELS" \
