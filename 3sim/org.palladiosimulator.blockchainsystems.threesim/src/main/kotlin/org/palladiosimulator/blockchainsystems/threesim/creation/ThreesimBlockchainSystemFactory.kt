@@ -25,8 +25,8 @@ import org.palladiosimulator.blockchainsystems.threesim.creation.abstractions.No
 import java.util.UUID
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.NetworkTopology
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider
-import org.palladiosimulator.blockchainsystems.doublespending.behavior.MaliciousNodesIdProvider
-import org.palladiosimulator.blockchainsystems.doublespending.behavior.MaliciousNodesIdProviderImpl
+import org.palladiosimulator.blockchainsystems.threesim.behavior.MaliciousNodesIdProviderImpl
+import org.palladiosimulator.blockchainsystems.threesim.selfishmining.behavior.SelfishMiningBlockchainSystemNodeBehaviorFactory
 import java.util.HashSet
 
 /**
@@ -34,11 +34,12 @@ import java.util.HashSet
  *
  * @author Davis Riedel
  */
-abstract class ThreesimBlockchainSystemFactory(
+abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
   protected val designBlockchainSystem: DesignBlockchainSystem,
   protected val networkTopology: NetworkTopology,
   protected val attackSimulation: Boolean,
-  protected val runId: Int = 0
+  protected val runId: Int = 0,
+  protected val gamma: Double = 0.5
 ) {
   protected abstract fun createP2PNetworkFactory(): P2PNetworkFactory
 
@@ -185,10 +186,13 @@ abstract class ThreesimBlockchainSystemFactory(
     )
     val blockValidatorFactory = ThreesimBlockValidatorFactory(nodeAllocationResolver)
 
-    val numberOfAttacker = if (attackSimulation == true) designBlockchainSystem.specification.numberOfAttacker else 0
+    val numberOfAttacker = if (attackSimulation) designBlockchainSystem.specification.numberOfAttacker else 0
     val maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider = MaliciousNodesIdProviderImpl(mutableSetOf(), numberOfAttacker)
-    val behaviorFactory = ThreesimBlockchainSystemNodeBehaviorFactory(resourcePowerCalculator, numberOfAttacker)
-//    val tagProvider = ThreesimBlockchainSystemNodeTagProvider(behaviorFactory.maliciousNodesIdProvider)
+    val behaviorFactory = if (attackSimulation) {
+      SelfishMiningBlockchainSystemNodeBehaviorFactory(numberOfAttacker, gamma)
+    } else {
+      ThreesimBlockchainSystemNodeBehaviorFactory()
+    }
     val tagProvider = ThreesimBlockchainSystemNodeTagProvider(maliciousNodesIdProvider)
 
     return BlockchainSystemNodeFactory(

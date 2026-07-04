@@ -7,7 +7,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=96
 #SBATCH --time=72:00:00
-#SBATCH --array=1-100
+#SBATCH --array=0-99
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=baolan2005@gmail.com
 
@@ -15,17 +15,31 @@
 # SLURM ARRAY JOB — splits the 500 configs across array tasks so the batch parallelises across
 # bwUniCluster 3.0 "highmem" nodes (96 cores, up to 2,300,000 MB each), not just cores.
 #
-# Each array task gets its own 96-core node, runs CONFIGS_PER_TASK configs (each = 500 Monte
-# Carlo rounds, 96 rounds in parallel from configuration.json), and writes config-named result
-# files so tasks never collide.
+# Each array task gets its own 96-core node, slices ROWS_PER_TASK configs out of the full CSV
+# (each config = 500 Monte Carlo rounds, 96 rounds in parallel from configuration.json), and
+# passes that slice to a single `java -jar` call, writing config-named result files so tasks
+# never collide. trilemma.jar loops over every row of whatever CSV it's handed itself (it has
+# no --row-index flag like atosim.jar), so batching here happens by slicing the CSV per task
+# rather than by looping java calls per row within a task (contrast run_selfish.sh in ATOSIM).
 #
-# CONFIGS_PER_TASK and --array MUST stay consistent: array size = ceil(500 / CONFIGS_PER_TASK).
-#   CONFIGS_PER_TASK=5  -> --array=1-100   (5 configs x 500 rounds = 2500 rounds/task)
-#   CONFIGS_PER_TASK=10 -> --array=1-50
+# ROW_OFFSET/ROWS_PER_TASK follow the same convention as ATOSIM's submit_chunked_array.sh, so
+# this script can be driven by it directly (0-indexed SLURM_ARRAY_TASK_ID, offset applied before
+# converting to the 1-indexed config_id column):
+#   start = ROW_OFFSET + SLURM_ARRAY_TASK_ID * ROWS_PER_TASK + 1
+#   end   = start + ROWS_PER_TASK - 1
+#
+# ROWS_PER_TASK and the #SBATCH --array default above MUST stay consistent for a direct `sbatch
+# run_trilemma_job.sh` submission: array size = ceil(500 / ROWS_PER_TASK).
+#   ROWS_PER_TASK=5  -> --array=0-99   (5 configs x 500 rounds = 2500 rounds/task)
+#   ROWS_PER_TASK=10 -> --array=0-49
+# To use a different ROWS_PER_TASK, resume from an offset, or stay under a cluster MaxArraySize,
+# submit via:
+#   ./submit_chunked_array.sh run_trilemma_job.sh 500 [chunk_size] [sleep_between] [start_offset] [rows_per_task]
+#
 # 72h walltime budget per task: rounds/task / 96 cores x per-round-time must be < 72h.
-#   e.g. at ~72 min/round: 2500/96 x 72min ~= 31h  (safe). Lower CONFIGS_PER_TASK if slower.
+#   e.g. at ~72 min/round: 2500/96 x 72min ~= 31h  (safe). Lower ROWS_PER_TASK if slower.
 # ---------------------------------------------------------------------------------------------
-CONFIGS_PER_TASK=5
+ROWS_PER_TASK=${ROWS_PER_TASK:-5}
 
 FULL_CSV=org.palladiosimulator.blockchainsystems.trilemma/optimized_trilemma.csv
 TESTMODELS=org.palladiosimulator.blockchainsystems.trilemma/testmodels
@@ -34,8 +48,8 @@ BASE_CONFIG=org.palladiosimulator.blockchainsystems.trilemma/testmodels/configur
 mkdir -p logs result_trilemma
 
 # config_id range handled by this task
-start=$(( (SLURM_ARRAY_TASK_ID - 1) * CONFIGS_PER_TASK + 1 ))
-end=$(( SLURM_ARRAY_TASK_ID * CONFIGS_PER_TASK ))
+start=$(( ${ROW_OFFSET:-0} + SLURM_ARRAY_TASK_ID * ROWS_PER_TASK + 1 ))
+end=$(( start + ROWS_PER_TASK - 1 ))
 
 # Build a per-task CSV slice: header (line 1) + rows whose config_id (column 1) is in [start,end]
 SLICE_CSV=slice_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.csv

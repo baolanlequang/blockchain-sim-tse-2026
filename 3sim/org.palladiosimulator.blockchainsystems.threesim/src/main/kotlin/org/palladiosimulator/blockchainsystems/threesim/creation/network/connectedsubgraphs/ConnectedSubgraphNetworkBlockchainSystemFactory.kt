@@ -12,12 +12,13 @@ import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainS
  *
  * @author Davis Riedel
  */
-class ConnectedSubgraphNetworkBlockchainSystemFactory(
+class ConnectedSubgraphNetworkBlockchainSystemFactory @JvmOverloads constructor(
   designBlockchainSystem: DesignBlockchainSystem,
   connectedSubgraphsTopology: ConnectedSubgraphsNetworkTopology,
   attackSimulation: Boolean,
-  runId: Int = 0
-) : ThreesimBlockchainSystemFactory(designBlockchainSystem, connectedSubgraphsTopology, attackSimulation, runId) {
+  runId: Int = 0,
+  gamma: Double = 0.5
+) : ThreesimBlockchainSystemFactory(designBlockchainSystem, connectedSubgraphsTopology, attackSimulation, runId, gamma) {
   override fun createP2PNetworkFactory(): P2PNetworkFactory {
     return ConnectedSubgraphP2PNetworkFactory(
       networkTopology as ConnectedSubgraphsNetworkTopology

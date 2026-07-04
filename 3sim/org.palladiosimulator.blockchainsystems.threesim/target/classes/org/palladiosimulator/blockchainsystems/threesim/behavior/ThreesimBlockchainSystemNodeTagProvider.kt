@@ -2,7 +2,6 @@ package org.palladiosimulator.blockchainsystems.threesim.behavior
 
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeTagProvider
-import org.palladiosimulator.blockchainsystems.doublespending.behavior.MaliciousNodesIdProvider
 
 class ThreesimBlockchainSystemNodeTagProvider(
   private val maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider

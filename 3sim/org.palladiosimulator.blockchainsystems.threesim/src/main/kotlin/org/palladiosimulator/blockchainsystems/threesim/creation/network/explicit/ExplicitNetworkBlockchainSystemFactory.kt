@@ -14,12 +14,13 @@ import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainS
  *
  * @author Davis Riedel
  */
-class ExplicitNetworkBlockchainSystemFactory(
+class ExplicitNetworkBlockchainSystemFactory @JvmOverloads constructor(
   designBlockchainSystem: DesignBlockchainSystem,
   explicitTopology: ExplicitNetworkTopology,
   attackSimulation: Boolean,
-  runId: Int = 0
-) : ThreesimBlockchainSystemFactory(designBlockchainSystem, explicitTopology, attackSimulation, runId) {
+  runId: Int = 0,
+  gamma: Double = 0.5
+) : ThreesimBlockchainSystemFactory(designBlockchainSystem, explicitTopology, attackSimulation, runId, gamma) {
 
   override fun createP2PNetworkFactory(): P2PNetworkFactory {
     return ExplicitTopologyP2PNetworkFactory(networkTopology as ExplicitNetworkTopology)
