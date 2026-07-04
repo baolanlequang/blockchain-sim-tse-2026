@@ -9,13 +9,12 @@ import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectedSubgraph
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ExplicitNetworkTopology;
 import org.palladiosimulator.blockchainsystems.core.simulation.MonteCarloSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.abstractions.SimulationParameters;
-import org.palladiosimulator.blockchainsystems.doublespending.simulation.MonteCarloDoubleSpendingAttackSimulation;
-import org.palladiosimulator.blockchainsystems.doublespending.simulation.MonteCarloDoubleSpendingAttackSimulationResult;
-import org.palladiosimulator.blockchainsystems.doublespending.simulation.SingleDoubleSpendingAttackSimulation;
-import org.palladiosimulator.blockchainsystems.plugin.simulation.MonteCarloSimulationProgressMonitorAdapter;
 import org.palladiosimulator.blockchainsystems.threesim.creation.ThreesimBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.creation.network.connectedsubgraphs.ConnectedSubgraphNetworkBlockchainSystemFactory;
 import org.palladiosimulator.blockchainsystems.threesim.creation.network.explicit.ExplicitNetworkBlockchainSystemFactory;
+import org.palladiosimulator.blockchainsystems.threesim.selfishmining.simulation.MonteCarloSelfishMiningAttackSimulation;
+import org.palladiosimulator.blockchainsystems.threesim.selfishmining.simulation.MonteCarloSelfishMiningAttackSimulationResult;
+import org.palladiosimulator.blockchainsystems.threesim.selfishmining.simulation.SingleSelfishMiningAttackSimulation;
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSimulationParameters;
 import org.palladiosimulator.blockchainsystems.trilemma.BlockchainSystemModelLoader;
 
@@ -23,8 +22,8 @@ import com.google.gson.Gson;
 
 public class SelfishMiningSimulationFactory {
 
-    private MonteCarloDoubleSpendingAttackSimulation montecarloSimulation = null;
-    private SingleDoubleSpendingAttackSimulation singleSimulation =  null;
+    private MonteCarloSelfishMiningAttackSimulation montecarloSimulation = null;
+    private SingleSelfishMiningAttackSimulation singleSimulation =  null;
 
     public SelfishMiningSimulationFactory(
             SimulationParameters simulationParameters,
@@ -38,26 +37,20 @@ public class SelfishMiningSimulationFactory {
 
         if (simulationParameters instanceof MonteCarloSimulationParameters parameter) {
 
-            MonteCarloSimulationProgressMonitorAdapter progressMonitor =
-                    new MonteCarloSimulationProgressMonitorAdapter(null);
-
             int concurrency = parseConcurrency(configuration);
 
-            montecarloSimulation = new MonteCarloDoubleSpendingAttackSimulation(
+            montecarloSimulation = new MonteCarloSelfishMiningAttackSimulation(
             		blockchainSystemFactory,
             		logOutputProvider,
-            		new SimulationRoundInterpretationImpl(runId),
-            		null,
             		parameter.getMaxAllowedBlockchainLength(),
             		parameter.getNumberOfMonteCarloRounds(),
             		concurrency
             		);
 
         } else {
-        	singleSimulation = new SingleDoubleSpendingAttackSimulation(
+        	singleSimulation = new SingleSelfishMiningAttackSimulation(
         			blockchainSystemFactory,
             		logOutputProvider,
-            		new SimulationRoundInterpretationImpl(runId),
             		simulationParameters.getMaxAllowedBlockchainLength());
 
         }
@@ -71,15 +64,15 @@ public class SelfishMiningSimulationFactory {
     		String jsonStr = gson.toJson(result);
     		return jsonStr;
     	} else if (montecarloSimulation != null) {
-    		MonteCarloDoubleSpendingAttackSimulationResult result = montecarloSimulation.run();
-    		
-    		String jsonStr = gson.toJson(result);    		
+    		MonteCarloSelfishMiningAttackSimulationResult result = montecarloSimulation.run();
+
+    		String jsonStr = gson.toJson(result);
     		System.out.println("Selfish mining attack Montecarlo Simulation result: " + jsonStr);
     		return jsonStr;
     	}
     	return null;
     }
-    
+
 
     /**
      * Number of Monte-Carlo rounds to run in parallel at any one time. The remaining
@@ -147,12 +140,15 @@ public class SelfishMiningSimulationFactory {
         var networkTopology =
                 designBlockchainSystem.getNetwork().getTopology();
 
+        double gamma = Double.parseDouble(configuration.getOrDefault("gamma", "0.5"));
+
         if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) {
             return new ConnectedSubgraphNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ConnectedSubgraphsNetworkTopology) networkTopology,
                     true,
-                    runId);
+                    runId,
+                    gamma);
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {
@@ -160,7 +156,8 @@ public class SelfishMiningSimulationFactory {
                     designBlockchainSystem,
                     (ExplicitNetworkTopology) networkTopology,
                     true,
-                    runId);
+                    runId,
+                    gamma);
         }
 
         throw new IllegalStateException(
