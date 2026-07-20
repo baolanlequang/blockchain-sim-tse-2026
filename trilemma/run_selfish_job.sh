@@ -47,6 +47,21 @@ BASE_CONFIG=org.palladiosimulator.blockchainsystems.trilemma/testmodels/configur
 
 mkdir -p logs result_selfishmining
 
+# Final results and this task's Slurm log files are also copied into a
+# bwUniCluster 3.0 workspace at the end of the task, since $HOME/Lustre has a
+# small quota meant for source/config files, not bulk simulation output -
+# allocate one before submitting this job:
+#   ws_allocate trilemma_results 60
+RESULTS_WORKSPACE="${RESULTS_WORKSPACE:-trilemma_results}"
+WORKSPACE_PATH="$(ws_find "${RESULTS_WORKSPACE}")"
+if [ -z "${WORKSPACE_PATH}" ]; then
+    echo "ERROR: workspace '${RESULTS_WORKSPACE}' not found. Allocate it first: ws_allocate ${RESULTS_WORKSPACE} <days>" >&2
+    exit 1
+fi
+RESULTS_DIR="${WORKSPACE_PATH}/selfishmining"
+LOGS_DIR="${WORKSPACE_PATH}/logs"
+mkdir -p "${RESULTS_DIR}" "${LOGS_DIR}"
+
 # config_id range handled by this task
 start=$(( ${ROW_OFFSET:-0} + SLURM_ARRAY_TASK_ID * ROWS_PER_TASK + 1 ))
 end=$(( start + ROWS_PER_TASK - 1 ))
@@ -70,3 +85,8 @@ java -Xms256G -Xmx900G \
      "$BASE_CONFIG"
 
 rm -f "$SLICE_CSV"
+
+# Copy this task's results and Slurm log files into the workspace.
+cp result_selfishmining/result_*.json "${RESULTS_DIR}/" 2>/dev/null || true
+cp "logs/selfish_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.out" "${LOGS_DIR}/" 2>/dev/null || true
+cp "logs/selfish_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.err" "${LOGS_DIR}/" 2>/dev/null || true
