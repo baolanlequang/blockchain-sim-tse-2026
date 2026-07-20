@@ -14,9 +14,8 @@ class StaleBlockRate(
 ) : OutputMetric<Double> {
   companion object {
     const val NAME = "StaleBlockRate"
-    const val UNIT = "blocks/min"
   }
 
   override val name: String = NAME
-  override val unit: String? = UNIT
+  override val unit: String? = null
 }

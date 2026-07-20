@@ -227,7 +227,7 @@ class ThreesimSimulationMonitor(
   }
 
   private fun calculateNumberOfStaleBlocks(): Int {
-    return staleBlocks.getNumberOfBlocks()
+    return staleBlocks.getNumberOfValidBlocks()
   }
 
   private fun calculateBlocksProposedPerNode(): Collection<Int> {
