@@ -18,7 +18,7 @@
 # request - e.g. --array=1000-1999 is rejected under a 1000 cap even though
 # it's the same size as --array=0-999, because task id 1999 exceeds the cap.
 # So every chunk is submitted with task IDs reset to 0-<chunk_size-1>, and
-# the real CSV row offset is passed separately via --export=ROW_OFFSET=<n>.
+# the real CSV row offset is passed separately as env vars before sbatch.
 # The target job script (run_trilemma_job.sh etc.) computes
 # start=$(( ${ROW_OFFSET:-0} + SLURM_ARRAY_TASK_ID * ROWS_PER_TASK + 1 )) and
 # slices --config_id over start..start+ROWS_PER_TASK-1, so it still lands on
@@ -75,7 +75,7 @@ while [ "$start" -lt "$TOTAL_ROWS" ]; do
     attempt=1
     while true; do
         echo "Submitting --array=0-${end} (ROW_OFFSET=${start}, ROWS_PER_TASK=${ROWS_PER_TASK}, ~${rows_this_chunk} rows) for ${JOB_SCRIPT} [attempt ${attempt}]"
-        if sbatch --array="0-${end}" --export="ALL,ROW_OFFSET=${start},ROWS_PER_TASK=${ROWS_PER_TASK}" "${JOB_SCRIPT}"; then
+        if ROW_OFFSET="${start}" ROWS_PER_TASK="${ROWS_PER_TASK}" sbatch --array="0-${end}" "${JOB_SCRIPT}"; then
             break
         fi
         backoff=$(( attempt * 10 ))
