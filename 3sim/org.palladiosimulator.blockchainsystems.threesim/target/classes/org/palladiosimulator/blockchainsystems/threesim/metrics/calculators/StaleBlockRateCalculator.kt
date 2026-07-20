@@ -38,7 +38,6 @@ class StaleBlockRateCalculator(
       return AverageOutputMetricImpl(
         name = StaleBlockRate.NAME,
         average = result.average,
-        unit = StaleBlockRate.UNIT,
         standardDeviation = result.standardDeviation,
         coefficientOfVariation = result.coefficientOfVariation
       )
