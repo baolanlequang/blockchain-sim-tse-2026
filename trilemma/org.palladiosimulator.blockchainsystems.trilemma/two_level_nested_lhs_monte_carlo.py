@@ -63,7 +63,7 @@ OPERATIONAL_PARAM_RANGES: dict[str, tuple[float, float]] = {
     "Hlink": (0.3, 10.0),                   # operational parameter
     "hashrate_concentration": (0.10, 1.5),  # operational parameter
     "attacker_fraction": (0.0, 0.25),       # target fraction of validators
-    "validator_count": (50, 5000),          # integer
+    "validator_count": (20, 5000),          # integer
 }
 
 INTEGER_DESIGN_PARAMS = {
