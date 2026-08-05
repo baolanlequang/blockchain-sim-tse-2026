@@ -53,15 +53,15 @@ LHS_OPTIMIZATION = "random-cd"
 
 DESIGN_PARAM_RANGES: dict[str, tuple[float, float]] = {
     "block_creation_interval": (60, 1200),  # seconds
-    "max_block_size": (0.25, 8.0),          # MB
+    "max_block_size": (0.25, 8.00),          # MB
     "inbound_connections": (1, 125),        # integer
     "outbound_connections": (1, 8),        # integer
 }
 
 OPERATIONAL_PARAM_RANGES: dict[str, tuple[float, float]] = {
-    "Hnode": (0.1, 10),                    # operational parameter
-    "Hlink": (0.1, 10.0),                   # operational parameter
-    "hashrate_concentration": (0.0, 1.0),  # operational parameter
+    "Hnode": (0.05, 0.70),                  # operational parameter
+    "Hlink": (0.05, 0.50),                  # operational parameter
+    "hashrate_concentration": (0.05, 0.80),  # operational parameter
     "attacker_fraction": (0.0, 0.25),       # target fraction of validators
     "validator_count": (20, 1000),          # integer
 }
