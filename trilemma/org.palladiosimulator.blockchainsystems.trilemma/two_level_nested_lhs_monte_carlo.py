@@ -105,6 +105,40 @@ def optimized_lhs(
     return pd.DataFrame(lhs_scaled, columns=param_names), lhs_unit
 
 
+def map_unit_interval_to_integers(
+    unit_values: np.ndarray,
+    lower: int,
+    upper: int,
+) -> np.ndarray:
+    """Map LHS coordinates in [0, 1) to inclusive integer values.
+
+    The interval [0, 1) is divided into ``upper - lower + 1`` equal-width
+    bins, one for each admissible integer.  This is preferable to scaling
+    followed by ``round()`` because rounding gives the two end values only
+    half the probability mass of interior values.
+
+    Repeated integer values are unavoidable when the number of LHS samples
+    exceeds the number of admissible integers.  This mapping nevertheless
+    keeps their marginal allocation as balanced as the LHS coordinates allow.
+    """
+    if upper < lower:
+        raise ValueError("upper must be greater than or equal to lower.")
+
+    values = np.asarray(unit_values, dtype=float)
+    if np.any((values < 0.0) | (values > 1.0)):
+        raise ValueError("unit_values must lie in [0, 1].")
+
+    number_of_values = upper - lower + 1
+
+    # np.nextafter protects against the rare case where a value is exactly 1.0.
+    # SciPy's LatinHypercube normally returns values in [0, 1), but clipping
+    # makes this helper safe for reused or externally supplied coordinates.
+    values = np.minimum(values, np.nextafter(1.0, 0.0))
+    mapped = lower + np.floor(values * number_of_values).astype(np.int64)
+
+    return np.clip(mapped, lower, upper)
+
+
 # ---------------------------------------------------------------------------
 # 4. Outer-level design configurations
 # ---------------------------------------------------------------------------
@@ -120,8 +154,18 @@ def generate_outer_designs(
         seed=seed,
     )
 
-    for parameter in INTEGER_DESIGN_PARAMS:
-        designs[parameter] = designs[parameter].round().astype(int)
+    # Convert integer-valued design parameters directly from their unit-cube
+    # LHS coordinates.  Equal-width discrete bins avoid the endpoint bias that
+    # would arise from scaling first and then applying round().
+    for index, parameter in enumerate(DESIGN_PARAM_RANGES):
+        if parameter not in INTEGER_DESIGN_PARAMS:
+            continue
+        lower, upper = DESIGN_PARAM_RANGES[parameter]
+        designs[parameter] = map_unit_interval_to_integers(
+            lhs_unit[:, index],
+            int(lower),
+            int(upper),
+        )
 
     designs.insert(0, "design_id", np.arange(1, n_designs + 1, dtype=np.int64))
 
@@ -180,10 +224,14 @@ def generate_inner_operational_conditions(
         )
 
     validator_index = parameter_names.index("validator_count")
-    operational["validator_count"] = (
-        feasible_lower
-        + lhs_unit[:, validator_index] * (configured_upper - feasible_lower)
-    ).round().astype(int)
+    # validator_count is discrete and has a design-dependent feasible lower
+    # bound.  Map its unit-cube coordinate into equal-width bins over the
+    # inclusive feasible integer range instead of rounding a continuous value.
+    operational["validator_count"] = map_unit_interval_to_integers(
+        lhs_unit[:, validator_index],
+        feasible_lower,
+        int(configured_upper),
+    )
 
     operational["number_of_attackers"] = np.rint(
         operational["attacker_fraction"] * operational["validator_count"]
@@ -388,6 +436,15 @@ def validate_nested_design(
     ).all()
 
     assert pd.api.types.is_integer_dtype(pairs["validator_count"])
+
+    # Integer design parameters must remain within their inclusive configured
+    # ranges after discrete bin mapping.
+    for parameter in INTEGER_DESIGN_PARAMS:
+        lower, upper = DESIGN_PARAM_RANGES[parameter]
+        assert designs[parameter].between(
+            int(lower), int(upper), inclusive="both"
+        ).all()
+        assert pd.api.types.is_integer_dtype(designs[parameter])
 
     for parameter, (lower, upper) in OPERATIONAL_PARAM_RANGES.items():
         assert pairs[parameter].between(lower, upper, inclusive="both").all()
