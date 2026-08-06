@@ -23,6 +23,11 @@ Design and operational parameters are sampled at separate LHS levels.
 validator_count is operational and is sampled from the feasible range implied
 by each fixed design's connection limits. number_of_attackers is then derived
 from attacker_fraction and validator_count.
+
+Normalized heterogeneity targets are mapped continuously to exact-HHI resource
+share profiles. A deterministic random base vector is transformed by a softmax,
+and a monotone bisection search selects its concentration so that the realized
+normalized HHI equals the sampled target. No value-grid approximation is used.
 """
 
 from __future__ import annotations
@@ -46,6 +51,10 @@ DEFAULT_N_REPLICATIONS = 500
 
 LHS_OPTIMIZATION = "random-cd"
 
+# Number of decimals used only when constructing duplicate-detection keys.
+# The underlying exact-HHI mapping is not rounded.
+HETEROGENEITY_SIGNATURE_DECIMALS = 12
+
 
 # ---------------------------------------------------------------------------
 # 2. Parameter ranges
@@ -59,8 +68,8 @@ DESIGN_PARAM_RANGES: dict[str, tuple[float, float]] = {
 }
 
 OPERATIONAL_PARAM_RANGES: dict[str, tuple[float, float]] = {
-    "Hnode": (0.05, 0.70),                  # operational parameter
-    "Hlink": (0.05, 0.50),                  # operational parameter
+    "Hnode": (0.05, 0.60),                  # operational parameter
+    "Hlink": (0.05, 0.40),                  # operational parameter
     "hashrate_concentration": (0.05, 0.80),  # operational parameter
     "attacker_fraction": (0.0, 0.25),       # target fraction of validators
     "validator_count": (20, 1000),          # integer
@@ -75,6 +84,303 @@ INTEGER_DESIGN_PARAMS = {
 INTEGER_OPERATIONAL_PARAMS = {
     "validator_count",
 }
+
+
+
+
+# ---------------------------------------------------------------------------
+# 3. Continuous exact normalized-HHI mapping
+# ---------------------------------------------------------------------------
+
+HETEROGENEITY_SIGNATURE_DECIMALS = 12
+HHI_ABSOLUTE_TOLERANCE = 1e-10
+BISECTION_MAX_ITERATIONS = 200
+MAX_SOFTMAX_SCALE = 1e12
+
+
+def normalized_hhi(shares: np.ndarray) -> float:
+    """Return normalized HHI for one vector of non-negative resource shares."""
+    values = np.asarray(shares, dtype=float)
+    if values.ndim != 1 or values.size < 1:
+        raise ValueError("shares must be a non-empty one-dimensional vector.")
+    if np.any(~np.isfinite(values)) or np.any(values < 0.0):
+        raise ValueError("shares must contain finite, non-negative values.")
+
+    total = float(values.sum())
+    if not np.isclose(total, 1.0, atol=HHI_ABSOLUTE_TOLERANCE):
+        raise ValueError(f"shares must sum to one; received {total!r}.")
+
+    dimension = values.size
+    if dimension == 1:
+        return 0.0
+
+    raw_hhi = float(np.square(values).sum())
+    minimum_hhi = 1.0 / dimension
+    return (raw_hhi - minimum_hhi) / (1.0 - minimum_hhi)
+
+
+def stable_softmax(values: np.ndarray) -> np.ndarray:
+    """Return a numerically stable softmax vector."""
+    shifted = np.asarray(values, dtype=float)
+    shifted = shifted - np.max(shifted)
+    exponentials = np.exp(shifted)
+    return exponentials / exponentials.sum()
+
+
+def deterministic_base_scores(
+    dimension: int,
+    seed: int | np.random.SeedSequence,
+) -> np.ndarray:
+    """Generate a deterministic continuous base vector with a unique maximum."""
+    if dimension < 2:
+        raise ValueError("dimension must be at least two.")
+
+    rng = np.random.default_rng(seed)
+    scores = rng.standard_normal(dimension)
+
+    # Continuous draws are unique almost surely. The deterministic perturbation
+    # also guarantees uniqueness in the extremely unlikely event of a tie.
+    scores = scores + np.arange(dimension, dtype=float) * np.finfo(float).eps
+    scores = (scores - scores.mean()) / scores.std()
+
+    if not np.all(np.isfinite(scores)) or np.isclose(scores.std(), 0.0):
+        raise RuntimeError("Could not construct a non-degenerate base vector.")
+
+    return scores
+
+
+def exact_hhi_softmax_profile(
+    dimension: int,
+    target_h: float,
+    seed: int | np.random.SeedSequence,
+) -> tuple[np.ndarray, float]:
+    """Map a normalized-HHI target continuously to a share profile.
+
+    A deterministic base vector is transformed with a softmax. The softmax
+    scale is found by bisection. For large dimensions and high concentration,
+    floating-point arithmetic may make consecutive bisection points identical;
+    therefore the best candidate is retained and accepted when its residual is
+    within ``HHI_ABSOLUTE_TOLERANCE``.
+    """
+    if dimension < 1:
+        raise ValueError("dimension must be positive.")
+    if not 0.0 <= target_h < 1.0:
+        raise ValueError("target_h must lie in [0, 1).")
+
+    if dimension == 1:
+        if not np.isclose(target_h, 0.0, atol=HHI_ABSOLUTE_TOLERANCE):
+            raise ValueError(
+                "A one-component allocation can only realize normalized HHI zero."
+            )
+        return np.array([1.0], dtype=float), 0.0
+
+    scores = deterministic_base_scores(dimension, seed)
+
+    if np.isclose(target_h, 0.0, atol=HHI_ABSOLUTE_TOLERANCE):
+        return np.full(dimension, 1.0 / dimension, dtype=float), 0.0
+
+    lower_beta = 0.0
+    upper_beta = 1.0
+
+    # Bracket the target.
+    while True:
+        upper_shares = stable_softmax(upper_beta * scores)
+        upper_h = normalized_hhi(upper_shares)
+        if upper_h >= target_h:
+            break
+        upper_beta *= 2.0
+        if upper_beta > MAX_SOFTMAX_SCALE:
+            raise RuntimeError(
+                f"Could not bracket target HHI {target_h} for dimension {dimension}."
+            )
+
+    best_shares = upper_shares
+    best_beta = upper_beta
+    best_error = abs(upper_h - target_h)
+    previous_beta = None
+
+    for _ in range(BISECTION_MAX_ITERATIONS):
+        beta = lower_beta + 0.5 * (upper_beta - lower_beta)
+
+        # Floating-point plateau: no representable point remains between bounds.
+        if beta == lower_beta or beta == upper_beta or beta == previous_beta:
+            break
+        previous_beta = beta
+
+        shares = stable_softmax(beta * scores)
+        realized_h = normalized_hhi(shares)
+        signed_error = realized_h - target_h
+        absolute_error = abs(signed_error)
+
+        if absolute_error < best_error:
+            best_error = absolute_error
+            best_shares = shares
+            best_beta = beta
+
+        if absolute_error <= HHI_ABSOLUTE_TOLERANCE:
+            return shares, beta
+
+        if signed_error < 0.0:
+            lower_beta = beta
+        else:
+            upper_beta = beta
+
+    # Use the numerically best point found rather than failing merely because
+    # the beta interval reached machine precision.
+    realized_best = normalized_hhi(best_shares)
+    if abs(realized_best - target_h) <= HHI_ABSOLUTE_TOLERANCE:
+        return best_shares, best_beta
+
+    raise RuntimeError(
+        "HHI mapping did not reach the requested numerical tolerance: "
+        f"dimension={dimension}, target_h={target_h}, "
+        f"realized_h={realized_best}, absolute_error={best_error}, "
+        f"tolerance={HHI_ABSOLUTE_TOLERANCE}."
+    )
+
+
+def heterogeneity_seed(
+    pair_id: int,
+    stream_id: int,
+    master_seed: int = DEFAULT_SEED,
+) -> int:
+    """Return a deterministic seed for one pair and heterogeneity stream."""
+    if pair_id < 1:
+        raise ValueError("pair_id must be positive.")
+    if stream_id < 1:
+        raise ValueError("stream_id must be positive.")
+
+    mask = (1 << 64) - 1
+    mixed_stream = (stream_id * 0x9E3779B97F4A7C15) & mask
+    mixed_value = (pair_id ^ master_seed ^ mixed_stream) & mask
+    value = np.array([np.uint64(mixed_value)], dtype=np.uint64)
+    return int(splitmix64(value)[0])
+
+
+def continuous_hhi_profile_summary(
+    dimension: int,
+    target_h: float,
+    seed: int,
+    prefix: str,
+) -> dict[str, float | int | str]:
+    """Return metadata and a duplicate-detection signature."""
+    shares, beta = exact_hhi_softmax_profile(
+        dimension=dimension,
+        target_h=target_h,
+        seed=seed,
+    )
+
+    # Sorting makes the signature invariant to component labels. The seed is
+    # retained separately so the simulator can reproduce the labeled profile.
+    rounded = np.round(np.sort(shares), HETEROGENEITY_SIGNATURE_DECIMALS)
+    signature = "|".join(
+        f"{value:.{HETEROGENEITY_SIGNATURE_DECIMALS}f}" for value in rounded
+    )
+
+    return {
+        f"{prefix}_dimension": int(dimension),
+        f"{prefix}_target_h": float(target_h),
+        f"{prefix}_realized_h": float(normalized_hhi(shares)),
+        f"{prefix}_mapping_seed": int(seed),
+        f"{prefix}_softmax_scale": float(beta),
+        f"{prefix}_minimum_share": float(shares.min()),
+        f"{prefix}_maximum_share": float(shares.max()),
+        f"{prefix}_profile_signature": signature,
+    }
+
+
+def attach_continuous_hhi_mappings(
+    pairs: pd.DataFrame,
+    master_seed: int,
+) -> pd.DataFrame:
+    """Attach reproducible continuous exact-HHI mapping metadata.
+
+    Node bandwidth and hash rate use ``validator_count`` as the allocation
+    dimension. Link bandwidth must ultimately use each node's realized degree
+    inside the simulator. Here, ``configured_peer_count`` is used only as a
+    design-stage diagnostic dimension.
+
+    The simulator can reconstruct any profile with
+    ``exact_hhi_softmax_profile(dimension, target_h, mapping_seed)``.
+    """
+    required = {
+        "pair_id",
+        "Hnode",
+        "Hlink",
+        "hashrate_concentration",
+        "validator_count",
+        "inbound_connections",
+        "outbound_connections",
+    }
+    missing = required.difference(pairs.columns)
+    if missing:
+        raise KeyError(
+            f"Missing columns required for HHI mapping: {sorted(missing)}"
+        )
+
+    mapped = pairs.copy()
+    mapped["configured_peer_count"] = (
+        mapped["inbound_connections"].astype(int)
+        + mapped["outbound_connections"].astype(int)
+    )
+
+    if (mapped["configured_peer_count"] < 2).any():
+        raise ValueError(
+            "Positive Hlink targets require at least two configured peers."
+        )
+
+    records: list[dict[str, object]] = []
+    for row in mapped.itertuples(index=False):
+        pair_id = int(row.pair_id)
+
+        node = continuous_hhi_profile_summary(
+            dimension=int(row.validator_count),
+            target_h=float(row.Hnode),
+            seed=heterogeneity_seed(pair_id, stream_id=1, master_seed=master_seed),
+            prefix="node_bandwidth",
+        )
+        link = continuous_hhi_profile_summary(
+            dimension=int(row.configured_peer_count),
+            target_h=float(row.Hlink),
+            seed=heterogeneity_seed(pair_id, stream_id=2, master_seed=master_seed),
+            prefix="link_bandwidth",
+        )
+        hashing = continuous_hhi_profile_summary(
+            dimension=int(row.validator_count),
+            target_h=float(row.hashrate_concentration),
+            seed=heterogeneity_seed(pair_id, stream_id=3, master_seed=master_seed),
+            prefix="hashrate",
+        )
+        records.append({**node, **link, **hashing})
+
+    metadata = pd.DataFrame.from_records(records, index=mapped.index)
+    return pd.concat([mapped, metadata], axis=1)
+
+
+def validate_unique_mapped_configurations(pairs: pd.DataFrame) -> None:
+    """Fail if distinct LHS rows collapse to duplicate effective profiles."""
+    key_columns = [
+        "block_creation_interval",
+        "max_block_size",
+        "inbound_connections",
+        "outbound_connections",
+        "validator_count",
+        "number_of_attackers",
+        "node_bandwidth_profile_signature",
+        "link_bandwidth_profile_signature",
+        "hashrate_profile_signature",
+    ]
+
+    duplicate_mask = pairs.duplicated(subset=key_columns, keep=False)
+    if duplicate_mask.any():
+        examples = pairs.loc[
+            duplicate_mask,
+            ["pair_id", "design_id", "operational_id", *key_columns],
+        ].head(20)
+        raise ValueError(
+            "Distinct sampled rows map to duplicate effective configurations.\n"
+            + examples.to_string(index=False)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +613,13 @@ def build_nested_lhs(
     pairs = pd.concat(pair_frames, ignore_index=True)
     pairs.insert(0, "pair_id", np.arange(1, len(pairs) + 1, dtype=np.int64))
 
+    # Map normalized heterogeneity targets analytically. No nearest-grid
+    # approximation is used, so distinct targets are not collapsed merely
+    # because of calibration-table rounding.
+    pairs = attach_continuous_hhi_mappings(pairs, master_seed=seed)
+    validate_unique_mapped_configurations(pairs)
+    validate_no_duplicates_across_all_parameters(pairs)
+
     return designs, pairs
 
 
@@ -437,6 +750,10 @@ def validate_nested_design(
 
     assert pd.api.types.is_integer_dtype(pairs["validator_count"])
 
+    assert np.allclose(pairs["node_bandwidth_target_h"], pairs["node_bandwidth_realized_h"], atol=1e-12)
+    assert np.allclose(pairs["link_bandwidth_target_h"], pairs["link_bandwidth_realized_h"], atol=1e-12)
+    assert np.allclose(pairs["hashrate_target_h"], pairs["hashrate_realized_h"], atol=1e-12)
+
     # Integer design parameters must remain within their inclusive configured
     # ranges after discrete bin mapping.
     for parameter in INTEGER_DESIGN_PARAMS:
@@ -450,8 +767,138 @@ def validate_nested_design(
         assert pairs[parameter].between(lower, upper, inclusive="both").all()
 
 
+
 # ---------------------------------------------------------------------------
-# 9. CLI and output
+# 9. Output views and duplicate audits
+# ---------------------------------------------------------------------------
+
+PRIMARY_PAIR_COLUMNS = [
+    "pair_id",
+    "design_id",
+    "operational_id",
+    "block_creation_interval",
+    "max_block_size",
+    "inbound_connections",
+    "outbound_connections",
+    "Hnode",
+    "Hlink",
+    "hashrate_concentration",
+    "attacker_fraction",
+    "validator_count",
+    "number_of_attackers",
+    "attacker_fraction_realized",
+]
+
+MAPPING_AUDIT_COLUMNS = [
+    "pair_id",
+    "configured_peer_count",
+    "node_bandwidth_dimension",
+    "node_bandwidth_target_h",
+    "node_bandwidth_realized_h",
+    "node_bandwidth_mapping_seed",
+    "node_bandwidth_softmax_scale",
+    "node_bandwidth_minimum_share",
+    "node_bandwidth_maximum_share",
+    "node_bandwidth_profile_signature",
+    "link_bandwidth_dimension",
+    "link_bandwidth_target_h",
+    "link_bandwidth_realized_h",
+    "link_bandwidth_mapping_seed",
+    "link_bandwidth_softmax_scale",
+    "link_bandwidth_minimum_share",
+    "link_bandwidth_maximum_share",
+    "link_bandwidth_profile_signature",
+    "hashrate_dimension",
+    "hashrate_target_h",
+    "hashrate_realized_h",
+    "hashrate_mapping_seed",
+    "hashrate_softmax_scale",
+    "hashrate_minimum_share",
+    "hashrate_maximum_share",
+    "hashrate_profile_signature",
+]
+
+
+def primary_pair_view(pairs: pd.DataFrame) -> pd.DataFrame:
+    """Return the compact configuration-pair table used by collaborators."""
+    missing = [column for column in PRIMARY_PAIR_COLUMNS if column not in pairs]
+    if missing:
+        raise KeyError(f"Missing primary output columns: {missing}")
+    return pairs.loc[:, PRIMARY_PAIR_COLUMNS].copy()
+
+
+def mapping_audit_view(pairs: pd.DataFrame) -> pd.DataFrame:
+    """Return mapping diagnostics separately from the primary pair table."""
+    missing = [column for column in MAPPING_AUDIT_COLUMNS if column not in pairs]
+    if missing:
+        raise KeyError(f"Missing mapping audit columns: {missing}")
+    return pairs.loc[:, MAPPING_AUDIT_COLUMNS].copy()
+
+
+def duplicate_audit(pairs: pd.DataFrame) -> pd.DataFrame:
+    """Audit duplicates in sampled parameters and effective configurations.
+
+    ``sampled_parameter_duplicate`` checks the nine experimental factors.
+    ``effective_configuration_duplicate`` checks what the simulator effectively
+    receives after integer attacker conversion and heterogeneity mapping.
+    """
+    sampled_columns = [
+        "block_creation_interval",
+        "max_block_size",
+        "inbound_connections",
+        "outbound_connections",
+        "Hnode",
+        "Hlink",
+        "hashrate_concentration",
+        "attacker_fraction",
+        "validator_count",
+    ]
+
+    effective_columns = [
+        "block_creation_interval",
+        "max_block_size",
+        "inbound_connections",
+        "outbound_connections",
+        "validator_count",
+        "number_of_attackers",
+        "node_bandwidth_profile_signature",
+        "link_bandwidth_profile_signature",
+        "hashrate_profile_signature",
+    ]
+
+    audit = pairs.loc[:, ["pair_id", "design_id", "operational_id"]].copy()
+    audit["sampled_parameter_duplicate"] = pairs.duplicated(
+        subset=sampled_columns,
+        keep=False,
+    )
+    audit["effective_configuration_duplicate"] = pairs.duplicated(
+        subset=effective_columns,
+        keep=False,
+    )
+    return audit
+
+
+def validate_no_duplicates_across_all_parameters(pairs: pd.DataFrame) -> None:
+    """Fail if any complete sampled or effective configuration is duplicated."""
+    audit = duplicate_audit(pairs)
+
+    sampled_count = int(audit["sampled_parameter_duplicate"].sum())
+    effective_count = int(audit["effective_configuration_duplicate"].sum())
+
+    if sampled_count or effective_count:
+        examples = audit[
+            audit["sampled_parameter_duplicate"]
+            | audit["effective_configuration_duplicate"]
+        ].head(20)
+        raise ValueError(
+            "Duplicate complete configurations detected. "
+            f"sampled_rows={sampled_count}, effective_rows={effective_count}\n"
+            + examples.to_string(index=False)
+        )
+
+
+# ---------------------------------------------------------------------------
+# 10. CLI and output
 # ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
@@ -511,7 +958,10 @@ def main() -> None:
         output_dir / "outer_design_configurations.csv",
         index=False,
     )
-    pairs.to_csv(
+    # Keep the collaborator-facing pair file compact. Detailed HHI mapping
+    # diagnostics are written to a separate audit file.
+    compact_pairs = primary_pair_view(pairs)
+    compact_pairs.to_csv(
         output_dir / "nested_design_operational_pairs.csv",
         index=False,
     )
