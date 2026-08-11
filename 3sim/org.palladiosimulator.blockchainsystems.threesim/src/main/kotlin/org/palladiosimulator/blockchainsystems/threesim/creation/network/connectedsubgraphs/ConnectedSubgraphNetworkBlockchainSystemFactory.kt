@@ -17,8 +17,9 @@ class ConnectedSubgraphNetworkBlockchainSystemFactory @JvmOverloads constructor(
   connectedSubgraphsTopology: ConnectedSubgraphsNetworkTopology,
   attackSimulation: Boolean,
   runId: Int = 0,
-  gamma: Double = 0.5
-) : ThreesimBlockchainSystemFactory(designBlockchainSystem, connectedSubgraphsTopology, attackSimulation, runId, gamma) {
+  gamma: Double = 0.5,
+  attackerSelectionSeed: Long? = null
+) : ThreesimBlockchainSystemFactory(designBlockchainSystem, connectedSubgraphsTopology, attackSimulation, runId, gamma, attackerSelectionSeed) {
   override fun createP2PNetworkFactory(): P2PNetworkFactory {
     return ConnectedSubgraphP2PNetworkFactory(
       networkTopology as ConnectedSubgraphsNetworkTopology

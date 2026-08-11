@@ -7,8 +7,20 @@
  * KEY IMPROVEMENTS:
  * - Keeps the CSV structure exactly as provided by the user.
  * - Validates that all required columns are present before each run.
- * - Selects the correct model from testmodels/ using config_id → threesim-config_id.
+ * - Selects the correct model from testmodels/ using the row's identifier column.
  * - Ensures consistent and reproducible execution across all configurations.
+ *
+ * IDENTIFIER COLUMN:
+ * - Nested design/operational-pairs CSV (current default): identifier is "pair_id"
+ *   -> testmodels/threesim-<pair_id>. This matches the actual output folder naming of
+ *   generate_models.py --id-column pair_id (verified against
+ *   blockchain-sim-tse-2026-artifact/sampling/generated_models_nested/ on disk).
+ * - Legacy LHS CSV: identifier is "config_id" -> testmodels/threesim-<config_id>.
+ *   Both are supported (chosen per-row based on which column the CSV provides), but the
+ *   two id spaces are NOT disambiguated by folder name -- both use "threesim-<N>". Since
+ *   config_id runs 1-500, pair_id values <= 500 collide with pre-existing legacy model
+ *   folders. Do not copy nested pair models for pair_id <= 500 into testmodels/ without
+ *   first resolving that collision (e.g. retiring/relocating the legacy 1-500 folders).
  */
 
 package org.palladiosimulator.blockchainsystems.trilemma;
@@ -37,7 +49,7 @@ public class TrilemmaSimulator {
             DEFAULT_TESTMODELS_DIR.resolve("configuration.json");
 
     private static final Path DEFAULT_CSV =
-            Paths.get("optimized_deterministic_lhs_configurations.csv");
+            Paths.get("nested_design_operational_pairs.csv");
 
     public static void main(String[] args) {
 
@@ -74,23 +86,27 @@ public class TrilemmaSimulator {
                 // Start from base configuration.json
                 Map<String, String> config = new LinkedHashMap<>(baseConfig);
 
-                // Preserve config_id from CSV if present, else use run counter
-                String configId = row.getOrDefault("config_id", String.valueOf(runId));
-                config.put("config_id", configId);
-                config.put("id", configId);
+                // Nested design/operational-pairs CSV uses "pair_id"; the legacy LHS CSV uses
+                // "config_id". Pick whichever the row actually provides, else fall back to the
+                // run counter.
+                String idColumn = row.containsKey("pair_id") ? "pair_id" : "config_id";
+                String idValue = row.getOrDefault(idColumn, String.valueOf(runId));
+                config.put(idColumn, idValue);
+                config.put("id", idValue);
 
                 // Copy CSV parameters as-is
                 config.putAll(row);
 
                 // ----------------------------------------------------
-                // Revised to take into account 50 blockchain system models: deterministic model selection
-                // config_id = N → testmodels/threesim-N/Net.blockchainsystem
+                // Deterministic model selection: idColumn = N → testmodels/threesim-N/Net.blockchainsystem
+                // (same folder naming for pair_id and config_id -- see pickModelPath for the
+                // resulting collision for pair_id <= 500, which callers must resolve on disk).
                 // ----------------------------------------------------
-                Path modelPath = pickModelPath(testmodelsDir, configId);
+                Path modelPath = pickModelPath(testmodelsDir, idColumn, idValue);
                 config.put("blockchainSystemModelFilePath", modelPath.toString());
                 // ----------------------------------------------------
 
-                System.out.println("\n▶ Run " + runId + " | config_id=" + configId);
+                System.out.println("\n▶ Run " + runId + " | " + idColumn + "=" + idValue);
                 System.out.println("   Using model: " + modelPath.toAbsolutePath());
                 System.out.println("   Monte-Carlo rounds = "
                         + config.getOrDefault("numberOfMonteCarloRounds", "?"));
@@ -178,8 +194,13 @@ public class TrilemmaSimulator {
     // ----------------------------------------------------
     private static void validateCsvColumns(Map<String, String> row) {
 
+        if (!row.containsKey("pair_id") && !row.containsKey("config_id")) {
+            throw new IllegalArgumentException(
+                    "❌ CSV row missing identifier column (expected 'pair_id' or 'config_id'): "
+                            + row);
+        }
+
         List<String> required = List.of(
-        		"config_id",
         		"Hnode",
         		"Hlink",
         		"block_creation_interval",
@@ -203,19 +224,29 @@ public class TrilemmaSimulator {
     // ----------------------------------------------------
     // Revised to take into account 50 blockchain system models: deterministic model resolver
     // ----------------------------------------------------
-    private static Path pickModelPath(Path testmodelsDir, String configId) {
+    private static Path pickModelPath(Path testmodelsDir, String idColumn, String idValue) {
 
-        // Each configuration has exactly one model folder:
-        // testmodels/threesim-<config_id>/
+        // Each configuration has exactly one model folder: testmodels/threesim-<id>/
+        // Verified against the actual output of generate_models.py --id-column pair_id
+        // (blockchain-sim-tse-2026-artifact/sampling/generated_models_nested/): the folder
+        // naming is identical for both id spaces (threesim-<pair_id> and threesim-<config_id>),
+        // it is only the *root* output directory that differs (generated_models_nested/ vs
+        // generated_models/) on the artifact-repo side. WARNING: because pair_id and config_id
+        // both start at 1 and the legacy config_id space runs 1-500, pair_ids <= 500 resolve to
+        // the SAME testmodels/threesim-<N>/ path as the pre-existing legacy config_id folder.
+        // Do not copy nested pair models for pair_id <= 500 into testmodels/ until that
+        // collision is resolved (see project notes) -- this method does not detect it.
+        String folderName = "threesim-" + idValue;
+
         Path modelPath =
                 testmodelsDir
-                        .resolve("threesim-" + configId)
+                        .resolve(folderName)
                         .resolve("Net.blockchainsystem");
 
         // Fail fast if the model is missing or misconfigured
         if (!Files.exists(modelPath)) {
             throw new IllegalArgumentException(
-                    "❌ Model not found for config_id=" + configId +
+                    "❌ Model not found for " + idColumn + "=" + idValue +
                     " at " + modelPath.toAbsolutePath());
         }
 

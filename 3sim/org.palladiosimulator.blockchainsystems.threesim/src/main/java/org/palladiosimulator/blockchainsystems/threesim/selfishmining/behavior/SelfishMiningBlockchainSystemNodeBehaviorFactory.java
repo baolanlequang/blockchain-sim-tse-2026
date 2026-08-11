@@ -24,17 +24,17 @@ public class SelfishMiningBlockchainSystemNodeBehaviorFactory implements Blockch
 
     @Override
     public BlockchainSystemNodeBehavior create(String nodeId, BlockchainMaliciousNodesIdProvider maliciousNodesIdProvider) {
-        if (maliciousNodesIdProvider.getMaliciousNodeIds().size() < numberOfAttacker) {
-            maliciousNodesIdProvider.addMaliciousNodeId(nodeId);
-        }
-
+        // The malicious node ID set is now fully populated upfront by an explicit seeded uniform
+        // sample over all node IDs (see ThreesimBlockchainSystemFactory.selectAttackerNodeIds),
+        // before any node's behavior is created here -- this is a pure membership check, not the
+        // previous incremental "first numberOfAttacker nodes encountered" assignment.
         if (maliciousNodesIdProvider.getMaliciousNodeIds().contains(nodeId)) {
             return new SelfishMiningNodeBehavior();
         }
 
-        // Passing the provider's live id set (not a copy): attacker assignment happens
-        // incrementally as nodes are created, but this behavior only reads the set later, once
-        // mining starts and all nodes (and thus the full attacker set) already exist.
+        // Passing the provider's live id set (not a copy): the set is already complete by the
+        // time any node's behavior is created, so this is equivalent to passing a copy, but
+        // avoids an unnecessary allocation per node.
         return new GammaAwareHonestBlockchainSystemNodeBehavior(maliciousNodesIdProvider.getMaliciousNodeIds(), gamma);
     }
 }

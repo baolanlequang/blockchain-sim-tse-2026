@@ -38,10 +38,15 @@ class ConnectedSubgraphNetworkResourcePowerCalculator(
     val numberOfNodes = connectedSubgraphsTopology
       .subgraphs.flatMap { it.nodeTemplates }
       .sumOf { it.numberOfNodeOccurences }
-    // Use floating-point division: 1/numberOfNodes with an Int operand is integer division,
-    // which evaluates to 0 for any n > 1 and silently turns this normalization into a no-op.
-    val hStar = (hashRateConcentration - 1.0 / numberOfNodes) / (1.0 - 1.0 / numberOfNodes)
-    val alpha = DirichletUtils.calibrateAlpha(hStar, numberOfNodes)
+    // hashRateConcentration (CSV column `hashrate_concentration`) is already the paper's
+    // normalized H* in [0,1], NOT a raw HHI: raw HHI can never be below 1/N (QM-AM inequality),
+    // but the LHS CSV contains values below 1/N for small-N rows (e.g. config_id 58:
+    // hashrate_concentration=0.0048 < 1/81=0.0123), which is only possible if this column is
+    // already H*. Re-applying (x - 1/N)/(1 - 1/N) here -- the RAW-HHI-to-H* transform -- to an
+    // already-normalized H* double-transforms it (and produces negative values at H*=0, which
+    // is mathematically invalid for any HHI-derived quantity). Use it directly as H*.
+    val hStar = hashRateConcentration
+    val alpha = DirichletUtils.calibrateAlphaForHHI(hStar, numberOfNodes)
     val distributions = DirichletUtils.generateDirichlet(alpha, numberOfNodes)
     return@lazy distributions
   }

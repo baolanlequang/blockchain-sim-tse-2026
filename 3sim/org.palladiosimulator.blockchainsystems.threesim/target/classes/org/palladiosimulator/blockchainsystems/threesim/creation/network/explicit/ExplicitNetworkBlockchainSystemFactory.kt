@@ -19,8 +19,9 @@ class ExplicitNetworkBlockchainSystemFactory @JvmOverloads constructor(
   explicitTopology: ExplicitNetworkTopology,
   attackSimulation: Boolean,
   runId: Int = 0,
-  gamma: Double = 0.5
-) : ThreesimBlockchainSystemFactory(designBlockchainSystem, explicitTopology, attackSimulation, runId, gamma) {
+  gamma: Double = 0.5,
+  attackerSelectionSeed: Long? = null
+) : ThreesimBlockchainSystemFactory(designBlockchainSystem, explicitTopology, attackSimulation, runId, gamma, attackerSelectionSeed) {
 
   override fun createP2PNetworkFactory(): P2PNetworkFactory {
     return ExplicitTopologyP2PNetworkFactory(networkTopology as ExplicitNetworkTopology)
