@@ -24,6 +24,9 @@ Important manuscript details implemented here
 * The topology is feasible only when 2*C <= N_V - 1.
 * H_node and H_hash are translated with allocation dimension m=N_V.
 * H_link is translated with allocation dimension m=2*C (not N_V).
+* The sampled attacker fraction f_A remains the operational parameter. The integer
+  number of attackers is derived deterministically as the nearest admissible integer
+  to f_A*N_V, and the realized attacker fraction is retained as a diagnostic.
 * For H=0, equal shares are assigned. For 0<H<1,
       alpha(m,H) = (1-H)/(m*H)
   is used for a symmetric Dirichlet allocation.
@@ -172,6 +175,8 @@ DERIVED_CSV_NAMES = {
     "aggregate_block_rate_per_s": "aggregate_block_production_rate",
     "theoretical_capacity_tx_per_s": "theoretical_transaction_capacity",
     "primary_lambda_tx_per_s_audit": "primary_transaction_arrival_rate_audit",
+    "N_A": "number_of_attackers",
+    "f_A_realized": "realized_fraction_of_attackers",
 }
 
 PARAMETER_UNITS = {
@@ -184,6 +189,8 @@ PARAMETER_UNITS = {
     "hashing_power_concentration": "normalized concentration",
     "fraction_of_attackers": "fraction",
     "transaction_arrival_rate": "transactions per second",
+    "number_of_attackers": "validating nodes (derived)",
+    "realized_fraction_of_attackers": "fraction (derived diagnostic)",
 }
 
 
@@ -211,34 +218,42 @@ def _operational_csv(operational: pd.DataFrame) -> pd.DataFrame:
 
 
 def _primary_simulation_csv(primary_pairs: pd.DataFrame) -> pd.DataFrame:
-    """Main simulation input: IDs + exactly the 9 sampled manuscript parameters."""
+    """Main simulation input: sampled parameters plus derived attacker count.
+
+    ``f_A`` remains the sampled operational parameter. ``N_A`` is an integer
+    simulator input derived from ``f_A`` and ``N_V``; ``f_A_realized`` is kept
+    so that rounding effects are explicit and auditable.
+    """
     cols = [
         "design_id", "operational_id",
         "C", "BCI_s", "MBS_MB",
-        "NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx_per_s",
+        "NV", "H_node", "H_link", "H_hash", "f_A",
+        "N_A", "f_A_realized", "lambda_tx_per_s",
     ]
-    return _descriptive_csv_names(primary_pairs[cols])
+    return _descriptive_csv_names(primary_pairs[cols], include_derived=True)
 
 
 def _overload_simulation_csv(overload_pairs: pd.DataFrame) -> pd.DataFrame:
-    """Separate 105%-load simulation input using the same descriptive parameter names."""
+    """Separate 105%-load simulation input with derived attacker count."""
     cols = [
         "design_id", "sensitivity_id", "source_operational_id",
         "C", "BCI_s", "MBS_MB",
-        "NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx_per_s",
+        "NV", "H_node", "H_link", "H_hash", "f_A",
+        "N_A", "f_A_realized", "lambda_tx_per_s",
     ]
-    out = _descriptive_csv_names(overload_pairs[cols])
+    out = _descriptive_csv_names(overload_pairs[cols], include_derived=True)
     return out.rename(columns={"sensitivity_id": "overload_condition_id"})
 
 
 def _reference_simulation_csv(reference_pairs: pd.DataFrame) -> pd.DataFrame:
-    """Homogeneous reference crossed with all designs."""
+    """Homogeneous reference crossed with all designs, including derived attackers."""
     cols = [
         "design_id", "operational_id",
         "C", "BCI_s", "MBS_MB",
-        "NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx_per_s",
+        "NV", "H_node", "H_link", "H_hash", "f_A",
+        "N_A", "f_A_realized", "lambda_tx_per_s",
     ]
-    return _descriptive_csv_names(reference_pairs[cols])
+    return _descriptive_csv_names(reference_pairs[cols], include_derived=True)
 
 
 # -------------------------------
@@ -741,8 +756,42 @@ def verify_topology(nv: int, c: int, edges: Sequence[tuple[int, int]]) -> dict:
 # Crossed configuration translation
 # -------------------------------
 
+def derive_attacker_count(nv: int, f_a: float) -> tuple[int, float]:
+    """Derive integer attacker count from sampled attacker fraction.
+
+    The sampled ``f_A`` remains the operational parameter. Because the simulator
+    requires an integer number of adversarial validating nodes, we map ``f_A*N_V``
+    to the nearest non-negative integer using the manuscript's explicit half-up
+    rounding rule, then restrict the result to the admissible range
+    ``0 <= N_A <= floor(FA_MAX*N_V)``. The realized fraction is reported as
+    ``N_A/N_V`` and is diagnostic rather than a replacement for ``f_A``.
+    """
+    nv = int(nv)
+    f_a = float(f_a)
+    if nv < 1:
+        raise ValueError(f"N_V must be positive; got {nv}.")
+    if not (FA_MIN <= f_a <= FA_MAX):
+        raise ValueError(f"f_A must lie in [{FA_MIN}, {FA_MAX}]; got {f_a}.")
+
+    target = f_a * nv
+    n_a = int(_round_half_away_nonnegative(target))
+    max_attackers = int(math.floor(FA_MAX * nv + 1e-12))
+    n_a = min(max(n_a, 0), max_attackers)
+    realized = n_a / nv
+    return n_a, realized
+
 def add_translation_columns(pairs: pd.DataFrame) -> pd.DataFrame:
     out = pairs.copy()
+
+    # f_A is sampled; N_A is derived for the simulator. Keep the realized
+    # fraction explicit so rounding/clipping is transparent in later analyses.
+    attacker_values = [
+        derive_attacker_count(int(nv), float(f_a))
+        for nv, f_a in zip(out["NV"], out["f_A"])
+    ]
+    out["N_A"] = [value[0] for value in attacker_values]
+    out["f_A_realized"] = [value[1] for value in attacker_values]
+
     out["m_node"] = out["NV"].astype(int)
     out["m_hash"] = out["NV"].astype(int)
     out["m_link"] = 2 * out["C"].astype(int)
@@ -1003,6 +1052,30 @@ def verify_all(
     )
     checks["parameter_ranges"] = {"pass": bool(range_ok)}
 
+    # Attacker count is derived from sampled f_A and N_V, never sampled independently.
+    attacker_failures = []
+    for table_name, table in [("primary", primary_pairs), ("sensitivity", sensitivity_pairs)]:
+        for row in table.itertuples(index=False):
+            expected_n, expected_realized = derive_attacker_count(int(row.NV), float(row.f_A))
+            if int(row.N_A) != expected_n or not math.isclose(
+                float(row.f_A_realized), expected_realized, rel_tol=0.0, abs_tol=1e-15
+            ):
+                if len(attacker_failures) < 20:
+                    attacker_failures.append({
+                        "table": table_name,
+                        "NV": int(row.NV),
+                        "f_A": float(row.f_A),
+                        "N_A": int(row.N_A),
+                        "expected_N_A": expected_n,
+                        "f_A_realized": float(row.f_A_realized),
+                        "expected_f_A_realized": expected_realized,
+                    })
+    checks["attacker_count_derivation"] = {
+        "pass": not attacker_failures,
+        "rule": "N_A = nearest admissible integer to f_A*N_V; f_A_realized=N_A/N_V; f_A remains sampled",
+        "failures": attacker_failures,
+    }
+
     # Every crossed primary pair must be topology-feasible and H-translatable.
     topology_cross_ok = bool(primary_pairs["topology_feasible"].all())
     sens_topology_cross_ok = bool(sensitivity_pairs["topology_feasible"].all())
@@ -1152,7 +1225,7 @@ def verify_all(
             "pilot selection of R_S/R_E and metric-specific Monte Carlo tolerances",
             "warm-up and measured canonical-chain block horizons",
             "transaction drain, confirmation tracking, and right-censoring",
-            "realized attacker fraction and adversarial hashing-power share per network instance",
+            "adversarial hashing-power share per network instance",
             "fixed transaction/latency/validation/confirmation/selfish-mining settings used by the simulator",
         ],
     }
@@ -1372,6 +1445,7 @@ def main() -> int:
             "link_bandwidth_dimension": "m=2*C",
             "H_zero": "equal shares",
             "H_positive": "0<H<1 and alpha=(1-H)/(mH)",
+            "attacker_count": "sample f_A; derive integer N_A from f_A*N_V; retain f_A_realized=N_A/N_V",
         },
     }
 
@@ -1403,7 +1477,9 @@ def main() -> int:
     print("  node_bandwidth_heterogeneity")
     print("  link_bandwidth_heterogeneity")
     print("  hashing_power_concentration")
-    print("  fraction_of_attackers")
+    print("  fraction_of_attackers  [sampled]")
+    print("  number_of_attackers  [derived from fraction_of_attackers x validating_node_count]")
+    print("  realized_fraction_of_attackers  [derived diagnostic]")
     print("  transaction_arrival_rate")
     print("\nSUMMARY:")
     print(f"  Design: 120 LHS + 8 boundaries = {len(design)}")
