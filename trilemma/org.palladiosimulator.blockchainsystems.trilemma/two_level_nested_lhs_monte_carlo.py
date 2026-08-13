@@ -37,17 +37,20 @@ or the exact nested-subset selection algorithm. This script therefore makes thos
 choices explicit and records them in sample_metadata.json:
 * --design-candidates controls how many candidate 120-point design LHS samples
   are compared (default 128).
-* nested subsets are chosen by a deterministic greedy maximin rule, with all 8
-  design corners forced into the 64-design subset.
-* the 32-condition overload "subset" is interpreted as a subset of the final
-  96 operational conditions, selected for space-filling coverage in the five
-  non-demand coordinates; its sampled primary lambda is retained only for audit,
-  while Eq. (16) supplies the separate design-dependent overload rate.
+* nested subsets are chosen by a deterministic greedy maximin rule. By default
+  the initial 64-design subset is selected purely by the space-filling rule;
+  --force-corners-in-initial-64 can reproduce the earlier implementation choice.
+* the 32-condition overload "subset" is interpreted literally as a subset of the
+  final 96 operational conditions, selected for space-filling coverage in the
+  five non-demand coordinates; its sampled primary lambda is retained only for
+  audit, while Eq. (16) supplies the separate design-dependent overload rate.
+* duplicate design configurations created by integer conversion are replaced
+  deterministically with newly sampled points instead of rejecting the whole
+  candidate, matching the manuscript wording.
 
-The manuscript also leaves the mean transaction size and master random seed as
-values to be recorded in the replication package. If they are not supplied on the
-command line, this script now asks for them interactively so that running simply
-`python two_level_nested_lhs_monte_carlo.py` works without an argparse error.
+The manuscript table records master seed s0=1024, so this script now uses 1024 as
+the default. Mean transaction size is still required because the supplied method
+text leaves its executed value as [insert].
 
 Example
 -------
@@ -112,7 +115,7 @@ class ScriptChoices:
 
     design_candidate_count: int
     nested_subset_method: str = "greedy maximin in manuscript sampling coordinates"
-    design_initial_forces_all_8_corners: bool = True
+    design_initial_forces_all_8_corners: bool = False
     sensitivity_interpretation: str = "greedy maximin 32-point subset of operational_96 using the five non-demand coordinates"
     mb_bytes: int = 1_000_000
     mc_z: float = 6.0
@@ -369,6 +372,42 @@ def design_corners() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _replace_duplicate_design_rows(
+    df: pd.DataFrame,
+    master_seed: int,
+    candidate_id: int,
+    forbidden: set[tuple[int, int, float]] | None = None,
+) -> tuple[pd.DataFrame, int]:
+    """Deterministically replace duplicate/transformation-colliding design rows.
+
+    Replacement points are generated from independent one-point scrambled LHS draws
+    using derived seeds. This implements the manuscript statement that duplicates
+    created by integer conversion are replaced, while keeping the procedure fully
+    reproducible and auditable.
+    """
+    out = df.copy().reset_index(drop=True)
+    forbidden = set() if forbidden is None else set(forbidden)
+    seen: set[tuple[int, int, float]] = set()
+    replacements = 0
+    for i in range(len(out)):
+        key = (int(out.at[i, "C"]), int(out.at[i, "BCI_s"]), float(out.at[i, "MBS_MB"]))
+        attempt = 0
+        while key in seen or key in forbidden:
+            seed = _derived_seed(master_seed, f"design_duplicate_replacement_{candidate_id}_{i}", attempt)
+            repl = transform_design_lhs(_lhs(1, 3, seed)).iloc[0]
+            key = (int(repl["C"]), int(repl["BCI_s"]), float(repl["MBS_MB"]))
+            attempt += 1
+            if attempt > 10000:
+                raise RuntimeError("Could not generate a unique replacement design point.")
+        if attempt:
+            out.loc[i, ["C", "BCI_s", "MBS_MB"]] = [key[0], key[1], key[2]]
+            replacements += 1
+        seen.add(key)
+    out["C"] = out["C"].astype(int)
+    out["BCI_s"] = out["BCI_s"].astype(int)
+    return out, replacements
+
+
 def generate_design_sample(master_seed: int, n_candidates: int) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Generate 120 candidate-LHS points, select maximin candidate, add 8 corners."""
     if n_candidates < 1:
@@ -385,19 +424,23 @@ def generate_design_sample(master_seed: int, n_candidates: int) -> tuple[pd.Data
         seed = _derived_seed(master_seed, "design_lhs_candidate", candidate_id)
         raw = _lhs(N_DESIGN_LHS, 3, seed)
         df = transform_design_lhs(raw)
-
-        # Full-row duplicates are unlikely because MBS remains continuous. If a
-        # candidate does contain duplicates after integer conversion, reject that
-        # candidate rather than silently altering its Latin-hypercube structure.
+        corner_keys = set(
+            (int(r.C), int(r.BCI_s), float(r.MBS_MB))
+            for r in design_corners().itertuples(index=False)
+        )
+        df, replacement_count = _replace_duplicate_design_rows(
+            df, master_seed, candidate_id, forbidden=corner_keys
+        )
         unique = _unique_rows(df, ["C", "BCI_s", "MBS_MB"])
-        score = _min_distance(design_sampling_coords(df)) if unique else -math.inf
+        score = _min_distance(design_sampling_coords(df))
 
         candidate_copy = df.copy()
         candidate_copy.insert(0, "candidate_id", candidate_id)
         candidate_copy.insert(1, "candidate_seed", seed)
         candidate_copy.insert(2, "candidate_min_distance", score)
         candidate_copy.insert(3, "candidate_unique", unique)
-        candidate_copy.insert(4, "candidate_row", np.arange(1, len(candidate_copy) + 1))
+        candidate_copy.insert(4, "duplicate_replacements", replacement_count)
+        candidate_copy.insert(5, "candidate_row", np.arange(1, len(candidate_copy) + 1))
         all_candidates.append(candidate_copy)
         scores.append(
             {
@@ -405,27 +448,25 @@ def generate_design_sample(master_seed: int, n_candidates: int) -> tuple[pd.Data
                 "candidate_seed": seed,
                 "candidate_min_distance": score,
                 "candidate_unique": bool(unique),
+                "duplicate_replacements": int(replacement_count),
             }
         )
 
-        if unique and score > best_score:
+        if score > best_score:
             best_score = score
             best_seed = seed
             best_id = candidate_id
             best_df = df.copy()
 
     if best_df is None:
-        raise RuntimeError("No unique 120-point design LHS candidate was generated.")
+        raise RuntimeError("No valid 120-point design LHS candidate was generated.")
 
     best_df["source"] = "lhs"
     final = pd.concat([best_df, design_corners()], ignore_index=True)
     if len(final) != N_DESIGN_FINAL:
         raise AssertionError("Design sample size mismatch after adding corners.")
     if not _unique_rows(final, ["C", "BCI_s", "MBS_MB"]):
-        raise RuntimeError(
-            "A selected LHS point exactly duplicates a design boundary. Increase/change the seed "
-            "or explicitly replace that point according to your replication-package rule."
-        )
+        raise AssertionError("Duplicate-replacement logic failed to keep design points distinct from boundaries.")
 
     final.insert(0, "design_id", [f"D{i:03d}" for i in range(1, len(final) + 1)])
     final["is_boundary"] = final["source"].eq("boundary")
@@ -436,6 +477,7 @@ def generate_design_sample(master_seed: int, n_candidates: int) -> tuple[pd.Data
         "selected_candidate_id": int(best_id),
         "selected_candidate_seed": int(best_seed),
         "selected_candidate_min_distance": float(best_score),
+        "duplicate_handling": "deterministic replacement after integer conversion; boundary collisions also replaced",
     }
     return final, candidates, {**metadata, "candidate_scores": score_df.to_dict(orient="records")}
 
@@ -583,9 +625,9 @@ def greedy_maximin_subset(
     return selected
 
 
-def nested_design_64(design: pd.DataFrame) -> pd.DataFrame:
+def nested_design_64(design: pd.DataFrame, *, force_corners: bool = False) -> pd.DataFrame:
     coords = design_sampling_coords(design)
-    forced = np.flatnonzero(design["is_boundary"].to_numpy(bool)).tolist()
+    forced = np.flatnonzero(design["is_boundary"].to_numpy(bool)).tolist() if force_corners else []
     idx = greedy_maximin_subset(coords, N_DESIGN_INITIAL, forced_indices=forced)
     subset = design.iloc[idx].copy()
     subset.insert(1, "initial_stage_rank", np.arange(1, len(subset) + 1))
@@ -923,12 +965,14 @@ def verify_all(
         and set(operational48["operational_id"]).issubset(op_ids)
         and set(sensitivity["source_operational_id"]).issubset(op_ids),
         "all_8_design_boundaries_in_initial_64": bool(design64["is_boundary"].sum() == 8),
+        "corners_forced_by_script_choice": bool(choices.design_initial_forces_all_8_corners),
         "sensitivity_32_is_subset_of_operational_96": bool(set(sensitivity["source_operational_id"]).issubset(op_ids)),
     }
-    checks["nested_membership"]["pass"] = bool(
-        checks["nested_membership"]["pass"]
-        and checks["nested_membership"]["all_8_design_boundaries_in_initial_64"]
-    )
+    if choices.design_initial_forces_all_8_corners:
+        checks["nested_membership"]["pass"] = bool(
+            checks["nested_membership"]["pass"]
+            and checks["nested_membership"]["all_8_design_boundaries_in_initial_64"]
+        )
 
     corners = set(
         (int(c), int(bci), float(mbs))
@@ -1093,7 +1137,25 @@ def verify_all(
         "selfish-mining behavior against the SM-SIM reference",
         "held-out surrogate prediction error and learning-curve/sample-adequacy checks, which require simulation results",
     ]
-    report["pass"] = all(bool(v.get("pass", False)) for v in checks.values())
+    report["configuration_verification_pass"] = all(bool(v.get("pass", False)) for v in checks.values())
+    report["pass"] = report["configuration_verification_pass"]  # backward-compatible alias
+    report["method_coverage"] = {
+        "implemented_here": [
+            "parameter ranges and sampling transforms",
+            "design/operational sample generation and crossing",
+            "homogeneous reference and 105% overload configuration",
+            "topology structural checks",
+            "resource-share sum and Dirichlet-concentration checks",
+        ],
+        "requires_simulator_or_results": report["simulator_only_checks_not_implemented_here"] + [
+            "R_S network-instance and R_E event-replication execution",
+            "pilot selection of R_S/R_E and metric-specific Monte Carlo tolerances",
+            "warm-up and measured canonical-chain block horizons",
+            "transaction drain, confirmation tracking, and right-censoring",
+            "realized attacker fraction and adversarial hashing-power share per network instance",
+            "fixed transaction/latency/validation/confirmation/selfish-mining settings used by the simulator",
+        ],
+    }
     return report
 
 
@@ -1113,7 +1175,7 @@ def _json_default(obj):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--seed", type=int, default=None, help="Master random seed to record in the replication package. If omitted, you will be prompted.")
+    parser.add_argument("--seed", type=int, default=1024, help="Master random seed s0 (default: 1024, matching the manuscript table).")
     parser.add_argument(
         "--mean-tx-size-bytes",
         type=float,
@@ -1134,6 +1196,11 @@ def main() -> int:
         help="Number of candidate 120-point design LHS samples compared by minimum distance. Manuscript does not specify this count.",
     )
     parser.add_argument(
+        "--force-corners-in-initial-64",
+        action="store_true",
+        help="Force all 8 design boundaries into the nested 64-design subset. This is an implementation choice, not required by the supplied method text.",
+    )
+    parser.add_argument(
         "--mc-draws",
         type=int,
         default=256,
@@ -1147,17 +1214,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    # Friendly interactive fallback: plain `python two_level_nested_lhs_monte_carlo.py`
-    # now asks for the two manuscript-specific values instead of failing.
-    if args.seed is None:
-        while True:
-            raw = input("Master random seed (integer, e.g. 12345): ").strip()
-            try:
-                args.seed = int(raw)
-                break
-            except ValueError:
-                print("Please enter an integer seed, for example 12345.")
-
+    # Mean transaction size remains interactive because the supplied table leaves it as [insert].
     if args.mean_tx_size_bytes is None:
         while True:
             raw = input("Mean transaction size in bytes (e.g. 500): ").strip()
@@ -1181,6 +1238,7 @@ def main() -> int:
 
     choices = ScriptChoices(
         design_candidate_count=args.design_candidates,
+        design_initial_forces_all_8_corners=bool(args.force_corners_in_initial_64),
         mb_bytes=args.mb_bytes,
     )
     mean_tx_size_mb = args.mean_tx_size_bytes / args.mb_bytes
@@ -1189,7 +1247,7 @@ def main() -> int:
     design, design_candidates, design_meta = generate_design_sample(args.seed, args.design_candidates)
     operational, operational_meta = generate_operational_sample(args.seed, lambda_min, lambda_max)
     reference = homogeneous_reference(lambda_min, lambda_max)
-    design64 = nested_design_64(design)
+    design64 = nested_design_64(design, force_corners=args.force_corners_in_initial_64)
     operational48 = nested_operational_48(operational, lambda_min, lambda_max)
     sensitivity = sensitivity_32_from_operational(operational)
 
@@ -1321,6 +1379,8 @@ def main() -> int:
         json.dump(metadata, f, indent=2, default=_json_default)
     with (audit_dir / "verification_report.json").open("w", encoding="utf-8") as f:
         json.dump(verification, f, indent=2, default=_json_default)
+    with (audit_dir / "method_coverage.json").open("w", encoding="utf-8") as f:
+        json.dump(verification["method_coverage"], f, indent=2, default=_json_default)
 
     print(f"\nWrote samples to: {out_dir.resolve()}")
     print("\nMAIN FILE FOR THE PRIMARY SIMULATION EXPERIMENT:")
@@ -1351,8 +1411,9 @@ def main() -> int:
     print(f"  Nested initial stage: {len(design64)} x {len(operational48)}")
     print(f"  Primary crossed pairs: {len(primary_pairs)}")
     print(f"  Separate 105% overload pairs: {len(sensitivity_pairs)}")
-    print(f"  Verification: {'PASS' if verification['pass'] else 'FAIL'}")
-    if not verification["pass"]:
+    print(f"  Configuration-generation verification: {'PASS' if verification['configuration_verification_pass'] else 'FAIL'}")
+    print("  Full simulation-method verification: NOT PERFORMED by this configuration generator")
+    if not verification["configuration_verification_pass"]:
         print(f"See {audit_dir / 'verification_report.json'} for failed checks.")
         return 2
     return 0
