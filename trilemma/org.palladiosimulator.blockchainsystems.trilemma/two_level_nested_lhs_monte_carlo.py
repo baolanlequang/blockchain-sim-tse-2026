@@ -33,23 +33,30 @@ Important manuscript details implemented here
 
 What the manuscript does NOT specify exactly
 ---------------------------------------------
-The revised manuscript says that (i) candidate maximin Latin hypercubes were
-compared using recorded seeds and (ii) the nested 64/48 subsets were selected for
-space-filling coverage, but it does not state the number of candidate hypercubes
-or the exact nested-subset selection algorithm. This script therefore makes those
-choices explicit and records them in sample_metadata.json:
+The revised manuscript explicitly states that candidate maximin Latin hypercubes
+are compared for the 120-point DESIGN sample, but it does not state (i) how many
+design candidates are generated or (ii) the exact selector used to obtain the
+nested 64-design and 48-condition space-filling subsets. The implementation
+therefore makes only those unresolved choices explicit and records them in
+sample_metadata.json:
 * --design-candidates controls how many candidate 120-point design LHS samples
   are compared (default 128).
-* nested subsets are chosen by a deterministic greedy maximin rule. By default
-  the initial 64-design subset is selected purely by the space-filling rule;
-  --force-corners-in-initial-64 can reproduce the earlier implementation choice.
+* the final 96-condition OPERATIONAL sample is generated from one six-dimensional
+  Latin hypercube, matching the method text; no additional operational-candidate
+  maximin search is performed.
+* nested 64/48 subsets are chosen by a deterministic greedy-maximin rule in the
+  same transformed/scaled coordinates used for the primary samples.
 * the 32-condition overload "subset" is interpreted literally as a subset of the
   final 96 operational conditions, selected for space-filling coverage in the
   five non-demand coordinates; its sampled primary lambda is retained only for
   audit, while Eq. (16) supplies the separate design-dependent overload rate.
 * duplicate design configurations created by integer conversion are replaced
   deterministically with newly sampled points instead of rejecting the whole
-  candidate, matching the manuscript wording.
+  design candidate, matching the manuscript wording.
+
+The implementation deliberately does NOT force the eight design boundary points
+into the nested 64-design subset because the method describes that subset only as
+space-filling; boundary points are included only if selected by that criterion.
 
 The manuscript table records master seed s0=1024, so this script now uses 1024 as
 the default. Mean transaction size is still required because the supplied method
@@ -91,9 +98,24 @@ from scipy.spatial.distance import pdist
 from scipy.stats import qmc
 
 
-# -------------------------------
+# ---------------------------------------------------------------------------
+# MANUSCRIPT TRACEABILITY: Sections IV-A and V-A/V-B
+# ---------------------------------------------------------------------------
+# This generator intentionally distinguishes:
+#   * design configuration = values of C, BCI, and MBS;
+#   * operational condition = values of N_V, H_node, H_link, H_hash, f_A,
+#     and lambda_tx.
+#
+# The constants below reproduce the parameter domains and sample sizes stated
+# in the manuscript.  Keeping them together makes it easy to audit whether a
+# generated CSV still corresponds to the reported experiment.
+#
+# IMPORTANT: values such as Dirichlet alpha, allocation dimensions, attacker
+# count, and realized attacker fraction are translations/diagnostics.  They are
+# not additional sampled design or operational parameters.
+# ---------------------------------------------------------------------------
 # Manuscript-defined ranges/sizes
-# -------------------------------
+# ---------------------------------------------------------------------------
 C_MIN, C_MAX = 1, 8
 BCI_MIN, BCI_MAX = 60, 1200  # seconds
 MBS_MIN, MBS_MAX = 0.25, 8.0  # MB
@@ -117,7 +139,6 @@ class ScriptChoices:
     """Implementation choices that are not fixed numerically by the manuscript."""
 
     design_candidate_count: int
-    operational_candidate_count: int
     nested_subset_method: str = "greedy maximin in manuscript sampling coordinates"
     design_initial_forces_all_8_corners: bool = False
     sensitivity_interpretation: str = "greedy maximin 32-point subset of operational_96 using the five non-demand coordinates"
@@ -127,9 +148,20 @@ class ScriptChoices:
 
 
 
-# ----------------------------------------------------------
+# ---------------------------------------------------------------------------
+# MANUSCRIPT TRACEABILITY: Table II / Table III parameter terminology
+# ---------------------------------------------------------------------------
+# The internal short names mirror the mathematical notation used in Sections
+# IV and V, while exported CSVs use descriptive names intended for the
+# simulator and replication package.
+#
+# The separation below is deliberate:
+#   sampled parameter columns -> define design configurations/operational conditions;
+#   derived columns           -> translate those sampled values into executable inputs
+#                                or retain diagnostics for later interpretation.
+# ---------------------------------------------------------------------------
 # User-facing CSV parameter names (close to the manuscript)
-# ----------------------------------------------------------
+# ---------------------------------------------------------------------------
 #
 # The implementation keeps short internal symbols such as C, NV, H_node, etc.
 # because those names map directly to the manuscript equations. However, all
@@ -257,9 +289,18 @@ def _reference_simulation_csv(reference_pairs: pd.DataFrame) -> pd.DataFrame:
     return _descriptive_csv_names(reference_pairs[cols], include_derived=True)
 
 
-# -------------------------------
-# Utility functions
-# -------------------------------
+# ---------------------------------------------------------------------------
+# LOW-LEVEL REPRODUCIBILITY AND MATHEMATICAL UTILITIES
+# ---------------------------------------------------------------------------
+# These helpers implement transformations used repeatedly by the sampling,
+# translation, and verification stages.  They do not define additional
+# experimental factors.
+#
+# _derived_seed() is especially important for reproducibility: every stochastic
+# construction receives a deterministic seed derived from the master seed plus
+# a descriptive label.  This lets the replication package reproduce individual
+# candidates and verification draws without relying on global RNG state.
+# ---------------------------------------------------------------------------
 
 def _log_interp(u: np.ndarray, lo: float, hi: float) -> np.ndarray:
     return np.exp(np.log(lo) + u * (np.log(hi) - np.log(lo)))
@@ -353,13 +394,34 @@ def draw_shares(m: int, h: float, rng: np.random.Generator, size: int | None = N
     return rng.dirichlet(np.full(m, alpha, dtype=float), size=size)
 
 
-# -------------------------------
-# Sampling transforms
-# -------------------------------
+# ---------------------------------------------------------------------------
+# SAMPLING TRANSFORMS: Section V-A and Section V-B
+# ---------------------------------------------------------------------------
+# Design LHS coordinates:
+#   C   -> mapped to integer values 1..8
+#   BCI -> logarithmic scale, then rounded to integer seconds
+#   MBS -> logarithmic scale
+#
+# Operational LHS coordinates:
+#   N_V       -> logarithmic scale, then rounded to an integer
+#   H_node    -> linear scale
+#   H_link    -> linear scale
+#   H_hash    -> linear scale
+#   f_A       -> linear scale
+#   lambda_tx -> logarithmic scale
+#
+# Sampling is performed in normalized LHS space first and then transformed to
+# the physical parameter domains.  Derived quantities such as alpha and N_A
+# are computed only after design and operational samples are crossed.
+# ---------------------------------------------------------------------------
 
+# Section V-B: transform a 3-D LHS point into one design configuration.
+# C is discretized only after LHS generation; BCI and MBS are transformed on
+# logarithmic scales to preserve space-filling coverage across wide ranges.
 def transform_design_lhs(u: np.ndarray) -> pd.DataFrame:
     if u.shape[1] != 3:
         raise ValueError("Design LHS must have 3 dimensions.")
+    # Map the stratified unit-interval coordinate to one of the eight allowed C values.
     c = np.floor(u[:, 0] * (C_MAX - C_MIN + 1)).astype(int) + C_MIN
     c = np.clip(c, C_MIN, C_MAX)
     bci = _round_half_away_nonnegative(_log_interp(u[:, 1], BCI_MIN, BCI_MAX))
@@ -378,6 +440,8 @@ def design_sampling_coords(df: pd.DataFrame) -> np.ndarray:
     )
 
 
+# Section V-B: enumerate all 2^3 combinations of lower/upper design bounds.
+# These eight boundary configurations supplement the 120 interior LHS points.
 def design_corners() -> pd.DataFrame:
     rows = [
         {"C": c, "BCI_s": bci, "MBS_MB": mbs, "source": "boundary"}
@@ -424,6 +488,10 @@ def _replace_duplicate_design_rows(
     return out, replacements
 
 
+# Section V-B: construct the reported 128-design sample.
+# Multiple reproducible 120-point LHS candidates are generated, transformed,
+# de-duplicated after integer mapping, augmented with the same eight boundary
+# configurations, and compared by their minimum pairwise distance.
 def generate_design_sample(master_seed: int, n_candidates: int) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Generate 120 candidate-LHS points, select maximin candidate, add 8 corners."""
     if n_candidates < 1:
@@ -448,8 +516,11 @@ def generate_design_sample(master_seed: int, n_candidates: int) -> tuple[pd.Data
             df, master_seed, candidate_id, forbidden=corner_keys
         )
         unique = _unique_rows(df, ["C", "BCI_s", "MBS_MB"])
-        candidate_full = pd.concat([df.assign(source="lhs"), design_corners()], ignore_index=True)
-        score = _min_distance(design_sampling_coords(candidate_full))
+        # Section V-B describes the maximin comparison for the 120-point LHS
+        # that supplies the interior design sample. The eight boundary points are
+        # appended only after the best LHS candidate has been selected. Scoring
+        # the interior LHS alone keeps the implementation faithful to that order.
+        score = _min_distance(design_sampling_coords(df))
 
         candidate_copy = df.copy()
         candidate_copy.insert(0, "candidate_id", candidate_id)
@@ -493,22 +564,32 @@ def generate_design_sample(master_seed: int, n_candidates: int) -> tuple[pd.Data
     metadata = {
         "selected_candidate_id": int(best_id),
         "selected_candidate_seed": int(best_seed),
-        "selected_candidate_min_distance_full_128": float(best_score),
+        "selected_candidate_min_distance_lhs_120": float(best_score),
         "duplicate_handling": "deterministic replacement after integer conversion; boundary collisions also replaced",
-        "maximin_scoring": "minimum Euclidean distance in manuscript sampling coordinates on the final 128 points (120 LHS + 8 common corners)",
+        "maximin_scoring": "minimum Euclidean distance in manuscript sampling coordinates on the 120 transformed LHS design points; 8 boundaries are appended after candidate selection",
     }
     return final, candidates, {**metadata, "candidate_scores": score_df.to_dict(orient="records")}
 
 
+# Section V-A, transaction-demand bounds:
+# lambda_min = 0.5 * capacity at the lowest-capacity design boundary;
+# lambda_max = 1.5 * capacity at the highest-capacity design boundary.
+# mean_tx_size_mb must use the same MB convention as MBS_MB.
 def transaction_rate_bounds(mean_tx_size_mb: float) -> tuple[float, float]:
     """Equation (15)."""
     if mean_tx_size_mb <= 0:
         raise ValueError("mean transaction size must be > 0")
+    # Lowest-capacity boundary: smallest block / longest block interval.
     lambda_min = 0.5 * MBS_MIN / (BCI_MAX * mean_tx_size_mb)
+    # Highest-capacity boundary: largest block / shortest block interval.
     lambda_max = 1.5 * MBS_MAX / (BCI_MIN * mean_tx_size_mb)
     return lambda_min, lambda_max
 
 
+# Section V-B: transform a 6-D LHS point into one operational condition.
+# N_V and lambda_tx use logarithmic transforms; the heterogeneity variables and
+# f_A remain linear.  The six LHS dimensions are sampled independently before
+# N_V is converted to an integer.
 def transform_operational_lhs(u: np.ndarray, lambda_min: float, lambda_max: float) -> pd.DataFrame:
     if u.shape[1] != 6:
         raise ValueError("Operational LHS must have 6 dimensions.")
@@ -539,53 +620,68 @@ def operational_sampling_coords(df: pd.DataFrame, lambda_min: float, lambda_max:
     )
 
 
+# Section V-B: generate the 96-condition operational sample.
+#
+# The manuscript specifies one six-dimensional operational LHS. In particular:
+#   * N_V and lambda_tx are represented logarithmically;
+#   * H_node, H_link, H_hash, and f_A are represented linearly;
+#   * the six dimensions are sampled independently before N_V is converted to
+#     an integer;
+#   * the resulting 96 conditions are later crossed with every design so that
+#     all designs face exactly the same absolute operational conditions.
+#
+# Unlike the design sample, Section V-B does not specify a search over multiple
+# operational LHS candidates. Therefore this function deliberately generates
+# exactly one reproducible LHS from a seed derived from the master seed.
 def generate_operational_sample(
     master_seed: int,
     lambda_min: float,
     lambda_max: float,
-    n_candidates: int,
 ) -> tuple[pd.DataFrame, dict]:
-    """Generate candidate 96-point operational LHS samples and retain the maximin one."""
-    if n_candidates < 1:
-        raise ValueError("operational candidate count must be >= 1")
+    """Generate the single 96-point operational LHS specified by Section V-B."""
 
-    best_df: pd.DataFrame | None = None
-    best_score = -math.inf
-    best_seed = None
-    best_id = None
-    scores: list[dict] = []
+    seed = _derived_seed(master_seed, "operational_lhs", 0)
+    u = _lhs(N_OPERATIONAL_FINAL, 6, seed)
+    operational = transform_operational_lhs(u, lambda_min, lambda_max)
 
-    for candidate_id in range(n_candidates):
-        seed = _derived_seed(master_seed, "operational_lhs_candidate", candidate_id)
-        u = _lhs(N_OPERATIONAL_FINAL, 6, seed)
-        df = transform_operational_lhs(u, lambda_min, lambda_max)
-        unique = _unique_rows(df, ["NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx_per_s"])
-        score = _min_distance(operational_sampling_coords(df, lambda_min, lambda_max)) if unique else -math.inf
-        scores.append({
-            "candidate_id": candidate_id,
-            "candidate_seed": int(seed),
-            "candidate_min_distance": float(score),
-            "candidate_unique": bool(unique),
-        })
-        if unique and score > best_score:
-            best_score = score
-            best_seed = seed
-            best_id = candidate_id
-            best_df = df.copy()
+    # N_V is rounded to an integer, but the remaining five dimensions are
+    # continuous. A complete-row duplicate is therefore unlikely; nevertheless,
+    # fail loudly rather than silently modifying the stated LHS if one occurs.
+    key_cols = ["NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx_per_s"]
+    if not _unique_rows(operational, key_cols):
+        raise RuntimeError(
+            "Integer conversion produced a duplicate complete operational condition. "
+            "The method does not specify replacement of operational rows; choose a "
+            "different master seed and regenerate the operational LHS."
+        )
 
-    if best_df is None:
-        raise RuntimeError("No unique operational LHS candidate was generated.")
+    operational.insert(
+        0,
+        "operational_id",
+        [f"O{i:03d}" for i in range(1, len(operational) + 1)],
+    )
 
-    best_df.insert(0, "operational_id", [f"O{i:03d}" for i in range(1, len(best_df) + 1)])
-    return best_df, {
-        "selected_candidate_id": int(best_id),
-        "selected_candidate_seed": int(best_seed),
-        "selected_candidate_min_distance": float(best_score),
-        "candidate_scores": sorted(scores, key=lambda x: x["candidate_min_distance"], reverse=True),
-        "maximin_scoring": "minimum Euclidean distance in transformed manuscript sampling coordinates",
+    # Minimum distance is recorded only as an audit descriptor of the retained
+    # operational LHS. It is NOT used to select among competing candidates.
+    min_distance = _min_distance(
+        operational_sampling_coords(operational, lambda_min, lambda_max)
+    )
+
+    return operational, {
+        "operational_lhs_seed": int(seed),
+        "operational_lhs_points": int(N_OPERATIONAL_FINAL),
+        "selection": "single six-dimensional LHS; no candidate maximin search",
+        "minimum_distance_audit_only": float(min_distance),
+        "sampling_dimensions": {
+            "logarithmic": ["NV", "lambda_tx_per_s"],
+            "linear": ["H_node", "H_link", "H_hash", "f_A"],
+        },
     }
 
 
+# Section V-B: create the one separately reported homogeneous reference.
+# All H values and f_A are zero; N_V and lambda_tx use geometric-midpoint values
+# because those dimensions are sampled logarithmically in the primary design.
 def homogeneous_reference(lambda_min: float, lambda_max: float) -> pd.DataFrame:
     nv_mid = _round_half_away_nonnegative(math.sqrt(NV_MIN * NV_MAX))
     lam_mid = math.sqrt(lambda_min * lambda_max)
@@ -617,10 +713,26 @@ def sensitivity_sampling_coords(df: pd.DataFrame) -> np.ndarray:
     )
 
 
-# -------------------------------
-# Nested space-filling subsets
-# -------------------------------
+# ---------------------------------------------------------------------------
+# NESTED SPACE-FILLING SUBSETS: Section V-B
+# ---------------------------------------------------------------------------
+# The final primary samples contain 128 design configurations and 96
+# operational conditions.  The 64-design and 48-condition sets below are
+# selected as subsets of those final samples, so the smaller experiment can be
+# enlarged without changing the already selected points.
+#
+# The manuscript requires space-filling nested subsets but does not prescribe
+# the exact subset-selection algorithm.  This implementation therefore uses a
+# deterministic greedy maximin selector and records that choice in metadata.
+#
+# The 32-condition set is reserved for the separate relative-load/overload
+# sensitivity analysis.  Its lambda_tx is replaced later by the design-dependent
+# 105%-of-nominal-capacity rate; the primary lambda is retained only for audit.
+# ---------------------------------------------------------------------------
 
+# Section V-B: deterministic selector for nested/secondary space-filling sets.
+# This algorithm is not claimed to preserve Latin-hypercube stratification after
+# discreteness/boundary augmentation; it is used only to obtain nested coverage.
 def greedy_maximin_subset(
     coords: np.ndarray,
     k: int,
@@ -680,10 +792,15 @@ def greedy_maximin_subset(
     return selected
 
 
-def nested_design_64(design: pd.DataFrame, *, force_corners: bool = False) -> pd.DataFrame:
+def nested_design_64(design: pd.DataFrame) -> pd.DataFrame:
+    """Select the nested 64-design space-filling subset described in Section V-B.
+
+    No boundary point is forced into the subset. The eight boundary configurations
+    remain part of the final 128-design sample, while the 64-point stage is chosen
+    solely for space-filling coverage as stated in the method.
+    """
     coords = design_sampling_coords(design)
-    forced = np.flatnonzero(design["is_boundary"].to_numpy(bool)).tolist() if force_corners else []
-    idx = greedy_maximin_subset(coords, N_DESIGN_INITIAL, forced_indices=forced)
+    idx = greedy_maximin_subset(coords, N_DESIGN_INITIAL)
     subset = design.iloc[idx].copy()
     subset.insert(1, "initial_stage_rank", np.arange(1, len(subset) + 1))
     return subset
@@ -725,9 +842,22 @@ def sensitivity_32_from_operational(operational: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-# -------------------------------
-# Topology construction/verification
-# -------------------------------
+# ---------------------------------------------------------------------------
+# TOPOLOGY TRANSLATION: Section IV-C1
+# ---------------------------------------------------------------------------
+# For each (N_V, C), the model draws a random node permutation and lets each
+# node initiate C forward connections in that circular ordering.
+#
+# Consequences checked below:
+#   * N_V * C directed initiation records / physical connections;
+#   * exactly C initiated and C accepted connections per node;
+#   * realized degree d_i = 2C because established connections are bidirectional;
+#   * no self, duplicate, or reciprocally initiated pair when 2C <= N_V - 1;
+#   * connectivity for C >= 1.
+#
+# The topology seed changes which operational resources/adversaries become
+# adjacent without changing the regular degree imposed by C.
+# ---------------------------------------------------------------------------
 
 def construct_topology(nv: int, c: int, seed: int) -> list[tuple[int, int]]:
     """Manuscript Section IV-C1 topology: random permutation + C forward initiations."""
@@ -792,10 +922,29 @@ def verify_topology(nv: int, c: int, edges: Sequence[tuple[int, int]]) -> dict:
     }
 
 
-# -------------------------------
-# Crossed configuration translation
-# -------------------------------
+# ---------------------------------------------------------------------------
+# CROSSING AND EXECUTABLE TRANSLATION: Sections IV-C2/IV-C3 and V-B
+# ---------------------------------------------------------------------------
+# The primary experiment crosses every sampled design configuration with every
+# sampled operational condition.  Only after that crossing do we derive inputs
+# whose executable representation depends jointly on sampled values:
+#
+#   N_A        = integer attacker count derived from (f_A, N_V)
+#   m_node     = N_V
+#   m_hash     = N_V
+#   m_link     = 2C
+#   alpha_*    = (1-H)/(mH) for H>0; H=0 means equal shares
+#
+# Keeping f_A and H_* as the sampled variables is essential for the later
+# surrogate/fANOVA analysis.  The derived quantities are simulator-facing
+# translations or diagnostics and must not be treated as extra experimental
+# parameters.
+# ---------------------------------------------------------------------------
 
+# Section IV-C3 / Eq. attacker-count:
+# f_A remains the sampled operational parameter.  The simulator needs an integer
+# N_A, so the count is derived after N_V is known and f_A_realized=N_A/N_V is
+# retained only to expose rounding effects.
 def derive_attacker_count(nv: int, f_a: float) -> tuple[int, float]:
     """Implement the manuscript attacker-count equation exactly.
 
@@ -826,6 +975,11 @@ def _expected_attacker_count_from_manuscript(nv: int, f_a: float) -> tuple[int, 
         n_a = max(1, int(math.floor(f_a * nv + 0.5)))
     return n_a, n_a / nv
 
+# Translate sampled design--operational pairs into simulator-facing quantities.
+# The allocation dimension for H_link is 2C (adjacent peers), whereas H_node and
+# H_hash use N_V.  This is why these translations occur after crossing samples:
+# their internal alpha values depend on another sampled parameter even though
+# H_node/H_link/H_hash themselves were sampled as independent LHS dimensions.
 def add_translation_columns(pairs: pd.DataFrame) -> pd.DataFrame:
     out = pairs.copy()
 
@@ -838,8 +992,10 @@ def add_translation_columns(pairs: pd.DataFrame) -> pd.DataFrame:
     out["N_A"] = [value[0] for value in attacker_values]
     out["f_A_realized"] = [value[1] for value in attacker_values]
 
+    # Section IV-C2: node bandwidth and hashing power are allocations over N_V nodes.
     out["m_node"] = out["NV"].astype(int)
     out["m_hash"] = out["NV"].astype(int)
+    # Section IV-C2: each node allocates its bandwidth across its 2C adjacent peers.
     out["m_link"] = 2 * out["C"].astype(int)
 
     def alpha_series(mcol: str, hcol: str) -> list[float]:
@@ -857,6 +1013,7 @@ def add_translation_columns(pairs: pd.DataFrame) -> pd.DataFrame:
     out["m_eff_hash"] = [effective_recipient_count(int(m), float(h)) for m, h in zip(out["m_hash"], out["H_hash"])]
     out["m_eff_link"] = [effective_recipient_count(int(m), float(h)) for m, h in zip(out["m_link"], out["H_link"])]
 
+    # Section IV-C1: sufficient feasibility condition for distinct non-reciprocal peers.
     out["topology_feasible"] = (2 * out["C"] <= out["NV"] - 1)
     out["aggregate_block_rate_per_s"] = 1.0 / out["BCI_s"]
     out["nominal_capacity_proxy_MB_per_s"] = out["MBS_MB"] / out["BCI_s"]
@@ -868,6 +1025,9 @@ def add_translation_columns(pairs: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# Primary common-demand experiment (128 x 96, or its nested 64 x 48 subset).
+# The operational row, including lambda_tx, is reused unchanged for every design
+# so comparisons are made under identical absolute operational conditions.
 def cross_design_operational(design: pd.DataFrame, operational: pd.DataFrame) -> pd.DataFrame:
     """Primary experiment: cross every design with the SAME absolute-demand conditions.
 
@@ -883,6 +1043,9 @@ def cross_design_operational(design: pd.DataFrame, operational: pd.DataFrame) ->
     return add_translation_columns(pairs)
 
 
+# Separate relative-load sensitivity experiment (128 x 32).
+# Unlike the primary experiment, lambda_tx is intentionally design-dependent:
+# it is recomputed as 1.05 * MBS / (BCI * mean transaction size).
 def cross_sensitivity(
     design: pd.DataFrame,
     sensitivity: pd.DataFrame,
@@ -891,6 +1054,7 @@ def cross_sensitivity(
     d = design.assign(_k=1)
     s = sensitivity.assign(_k=1)
     pairs = d.merge(s, on="_k", how="inner").drop(columns="_k")
+    # Eq. relative-load sensitivity: deliberately break common absolute demand here only.
     pairs["lambda_tx_per_s"] = 1.05 * pairs["MBS_MB"] / (pairs["BCI_s"] * mean_tx_size_mb)
     pairs["experiment_type"] = "separate_105pct_overload_analysis"
     pairs["lambda_definition"] = "1.05 * MBS / (BCI * mean_tx_size); design-dependent"
@@ -899,9 +1063,25 @@ def cross_sensitivity(
     return add_translation_columns(pairs)
 
 
-# -------------------------------
-# Verification
-# -------------------------------
+# ---------------------------------------------------------------------------
+# CONFIGURATION-GENERATION VERIFICATION: Section V-C (partial coverage)
+# ---------------------------------------------------------------------------
+# This file can verify invariants that depend only on generated configurations:
+#   * sample sizes, ranges, uniqueness, and nesting;
+#   * topology feasibility and structural invariants;
+#   * attacker-count derivation;
+#   * allocation dimensions and Dirichlet alpha translations;
+#   * resource-share/bandwidth-budget conservation;
+#   * expected concentration under repeated Dirichlet draws;
+#   * common absolute demand in the primary experiment;
+#   * exactly 105% nominal load in the separate overload analysis.
+#
+# It CANNOT verify simulator/event-engine behavior such as realized Poisson
+# event rates, fork resolution, selfish-mining behavior, R_S/R_E replication,
+# warm-up/measurement/drain rules, or result-based sample adequacy.  Those
+# checks require the simulator or simulation outputs and are listed explicitly
+# in verify_all().
+# ---------------------------------------------------------------------------
 
 def _mc_check_h(m: int, h: float, draws: int, seed: int, z: float, abs_tol: float) -> dict:
     if m < 2:
@@ -947,6 +1127,10 @@ def _mc_check_h(m: int, h: float, draws: int, seed: int, z: float, abs_tol: floa
     }
 
 
+# Section IV-C2 verification of resource-allocation invariants.
+# For the regular topology, N_V*C physical connections imply 2*N_V*C endpoints;
+# therefore B_total = 2 * B_endpoint * N_V * C, which is algebraically the same
+# as the manuscript's 2 * B_endpoint * N_VC when N_VC=N_V*C.
 def verify_resource_translation(
     operational: pd.DataFrame,
     design: pd.DataFrame,
@@ -983,6 +1167,7 @@ def verify_resource_translation(
             if 2 * c > nv - 1:
                 failures.append({"operational_id": op_id, "C": c, "kind": "topology_infeasible"})
                 continue
+            # Regular topology: N_V*C connections and 2*N_V*C endpoints.
             b_total = 2.0 * b_endpoint * nv * c
             node_bw = node_shares * b_total
             if not np.isclose(node_bw.sum(), b_total, rtol=1e-12, atol=1e-10):
@@ -1005,6 +1190,9 @@ def verify_resource_translation(
     return {"pass": not failures, "checked_operational_C_combinations": checked, "failures": failures}
 
 
+# Consolidate every configuration-level verification that can be performed
+# before running the discrete-event simulator.  The returned report deliberately
+# separates implemented checks from checks that require simulator execution.
 def verify_all(
     design: pd.DataFrame,
     design64: pd.DataFrame,
@@ -1287,9 +1475,16 @@ def verify_all(
     return report
 
 
-# -------------------------------
-# Output
-# -------------------------------
+# ---------------------------------------------------------------------------
+# REPLICATION-PACKAGE OUTPUTS
+# ---------------------------------------------------------------------------
+# User-facing simulation inputs are separated from audit material.
+# The simulation CSVs contain the sampled parameters plus only those derived
+# values required by the simulator (notably N_A and f_A_realized).  Audit files
+# retain candidate samples, nested subsets, translation diagnostics, random
+# seeds, metadata, and verification results so the reported sampling procedure
+# can be reconstructed.
+# ---------------------------------------------------------------------------
 
 def _json_default(obj):
     if isinstance(obj, (np.integer,)):
@@ -1301,6 +1496,20 @@ def _json_default(obj):
     raise TypeError(type(obj).__name__)
 
 
+# Orchestrate the manuscript sampling workflow without performing simulations:
+# 1) derive lambda bounds from mean transaction size;
+# 2) generate 128 design configurations and 96 operational conditions;
+# 3) build the homogeneous reference and nested/overload subsets;
+# 4) cross samples into simulator input tables;
+# 5) verify configuration-generation invariants;
+# 6) emit user-facing inputs plus audit/replication metadata.
+#
+# METHOD-COMPATIBILITY NOTE
+# -------------------------
+# This script implements configuration generation and pre-simulation checks only.
+# It does not claim to implement the simulator-level verification/execution work
+# in Section V-C (R_S/R_E pilot selection, warm-up/measurement/drain periods,
+# realized Poisson-rate checks, or SM-SIM reference-behavior tests).
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--seed", type=int, default=1024, help="Master random seed s0 (default: 1024, matching the manuscript table).")
@@ -1322,17 +1531,6 @@ def main() -> int:
         type=int,
         default=128,
         help="Number of candidate 120-point design LHS samples compared by minimum distance. Manuscript does not specify this count.",
-    )
-    parser.add_argument(
-        "--operational-candidates",
-        type=int,
-        default=128,
-        help="Number of candidate 96-point operational LHS samples compared by minimum distance (default: 128).",
-    )
-    parser.add_argument(
-        "--force-corners-in-initial-64",
-        action="store_true",
-        help="Force all 8 design boundaries into the nested 64-design subset. This is an implementation choice, not required by the supplied method text.",
     )
     parser.add_argument(
         "--mc-draws",
@@ -1372,17 +1570,18 @@ def main() -> int:
 
     choices = ScriptChoices(
         design_candidate_count=args.design_candidates,
-        operational_candidate_count=args.operational_candidates,
-        design_initial_forces_all_8_corners=bool(args.force_corners_in_initial_64),
+        # Section V-B does not require all eight boundaries in the 64-design
+        # nested subset, so the method-aligned implementation fixes this to False.
+        design_initial_forces_all_8_corners=False,
         mb_bytes=args.mb_bytes,
     )
     mean_tx_size_mb = args.mean_tx_size_bytes / args.mb_bytes
     lambda_min, lambda_max = transaction_rate_bounds(mean_tx_size_mb)
 
     design, design_candidates, design_meta = generate_design_sample(args.seed, args.design_candidates)
-    operational, operational_meta = generate_operational_sample(args.seed, lambda_min, lambda_max, args.operational_candidates)
+    operational, operational_meta = generate_operational_sample(args.seed, lambda_min, lambda_max)
     reference = homogeneous_reference(lambda_min, lambda_max)
-    design64 = nested_design_64(design, force_corners=args.force_corners_in_initial_64)
+    design64 = nested_design_64(design)
     operational48 = nested_operational_48(operational, lambda_min, lambda_max)
     sensitivity = sensitivity_32_from_operational(operational)
 
@@ -1464,10 +1663,6 @@ def main() -> int:
     pd.DataFrame(design_meta.pop("candidate_scores")).to_csv(
         audit_dir / "design_candidate_scores.csv", index=False
     )
-    pd.DataFrame(operational_meta.pop("candidate_scores")).to_csv(
-        audit_dir / "operational_candidate_scores.csv", index=False
-    )
-
     verification = verify_all(
         design=design,
         design64=design64,
@@ -1500,7 +1695,11 @@ def main() -> int:
             "comparison_rule": "every design is crossed with the same 96 operational conditions"
         },
         "sensitivity": {
-            "source": "32-point subset of operational_96 selected in five non-demand coordinates",
+            # Section V-B calls this a prespecified 32-condition space-filling
+            # subset over the five non-demand coordinates. The exact selector is
+            # not prescribed, so the deterministic greedy-maximin selector is
+            # recorded here for reproducibility.
+            "source": "32-point subset of operational_96 selected by deterministic greedy maximin in five non-demand coordinates",
             "demand_treatment": "separate 105%-of-theoretical-capacity overload analysis; lambda_tx depends on each design's MBS/BCI"
         },
         "script_choices_not_numerically_fixed_by_manuscript": asdict(choices),
