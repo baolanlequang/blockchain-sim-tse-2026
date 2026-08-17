@@ -1013,6 +1013,7 @@ def verify_all(
     reference: pd.DataFrame,
     sensitivity: pd.DataFrame,
     primary_pairs: pd.DataFrame,
+    nested_pairs: pd.DataFrame,
     sensitivity_pairs: pd.DataFrame,
     master_seed: int,
     mc_draws: int,
@@ -1033,6 +1034,7 @@ def verify_all(
                 len(reference) == 1,
                 len(sensitivity) == N_SENSITIVITY,
                 len(primary_pairs) == N_DESIGN_FINAL * N_OPERATIONAL_FINAL,
+                len(nested_pairs) == N_DESIGN_INITIAL * N_OPERATIONAL_INITIAL,
                 len(sensitivity_pairs) == N_DESIGN_FINAL * N_SENSITIVITY,
             ]
         ),
@@ -1043,6 +1045,7 @@ def verify_all(
         "reference": len(reference),
         "sensitivity": len(sensitivity),
         "primary_pairs": len(primary_pairs),
+        "nested_pairs": len(nested_pairs),
         "sensitivity_pairs": len(sensitivity_pairs),
     }
 
@@ -1384,6 +1387,8 @@ def main() -> int:
     sensitivity = sensitivity_32_from_operational(operational)
 
     primary_pairs = cross_design_operational(design, operational)
+    nested_pairs = cross_design_operational(design64, operational48)
+    nested_pairs["experiment_type"] = "nested_sample_adequacy"
     reference_pairs = cross_design_operational(design, reference[operational.columns])
     sensitivity_pairs = cross_sensitivity(design, sensitivity, mean_tx_size_mb)
 
@@ -1395,6 +1400,8 @@ def main() -> int:
     #
     # Primary simulation experiment:
     #     simulation_primary_128x96.csv
+    # Nested sample-adequacy experiment:
+    #     simulation_nested_64x48.csv
     # Separate 105%-of-nominal-capacity overload analysis:
     #     simulation_overload_105pct_128x32.csv
 
@@ -1406,6 +1413,9 @@ def main() -> int:
     )
     _primary_simulation_csv(primary_pairs).to_csv(
         out_dir / "simulation_primary_128x96.csv", index=False
+    )
+    _primary_simulation_csv(nested_pairs).to_csv(
+        out_dir / "simulation_nested_64x48.csv", index=False
     )
     _overload_simulation_csv(sensitivity_pairs).to_csv(
         out_dir / "simulation_overload_105pct_128x32.csv", index=False
@@ -1438,6 +1448,9 @@ def main() -> int:
     _descriptive_csv_names(primary_pairs, include_derived=True).to_csv(
         audit_dir / "primary_128x96_detailed.csv", index=False
     )
+    _descriptive_csv_names(nested_pairs, include_derived=True).to_csv(
+        audit_dir / "nested_64x48_detailed.csv", index=False
+    )
     _descriptive_csv_names(reference_pairs, include_derived=True).to_csv(
         audit_dir / "homogeneous_reference_128x1_detailed.csv", index=False
     )
@@ -1463,6 +1476,7 @@ def main() -> int:
         reference=reference,
         sensitivity=sensitivity,
         primary_pairs=primary_pairs,
+        nested_pairs=nested_pairs,
         sensitivity_pairs=sensitivity_pairs,
         master_seed=args.seed,
         mc_draws=args.mc_draws,
@@ -1498,6 +1512,7 @@ def main() -> int:
             "operational_final": N_OPERATIONAL_FINAL,
             "operational_reference_separate": 1,
             "operational_initial_nested": N_OPERATIONAL_INITIAL,
+            "nested_pairs": N_DESIGN_INITIAL * N_OPERATIONAL_INITIAL,
             "sensitivity_conditions": N_SENSITIVITY,
         },
         "manuscript_feasibility_summary": {
@@ -1522,6 +1537,9 @@ def main() -> int:
     print("\nMAIN FILE FOR THE PRIMARY SIMULATION EXPERIMENT:")
     print(f"  {out_dir / 'simulation_primary_128x96.csv'}")
     print("  -> 12,288 rows; each row contains one complete design + operational condition.")
+    print("\nNESTED SAMPLE-ADEQUACY EXPERIMENT:")
+    print(f"  {out_dir / 'simulation_nested_64x48.csv'}")
+    print("  -> 3,072 rows; nested subset of the primary design and operational samples.")
     print("\nSEPARATE 105% OVERLOAD ANALYSIS:")
     print(f"  {out_dir / 'simulation_overload_105pct_128x32.csv'}")
     print("  -> 4,096 rows; use only for the separate overload analysis.")
@@ -1548,6 +1566,7 @@ def main() -> int:
     print(f"  Operational: {len(operational)} sampled + 1 separate homogeneous reference")
     print(f"  Nested initial stage: {len(design64)} x {len(operational48)}")
     print(f"  Primary crossed pairs: {len(primary_pairs)}")
+    print(f"  Nested 64x48 crossed pairs: {len(nested_pairs)}")
     print(f"  Separate 105% overload pairs: {len(sensitivity_pairs)}")
     print(f"  Configuration-generation verification: {'PASS' if verification['configuration_verification_pass'] else 'FAIL'}")
     print("  Full simulation-method verification: NOT PERFORMED by this configuration generator")
