@@ -1395,7 +1395,7 @@ def verify_all(
         "note": "This generator verifies configured positive rates. Event-time Monte Carlo belongs in the simulator/event-engine test suite.",
     }
 
-    # Supervisor-requested separation of the two demand treatments. In the primary
+    # This part separate the two demand treatments. In the primary
     # experiment, each operational_id must carry exactly one absolute lambda across
     # all 128 designs. In the separate overload analysis, lambda is recomputed from
     # each design's MBS/BCI and must equal 105% of nominal theoretical capacity.
