@@ -117,6 +117,7 @@ class ScriptChoices:
     """Implementation choices that are not fixed numerically by the manuscript."""
 
     design_candidate_count: int
+    operational_candidate_count: int
     nested_subset_method: str = "greedy maximin in manuscript sampling coordinates"
     design_initial_forces_all_8_corners: bool = False
     sensitivity_interpretation: str = "greedy maximin 32-point subset of operational_96 using the five non-demand coordinates"
@@ -447,7 +448,8 @@ def generate_design_sample(master_seed: int, n_candidates: int) -> tuple[pd.Data
             df, master_seed, candidate_id, forbidden=corner_keys
         )
         unique = _unique_rows(df, ["C", "BCI_s", "MBS_MB"])
-        score = _min_distance(design_sampling_coords(df))
+        candidate_full = pd.concat([df.assign(source="lhs"), design_corners()], ignore_index=True)
+        score = _min_distance(design_sampling_coords(candidate_full))
 
         candidate_copy = df.copy()
         candidate_copy.insert(0, "candidate_id", candidate_id)
@@ -491,8 +493,9 @@ def generate_design_sample(master_seed: int, n_candidates: int) -> tuple[pd.Data
     metadata = {
         "selected_candidate_id": int(best_id),
         "selected_candidate_seed": int(best_seed),
-        "selected_candidate_min_distance": float(best_score),
+        "selected_candidate_min_distance_full_128": float(best_score),
         "duplicate_handling": "deterministic replacement after integer conversion; boundary collisions also replaced",
+        "maximin_scoring": "minimum Euclidean distance in manuscript sampling coordinates on the final 128 points (120 LHS + 8 common corners)",
     }
     return final, candidates, {**metadata, "candidate_scores": score_df.to_dict(orient="records")}
 
@@ -536,14 +539,51 @@ def operational_sampling_coords(df: pd.DataFrame, lambda_min: float, lambda_max:
     )
 
 
-def generate_operational_sample(master_seed: int, lambda_min: float, lambda_max: float) -> tuple[pd.DataFrame, dict]:
-    seed = _derived_seed(master_seed, "operational_lhs", 0)
-    u = _lhs(N_OPERATIONAL_FINAL, 6, seed)
-    df = transform_operational_lhs(u, lambda_min, lambda_max)
-    if not _unique_rows(df, ["NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx_per_s"]):
-        raise RuntimeError("Operational LHS contains a full duplicate after integer conversion.")
-    df.insert(0, "operational_id", [f"O{i:03d}" for i in range(1, len(df) + 1)])
-    return df, {"operational_lhs_seed": int(seed)}
+def generate_operational_sample(
+    master_seed: int,
+    lambda_min: float,
+    lambda_max: float,
+    n_candidates: int,
+) -> tuple[pd.DataFrame, dict]:
+    """Generate candidate 96-point operational LHS samples and retain the maximin one."""
+    if n_candidates < 1:
+        raise ValueError("operational candidate count must be >= 1")
+
+    best_df: pd.DataFrame | None = None
+    best_score = -math.inf
+    best_seed = None
+    best_id = None
+    scores: list[dict] = []
+
+    for candidate_id in range(n_candidates):
+        seed = _derived_seed(master_seed, "operational_lhs_candidate", candidate_id)
+        u = _lhs(N_OPERATIONAL_FINAL, 6, seed)
+        df = transform_operational_lhs(u, lambda_min, lambda_max)
+        unique = _unique_rows(df, ["NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx_per_s"])
+        score = _min_distance(operational_sampling_coords(df, lambda_min, lambda_max)) if unique else -math.inf
+        scores.append({
+            "candidate_id": candidate_id,
+            "candidate_seed": int(seed),
+            "candidate_min_distance": float(score),
+            "candidate_unique": bool(unique),
+        })
+        if unique and score > best_score:
+            best_score = score
+            best_seed = seed
+            best_id = candidate_id
+            best_df = df.copy()
+
+    if best_df is None:
+        raise RuntimeError("No unique operational LHS candidate was generated.")
+
+    best_df.insert(0, "operational_id", [f"O{i:03d}" for i in range(1, len(best_df) + 1)])
+    return best_df, {
+        "selected_candidate_id": int(best_id),
+        "selected_candidate_seed": int(best_seed),
+        "selected_candidate_min_distance": float(best_score),
+        "candidate_scores": sorted(scores, key=lambda x: x["candidate_min_distance"], reverse=True),
+        "maximin_scoring": "minimum Euclidean distance in transformed manuscript sampling coordinates",
+    }
 
 
 def homogeneous_reference(lambda_min: float, lambda_max: float) -> pd.DataFrame:
@@ -757,14 +797,11 @@ def verify_topology(nv: int, c: int, edges: Sequence[tuple[int, int]]) -> dict:
 # -------------------------------
 
 def derive_attacker_count(nv: int, f_a: float) -> tuple[int, float]:
-    """Derive integer attacker count from sampled attacker fraction.
+    """Implement the manuscript attacker-count equation exactly.
 
-    The sampled ``f_A`` remains the operational parameter. Because the simulator
-    requires an integer number of adversarial validating nodes, we map ``f_A*N_V``
-    to the nearest non-negative integer using the manuscript's explicit half-up
-    rounding rule, then restrict the result to the admissible range
-    ``0 <= N_A <= floor(FA_MAX*N_V)``. The realized fraction is reported as
-    ``N_A/N_V`` and is diagnostic rather than a replacement for ``f_A``.
+    N_A = 0 when f_A = 0; otherwise
+    N_A = max(1, round_half_up(f_A * N_V)).
+    The realized fraction N_A/N_V is retained only as a diagnostic.
     """
     nv = int(nv)
     f_a = float(f_a)
@@ -773,12 +810,21 @@ def derive_attacker_count(nv: int, f_a: float) -> tuple[int, float]:
     if not (FA_MIN <= f_a <= FA_MAX):
         raise ValueError(f"f_A must lie in [{FA_MIN}, {FA_MAX}]; got {f_a}.")
 
-    target = f_a * nv
-    n_a = int(_round_half_away_nonnegative(target))
-    max_attackers = int(math.floor(FA_MAX * nv + 1e-12))
-    n_a = min(max(n_a, 0), max_attackers)
+    if f_a == 0.0:
+        n_a = 0
+    else:
+        n_a = max(1, int(_round_half_away_nonnegative(f_a * nv)))
     realized = n_a / nv
     return n_a, realized
+
+
+def _expected_attacker_count_from_manuscript(nv: int, f_a: float) -> tuple[int, float]:
+    """Independent verification implementation of the manuscript equation."""
+    if f_a == 0.0:
+        n_a = 0
+    else:
+        n_a = max(1, int(math.floor(f_a * nv + 0.5)))
+    return n_a, n_a / nv
 
 def add_translation_columns(pairs: pd.DataFrame) -> pd.DataFrame:
     out = pairs.copy()
@@ -813,6 +859,12 @@ def add_translation_columns(pairs: pd.DataFrame) -> pd.DataFrame:
 
     out["topology_feasible"] = (2 * out["C"] <= out["NV"] - 1)
     out["aggregate_block_rate_per_s"] = 1.0 / out["BCI_s"]
+    out["nominal_capacity_proxy_MB_per_s"] = out["MBS_MB"] / out["BCI_s"]
+    out["bandwidth_budget_factor_NV_times_C"] = out["NV"] * out["C"]
+    if "lambda_tx_per_s" in out.columns:
+        out["demand_to_capacity_proxy_tx_per_MB"] = (
+            out["lambda_tx_per_s"] * out["BCI_s"] / out["MBS_MB"]
+        )
     return out
 
 
@@ -1056,7 +1108,7 @@ def verify_all(
     attacker_failures = []
     for table_name, table in [("primary", primary_pairs), ("sensitivity", sensitivity_pairs)]:
         for row in table.itertuples(index=False):
-            expected_n, expected_realized = derive_attacker_count(int(row.NV), float(row.f_A))
+            expected_n, expected_realized = _expected_attacker_count_from_manuscript(int(row.NV), float(row.f_A))
             if int(row.N_A) != expected_n or not math.isclose(
                 float(row.f_A_realized), expected_realized, rel_tol=0.0, abs_tol=1e-15
             ):
@@ -1072,7 +1124,7 @@ def verify_all(
                     })
     checks["attacker_count_derivation"] = {
         "pass": not attacker_failures,
-        "rule": "N_A = nearest admissible integer to f_A*N_V; f_A_realized=N_A/N_V; f_A remains sampled",
+        "rule": "manuscript Eq.: N_A=0 if f_A=0; otherwise max(1, round_half_up(f_A*N_V)); f_A_realized=N_A/N_V",
         "failures": attacker_failures,
     }
 
@@ -1269,6 +1321,12 @@ def main() -> int:
         help="Number of candidate 120-point design LHS samples compared by minimum distance. Manuscript does not specify this count.",
     )
     parser.add_argument(
+        "--operational-candidates",
+        type=int,
+        default=128,
+        help="Number of candidate 96-point operational LHS samples compared by minimum distance (default: 128).",
+    )
+    parser.add_argument(
         "--force-corners-in-initial-64",
         action="store_true",
         help="Force all 8 design boundaries into the nested 64-design subset. This is an implementation choice, not required by the supplied method text.",
@@ -1311,6 +1369,7 @@ def main() -> int:
 
     choices = ScriptChoices(
         design_candidate_count=args.design_candidates,
+        operational_candidate_count=args.operational_candidates,
         design_initial_forces_all_8_corners=bool(args.force_corners_in_initial_64),
         mb_bytes=args.mb_bytes,
     )
@@ -1318,7 +1377,7 @@ def main() -> int:
     lambda_min, lambda_max = transaction_rate_bounds(mean_tx_size_mb)
 
     design, design_candidates, design_meta = generate_design_sample(args.seed, args.design_candidates)
-    operational, operational_meta = generate_operational_sample(args.seed, lambda_min, lambda_max)
+    operational, operational_meta = generate_operational_sample(args.seed, lambda_min, lambda_max, args.operational_candidates)
     reference = homogeneous_reference(lambda_min, lambda_max)
     design64 = nested_design_64(design, force_corners=args.force_corners_in_initial_64)
     operational48 = nested_operational_48(operational, lambda_min, lambda_max)
@@ -1392,6 +1451,9 @@ def main() -> int:
     pd.DataFrame(design_meta.pop("candidate_scores")).to_csv(
         audit_dir / "design_candidate_scores.csv", index=False
     )
+    pd.DataFrame(operational_meta.pop("candidate_scores")).to_csv(
+        audit_dir / "operational_candidate_scores.csv", index=False
+    )
 
     verification = verify_all(
         design=design,
@@ -1445,7 +1507,7 @@ def main() -> int:
             "link_bandwidth_dimension": "m=2*C",
             "H_zero": "equal shares",
             "H_positive": "0<H<1 and alpha=(1-H)/(mH)",
-            "attacker_count": "sample f_A; derive integer N_A from f_A*N_V; retain f_A_realized=N_A/N_V",
+            "attacker_count": "N_A=0 if f_A=0; otherwise max(1, round_half_up(f_A*N_V)); retain f_A_realized=N_A/N_V",
         },
     }
 
