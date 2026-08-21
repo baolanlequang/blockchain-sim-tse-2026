@@ -49,7 +49,7 @@ public class TrilemmaSimulator {
             DEFAULT_TESTMODELS_DIR.resolve("configuration.json");
 
     private static final Path DEFAULT_CSV =
-            Paths.get("nested_design_operational_pairs.csv");
+            Paths.get("nested_design_operational_pairs_64x48.csv");
 
     public static void main(String[] args) {
 
@@ -86,11 +86,22 @@ public class TrilemmaSimulator {
                 // Start from base configuration.json
                 Map<String, String> config = new LinkedHashMap<>(baseConfig);
 
-                // Nested design/operational-pairs CSV uses "pair_id"; the legacy LHS CSV uses
-                // "config_id". Pick whichever the row actually provides, else fall back to the
-                // run counter.
-                String idColumn = row.containsKey("pair_id") ? "pair_id" : "config_id";
-                String idValue = row.getOrDefault(idColumn, String.valueOf(runId));
+                String idColumn;
+                String idValue;
+                if (row.containsKey("design_id") && row.containsKey("operational_id")) {
+                    // PR-9 schema: design_id + operational_id together are the identifier.
+                    // idValue matches generate_test_models.py's PR-9-schema output folder
+                    // naming exactly (threesim-<design_id>_<operational_id>), so pickModelPath
+                    // below needs no changes at all -- it already does "threesim-" + idValue.
+                    idColumn = "design_id_operational_id";
+                    idValue = row.get("design_id") + "_" + row.get("operational_id");
+                } else {
+                    // Nested design/operational-pairs CSV uses "pair_id"; the legacy LHS CSV uses
+                    // "config_id". Pick whichever the row actually provides, else fall back to the
+                    // run counter.
+                    idColumn = row.containsKey("pair_id") ? "pair_id" : "config_id";
+                    idValue = row.getOrDefault(idColumn, String.valueOf(runId));
+                }
                 config.put(idColumn, idValue);
                 config.put("id", idValue);
 
@@ -193,6 +204,34 @@ public class TrilemmaSimulator {
     // CSV validation
     // ----------------------------------------------------
     private static void validateCsvColumns(Map<String, String> row) {
+
+        if (row.containsKey("design_id") && row.containsKey("operational_id")) {
+            // PR-9 schema (design_id/operational_id-keyed): required columns are entirely
+            // different from the pair_id/config_id schema below, so this is validated and
+            // returned separately rather than folded into the shared "required" list.
+            List<String> requiredPr9 = List.of(
+                    "design_id",
+                    "operational_id",
+                    "connection_count",
+                    "block_creation_interval",
+                    "maximum_block_size",
+                    "validating_node_count",
+                    "node_bandwidth_heterogeneity",
+                    "link_bandwidth_heterogeneity",
+                    "hashing_power_concentration",
+                    "number_of_attackers",
+                    "transaction_arrival_rate"
+            );
+
+            for (String key : requiredPr9) {
+                if (!row.containsKey(key) || row.get(key).isBlank()) {
+                    throw new IllegalArgumentException(
+                            "❌ Missing or empty required CSV column: " + key
+                                    + " in row: " + row);
+                }
+            }
+            return;
+        }
 
         if (!row.containsKey("pair_id") && !row.containsKey("config_id")) {
             throw new IllegalArgumentException(
