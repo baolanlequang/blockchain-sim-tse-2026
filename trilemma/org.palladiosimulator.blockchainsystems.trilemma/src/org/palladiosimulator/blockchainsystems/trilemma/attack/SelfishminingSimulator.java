@@ -32,7 +32,7 @@ public class SelfishminingSimulator {
             DEFAULT_TESTMODELS_DIR.resolve("configuration.json");
 
     private static final Path DEFAULT_CSV =
-            Paths.get("nested_design_operational_pairs_64x48.csv");
+            Paths.get("simulation_pilot_24.csv");
 	
 	public static void main(String[] args) {
 		
