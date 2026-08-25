@@ -4,6 +4,7 @@ import org.palladiosimulator.blockchainsystems.core.behavior.HonestBlockchainSys
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeBehavior
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeBehaviorFactory
+import org.palladiosimulator.blockchainsystems.threesim.creation.RefinedExperimentRandomness
 
 /**
  * Factory for creating a [BlockchainSystemNodeBehavior] for the Threesim blockchain system.
@@ -14,8 +15,10 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.Blockcha
  *
  * @author Davis Riedel
  */
-class ThreesimBlockchainSystemNodeBehaviorFactory : BlockchainSystemNodeBehaviorFactory {
+class ThreesimBlockchainSystemNodeBehaviorFactory(
+  private val randomness: RefinedExperimentRandomness = RefinedExperimentRandomness(0L, 0L)
+) : BlockchainSystemNodeBehaviorFactory {
   override fun create(nodeId: String, maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider): BlockchainSystemNodeBehavior {
-    return HonestBlockchainSystemNodeBehavior()
+    return HonestBlockchainSystemNodeBehavior(randomness.eventForNode("honest-behavior", nodeId))
   }
 }

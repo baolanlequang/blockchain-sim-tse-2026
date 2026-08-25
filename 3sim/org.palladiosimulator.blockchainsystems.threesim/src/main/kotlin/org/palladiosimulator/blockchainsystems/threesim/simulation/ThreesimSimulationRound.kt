@@ -30,7 +30,11 @@ class ThreesimSimulationRound(
     threesimSimulationParameters.failureThroughputThreshold,
     InActivityThresholdCondition(
       blockchainSystemFactory.getBlockchainSystemSpecification().meanBlockTime
-    )
+    ),
+    threesimSimulationParameters.warmupBlocksPerValidator,
+    threesimSimulationParameters.measuredBlocksPerValidator,
+    threesimSimulationParameters.transactionDrainMillis,
+    threesimSimulationParameters.retainTransactionFollowUpObservations
   )
 ) {
 
@@ -44,7 +48,8 @@ class ThreesimSimulationRound(
     return ThreesimSimulationRoundResultFactory(
       threesimSimulationParameters,
       monitor,
-      finalSystemTime
+      finalSystemTime,
+      blockchainSystemFactory.getLastCreationAudit()
     ).createSimulationRoundResult()
   }
 

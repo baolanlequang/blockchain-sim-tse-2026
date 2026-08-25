@@ -6,6 +6,7 @@ import org.palladiosimulator.blockchainsystems.core.geography.GeographicalRegion
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetwork
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Transaction
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.TransactionSubmissionProcess
+import java.util.random.RandomGenerator
 
 /**
  * The [BlockchainSystem] class represents a blockchain system,
@@ -20,7 +21,8 @@ class BlockchainSystem(
   val geographicalRegions: GeographicalRegions,
   val nodes: HashSet<BlockchainSystemNode>,
   val transactionSubmissionProcess: TransactionSubmissionProcess,
-  val blockReward: Double
+  val blockReward: Double,
+  private val recipientRandomGenerator: RandomGenerator = RandomGenerator.of("Random")
 ) : BlockchainSimulationObject(id, name) {
   public override fun onInitialize() {
     network.initialize(simulationContext)
@@ -49,6 +51,8 @@ class BlockchainSystem(
    * Select a random node to submit the transaction to
    */
   private fun selectRecipientNodeId(): String {
-    return nodes.random().id
+    if (nodes.isEmpty()) throw IllegalStateException("Blockchain system contains no validating nodes")
+    val orderedNodes = nodes.sortedBy { it.id }
+    return orderedNodes[recipientRandomGenerator.nextInt(orderedNodes.size)].id
   }
 }

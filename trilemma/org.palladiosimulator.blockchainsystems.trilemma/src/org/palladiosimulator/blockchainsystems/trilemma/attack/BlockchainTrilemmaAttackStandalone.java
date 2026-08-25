@@ -8,8 +8,8 @@ import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Logger;
-import org.eclipse.core.runtime.Plugin;
 import org.eclipse.emf.ecore.plugin.EcorePlugin;
 import org.palladiosimulator.blockchainsystems.core.simulation.MonteCarloSimulationParameters;
 import org.palladiosimulator.blockchainsystems.core.simulation.SimulationType;
@@ -24,13 +24,16 @@ public class BlockchainTrilemmaAttackStandalone {
 	private final Logger logger =
             Logger.getLogger(BlockchainTrilemmaStandalone.class);
 
-    private String modelProjectName;
-    private Class<? extends Plugin> modelProjectActivator;
+    private final String modelProjectName;
+    private final Class<?> modelProjectActivator;
 
     public BlockchainTrilemmaAttackStandalone(String modelProjectName,
-                                        Class<? extends Plugin> modelProjectActivator) {
+                                        Class<?> modelProjectActivator) {
         this.modelProjectName = modelProjectName;
         this.modelProjectActivator = modelProjectActivator;
+        if (!Logger.getRootLogger().getAllAppenders().hasMoreElements()) {
+            BasicConfigurator.configure();
+        }
     }
 
     public boolean initAnalysis() {
@@ -77,11 +80,9 @@ public class BlockchainTrilemmaAttackStandalone {
         long after = runtime.totalMemory() - runtime.freeMemory();
         var memoryUsed = (after - before) / (1024 * 1024);
 
-        String idKey = configuration.containsKey("pair_id") ? "pair_id" : "config_id";
-
         Map<String, Object> finalResult = new LinkedHashMap<>();
         finalResult.put("runId", runId);
-        finalResult.put(idKey, configuration.get(idKey));
+        finalResult.put("config_id", configuration.get("config_id"));
         finalResult.put("inputParameters", configuration);
         finalResult.put("simulationResult",
                 com.google.gson.JsonParser.parseString(simulationJson));
@@ -96,7 +97,7 @@ public class BlockchainTrilemmaAttackStandalone {
                 .toJson(finalResult);
         
         try {
-            Path outputFile = createOutputPath(idKey, configuration.get(idKey), runId);
+            Path outputFile = createOutputPath(configuration.get("config_id"), runId);
             Files.createDirectories(outputFile.getParent());
 
             try (BufferedWriter writer =
@@ -109,18 +110,17 @@ public class BlockchainTrilemmaAttackStandalone {
 
         } catch (IOException e) {
             logger.error("Failed to write simulation result", e);
+            throw new IllegalStateException("Selfish-mining simulation completed but its result JSON could not be written", e);
         }
 
     }
 
-    private Path createOutputPath(String idKey, String idValue, int runId) {
-        // Name results by pair_id/config_id, which is globally unique across the whole CSV.
-        // runId restarts at 1 in every jar invocation, so a runId-based name would collide when
-        // the configs/pairs are split across SLURM array tasks. Fall back to runId only if the
-        // identifier is somehow absent. Prefix distinguishes pair_id- from config_id-keyed
-        // results so nested and legacy runs never collide.
-        String prefix = "pair_id".equals(idKey) ? "pair_" : "config_";
-        String key = (idValue == null || idValue.isBlank()) ? ("run_" + runId) : (prefix + idValue);
+    private Path createOutputPath(String configId, int runId) {
+        // Name results by config_id, which is globally unique across the whole CSV. runId
+        // restarts at 1 in every jar invocation, so a runId-based name would collide when the
+        // 500 configs are split across SLURM array tasks. Fall back to runId only if config_id
+        // is somehow absent.
+        String key = (configId == null || configId.isBlank()) ? ("run_" + runId) : ("config_" + configId);
         return Paths.get("result_selfishmining")
                 .resolve("result_" + key + ".json");
     }
@@ -128,8 +128,14 @@ public class BlockchainTrilemmaAttackStandalone {
     private SimulationParameters getSimulationParametersFromConfiguration(
             Map<String, String> configuration) {
 
+        // For externally sampled batches, preserve the legacy experiment-level
+        // simulationType in the audit record while allowing the batch runner to
+        // request one engine execution per explicit CSV/manifest row.
+        String effectiveSimulationType = configuration.getOrDefault(
+                "engineSimulationType",
+                configuration.getOrDefault("simulationType", "Single"));
         SimulationType simulationType = SimulationType.Single;
-        if ("Monte-Carlo".equals(configuration.getOrDefault("simulationType", ""))) {
+        if ("Monte-Carlo".equals(effectiveSimulationType)) {
             simulationType = SimulationType.MonteCarlo;
         }
 
@@ -141,7 +147,8 @@ public class BlockchainTrilemmaAttackStandalone {
         int numberOfMonteCarloRounds =
                 Integer.parseInt(
                         configuration.getOrDefault(
-                                "numberOfMonteCarloRounds", "1"));
+                                "engineNumberOfMonteCarloRounds",
+                                configuration.getOrDefault("numberOfMonteCarloRounds", "1")));
 
         String blockchainSystemModelFilePath =
                 configuration.getOrDefault(

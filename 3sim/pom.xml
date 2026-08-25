@@ -34,15 +34,18 @@
         <kotlin.version>2.2.21</kotlin.version>
         <serialization.version>1.9.0</serialization.version>
         <coroutines.version>1.10.2</coroutines.version>
-        <maven.version>3.14.0</maven.version>
+        <!-- Maven Compiler Plugin version (not the Maven executable version). -->
+        <maven.compiler.plugin.version>3.14.0</maven.compiler.plugin.version>
         <tycho.version>4.0.13</tycho.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>21</maven.compiler.release>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <kotlin.code.style>official</kotlin.code.style>
         <kotlin.compiler.jvmTarget>21</kotlin.compiler.jvmTarget>
         <dokka.version>2.0.0</dokka.version>
+        <!-- Project-specific target definition consumed by the Palladio
+             target-platform refresh Maven extension from .mvn/extensions.xml. -->
         <org.palladiosimulator.maven.tychotprefresh.tplocation.2>
             ${project.basedir}/releng/org.palladiosimulator.blockchainsystems.target_platform/tp.target
         </org.palladiosimulator.maven.tychotprefresh.tplocation.2>
@@ -155,6 +158,34 @@
                 <version>${tycho.version}</version>
                 <extensions>true</extensions>
             </plugin>
+
+            <!--
+                The Palladio parent currently contributes
+                org.palladiosimulator:tycho-document-bundle-plugin:2.2.0.
+                That legacy plug-in expects Tycho 2.x APIs (for example
+                org.eclipse.tycho.classpath.ClasspathEntry) and is incompatible
+                with this project's Tycho 4.0.13 build.
+
+                Javadoc generation is not required to compile, test, package,
+                or execute the simulator. Disable the inherited documentation
+                executions for the research/pilot build rather than downgrading
+                Tycho or Java.
+            -->
+            <plugin>
+                <groupId>org.palladiosimulator</groupId>
+                <artifactId>tycho-document-bundle-plugin</artifactId>
+                <version>2.2.0</version>
+                <executions>
+                    <execution>
+                        <id>eclipse-javadoc</id>
+                        <phase>none</phase>
+                    </execution>
+                    <execution>
+                        <id>artifact-javadoc</id>
+                        <phase>none</phase>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
 
         <pluginManagement>
@@ -206,7 +237,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>${maven.version}</version>
+                    <version>${maven.compiler.plugin.version}</version>
                 </plugin>
 
                 <plugin>

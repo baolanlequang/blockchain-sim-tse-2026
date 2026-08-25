@@ -36,8 +36,6 @@ public class TrilemmaSimulationFactory implements Simulation {
 
         ThreesimBlockchainSystemFactory blockchainSystemFactory =
                 createBlockchainSystemFactory(simulationParameters, configuration, runId);
-        blockchainSystemFactory.createBlockchainSystem();
-        
 
         // ✅ FIX: Threesim expects int, SimulationParameters returns long
         int maxAllowedBlockchainLength =
@@ -103,7 +101,9 @@ public class TrilemmaSimulationFactory implements Simulation {
     private static int parseConcurrency(Map<String, String> configuration) {
         int cores = Runtime.getRuntime().availableProcessors();
 
-        String raw = configuration.get("numberOfParallelTasks");
+        String raw = configuration.getOrDefault(
+                "engineNumberOfParallelTasks",
+                configuration.get("numberOfParallelTasks"));
         if (raw == null || raw.isBlank()) {
             return cores;
         }
@@ -134,11 +134,35 @@ public class TrilemmaSimulationFactory implements Simulation {
                 Double.parseDouble(configuration.getOrDefault(
                         "reliabilityObservationTimespan", "24.0"));
 
+        int warmupBlocksPerValidator = Integer.parseInt(configuration.getOrDefault(
+                "warmup_blocks_per_validator",
+                configuration.getOrDefault("warmupBlocksPerValidator", "0")));
+        int measuredBlocksPerValidator = Integer.parseInt(configuration.getOrDefault(
+                "measured_blocks_per_validator",
+                configuration.getOrDefault("measuredBlocksPerValidator", "0")));
+        double transactionDrainSeconds = Double.parseDouble(configuration.getOrDefault(
+                "transaction_drain_seconds",
+                configuration.getOrDefault("transactionDrainSeconds", "0")));
+        long transactionDrainMillis = Math.round(transactionDrainSeconds * 1000.0);
+
+        /*
+         * Production results keep only sufficient transaction-follow-up
+         * statistics. Full per-transaction observations are diagnostic-only and
+         * must be explicitly requested because high-demand runs can contain
+         * millions of measurement-window transactions.
+         */
+        boolean retainTransactionFollowUpObservations = Boolean.parseBoolean(
+                configuration.getOrDefault("retainTransactionFollowUpObservations", "false"));
+
         return new ThreesimSimulationParameters(
                 failureThroughputThreshold,
                 shannonEntropyK,
                 nakamotoCoefficientThreshold,
-                reliabilityObservationTimespan);
+                reliabilityObservationTimespan,
+                warmupBlocksPerValidator,
+                measuredBlocksPerValidator,
+                transactionDrainMillis,
+                retainTransactionFollowUpObservations);
     }
 
     private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(
@@ -158,19 +182,38 @@ public class TrilemmaSimulationFactory implements Simulation {
                 designBlockchainSystem.getNetwork().getTopology();
 
         if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) {
+            long networkSeed = Long.parseLong(configuration.getOrDefault("network_seed", "0"));
+            long eventSeed = Long.parseLong(configuration.getOrDefault("event_seed", "0"));
+            double gamma = Double.parseDouble(configuration.getOrDefault("selfishMiningGamma", "0.5"));
+            boolean hasAttackers = designBlockchainSystem.getSpecification().getNumberOfAttacker() > 0;
+
             return new ConnectedSubgraphNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ConnectedSubgraphsNetworkTopology) networkTopology,
-                    false,
-                    runId);
+                    hasAttackers,
+                    runId,
+                    gamma,
+                    networkSeed,
+                    eventSeed);
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {
+            // The revised TSE study itself uses ConnectedSubgraphsNetworkTopology,
+            // so this branch is a legacy/non-study compatibility path. Keep it
+            // seed- and attacker-consistent nevertheless so an explicit topology
+            // cannot silently revert to the old unseeded/all-honest semantics.
+            long networkSeed = Long.parseLong(configuration.getOrDefault("network_seed", "0"));
+            long eventSeed = Long.parseLong(configuration.getOrDefault("event_seed", "0"));
+            double gamma = Double.parseDouble(configuration.getOrDefault("selfishMiningGamma", "0.5"));
+            boolean hasAttackers = designBlockchainSystem.getSpecification().getNumberOfAttacker() > 0;
             return new ExplicitNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ExplicitNetworkTopology) networkTopology,
-                    false,
-                    runId);
+                    hasAttackers,
+                    runId,
+                    gamma,
+                    networkSeed,
+                    eventSeed);
         }
 
         throw new IllegalStateException(

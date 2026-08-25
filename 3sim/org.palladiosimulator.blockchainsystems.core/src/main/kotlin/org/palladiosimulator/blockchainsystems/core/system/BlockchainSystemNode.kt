@@ -127,7 +127,10 @@ class BlockchainSystemNode(
   }
 
   override fun onTransactionSubmitted(transaction: Transaction) {
-    if (transaction.recipientId !== this.id) return // Only handle transactions send to this node
+    // Kotlin's !== tests object identity, not String value equality. Recipient IDs
+    // are model identifiers and may be equal strings represented by different JVM
+    // objects, so value equality is required for deterministic submission routing.
+    if (transaction.recipientId != this.id) return
     behavior.onTransactionReceived(transaction, context)
   }
 

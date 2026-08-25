@@ -140,7 +140,10 @@ public class SelfishMiningSimulationFactory {
         var networkTopology =
                 designBlockchainSystem.getNetwork().getTopology();
 
-        double gamma = Double.parseDouble(configuration.getOrDefault("gamma", "0.5"));
+        double gamma = Double.parseDouble(configuration.getOrDefault(
+                "selfishMiningGamma", configuration.getOrDefault("gamma", "0.5")));
+        long networkSeed = Long.parseLong(configuration.getOrDefault("network_seed", "0"));
+        long eventSeed = Long.parseLong(configuration.getOrDefault("event_seed", "0"));
 
         if (networkTopology instanceof ConnectedSubgraphsNetworkTopology) {
             return new ConnectedSubgraphNetworkBlockchainSystemFactory(
@@ -148,7 +151,9 @@ public class SelfishMiningSimulationFactory {
                     (ConnectedSubgraphsNetworkTopology) networkTopology,
                     true,
                     runId,
-                    gamma);
+                    gamma,
+                    networkSeed,
+                    eventSeed);
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {
