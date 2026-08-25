@@ -383,3 +383,18 @@ Before launching the full experiment:
 ## Handover objective
 
 The goal is not to reproduce the exact PowerShell commands used during pilot development. The goal is to ensure that the reviewed GitHub version implements the behaviour specified by Sections IV and V and that the same version can be built and executed reproducibly by Lan for the subsequent experiments.
+
+## Reproducible build and regression smoke
+
+The authoritative implementation is the Java/Kotlin source on this branch. Do not run historical or previously generated module JARs from `3sim/**/target` without first performing a clean 3SIM build.
+
+For a clean Windows build:
+
+1. Use JDK 21.
+2. From `3sim`, run `mvn -U clean verify`.
+3. From the repository root, run `.\TRILEMMA_STANDALONE_BUILD\build_trilemma_standalone.ps1`.
+4. Use the resulting `trilemma\trilemma.jar` as the standalone runner.
+
+A small packaged regression check is provided as `regression_smoke_final.csv` with `testmodels/configuration_refined_final_smoke.json`. It uses the frozen warm-up, measurement, and transaction-follow-up values 4, 4, and 14,400 s.
+
+The production replication hierarchy is R_S=2 and R_E=2. Each manifest row corresponds to exactly one engine execution; old internal Monte Carlo repetition settings must not multiply this hierarchy.
