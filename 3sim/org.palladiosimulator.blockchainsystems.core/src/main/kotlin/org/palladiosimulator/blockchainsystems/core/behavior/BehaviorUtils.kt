@@ -31,6 +31,9 @@ object BehaviorUtils {
         val orphanBlocks = context.orphanBlockPool
           .getBlocksByPreviousBlockHash(block.hash)
 
+        // A newly arrived ancestor can unlock one or more previously orphaned
+        // descendants. If any recursively appended descendant extends the
+        // longest chain, callers must restart mining on that new tip as well.
         var hasNewLongestBranch = (appendedBlockType == BlockType.IncludedBlock)
 
         orphanBlocks.forEach { orphanBlock ->
@@ -38,7 +41,7 @@ object BehaviorUtils {
           if (!hasNewLongestBranch) hasNewLongestBranch = hasNewLongestBranchInner
         }
 
-        return appendedBlockType == BlockType.IncludedBlock
+        return hasNewLongestBranch
       }
 
       BlockAppendingResultType.NotAppendedBecauseOrphanBlock -> {

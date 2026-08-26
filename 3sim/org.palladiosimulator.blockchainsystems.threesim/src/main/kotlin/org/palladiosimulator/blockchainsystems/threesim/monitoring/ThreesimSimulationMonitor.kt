@@ -75,6 +75,18 @@ class ThreesimSimulationMonitor(
     Integer.getInteger("threesim.canonicalProgressEvery", 0)
   private var lastCanonicalProgressReported: Int = -1
 
+  /*
+   * DIAGNOSTIC ONLY. When > 0, print protocol progress every N block proposals.
+   * This separates three possibilities in a long run: mining has stopped, the
+   * local longest chains have stopped advancing, or majority-visible canonical
+   * progress alone has stopped. No state, scheduling, or RNG use is changed.
+   *
+   * Enable with:
+   *   -Dthreesim.blockProgressEvery=10
+   */
+  private val blockProgressEvery: Int =
+    Integer.getInteger("threesim.blockProgressEvery", 0)
+
   /** Tracks majority-visible canonical-chain membership (Included or Confirmed) for window control. */
   private lateinit var canonicalProgressBlocks: BlocksMap
   /** Tracks blocks that reach the configured confirmation depth; used for transaction follow-up. */
@@ -179,7 +191,7 @@ class ThreesimSimulationMonitor(
       refinedWindowEnabled = refinedWindowEnabled,
       warmupTargetCanonicalBlocks = warmupTargetCanonicalBlocks,
       measurementTargetCanonicalBlocks = measurementTargetCanonicalBlocks,
-      canonicalBlocksObservedForWindowControl = canonicalProgressBlocks.getNumberOfValidBlocks(),
+      canonicalBlocksObservedForWindowControl = canonicalBlocksObservedForWindowControl(),
       measurementStartTimeMs = measurementStartTimeMs,
       // Preserve 0 when the requested measurement window did not complete.
       // `measurementDurationMs` may still use finalSystemTime for diagnostics, but
@@ -258,6 +270,21 @@ class ThreesimSimulationMonitor(
       BlockMinedTraceEvent.EVENT_TYPE -> {
         val e = event as BlockMinedTraceEvent
         totalBlockProposalsAllPhases++
+
+        if (
+          blockProgressEvery > 0 &&
+          totalBlockProposalsAllPhases % blockProgressEvery == 0
+        ) {
+          System.err.println(
+            "[3SIM-block-progress] phase=${phase.name} " +
+              "proposals=$totalBlockProposalsAllPhases " +
+              "longestChain=${maxBlockchainLengthCondition.currentLength} " +
+              "canonical=${canonicalProgressBlocks.getNumberOfValidBlocks()} " +
+              "submittedTxAllPhases=$totalTransactionSubmissionsAllPhases " +
+              "timeMs=${e.occurrenceTime}"
+          )
+        }
+
         if (phase == Phase.LEGACY || phase == Phase.MEASUREMENT) {
           if (BlockUtils.isBlockForked(e.block)) {
             forkedBlocks.addNodeToBlock(e.block, logOrigin.id, e.occurrenceTime)
@@ -283,11 +310,13 @@ class ThreesimSimulationMonitor(
           confirmationProgressBlocks.addNodeToBlock(e.appendedBlock, logOrigin.id, e.occurrenceTime)
         } else false
 
+        var measurementCanonicalBecameValid = false
         if (phase == Phase.LEGACY || phase == Phase.MEASUREMENT) {
           val measurementBecameValid = addMeasurementBlock(
             e.appendedBlockType, e.appendedBlock, logOrigin.id, e.occurrenceTime)
           if (phase == Phase.MEASUREMENT && isCanonicalType(e.appendedBlockType)) {
-            canonicalMeasurementBlocks.addNodeToBlock(e.appendedBlock, logOrigin.id, e.occurrenceTime)
+            measurementCanonicalBecameValid = canonicalMeasurementBlocks.addNodeToBlock(
+              e.appendedBlock, logOrigin.id, e.occurrenceTime)
           }
           if (measurementBecameValid && e.appendedBlockType == BlockType.ConfirmedBlock) {
             monitorThroughputForNewlyConfirmedBlock(e.appendedBlock, e.occurrenceTime)
@@ -297,7 +326,7 @@ class ThreesimSimulationMonitor(
         if (confirmationBecameValid) {
           recordMeasurementTransactionConfirmations(e.appendedBlock, e.occurrenceTime)
         }
-        if (canonicalBecameValid) {
+        if (canonicalBecameValid || measurementCanonicalBecameValid) {
           updateRefinedPhaseAfterCanonicalProgress(e.occurrenceTime)
         }
       }
@@ -336,6 +365,7 @@ class ThreesimSimulationMonitor(
         // measurement window. During DRAIN we continue only transaction
         // follow-up; later reclassifications must not change H_prop, canonical
         // HHI, TPS, or SBR after their measurement denominator has stopped.
+        var measurementCanonicalBecameValid = false
         if (phase == Phase.LEGACY || phase == Phase.MEASUREMENT) {
           removeMeasurementBlock(e.oldBlockType, e.block.hash, nodeId)
           val measurementBecameValid = addMeasurementBlock(e.newBlockType, e.block, nodeId, e.occurrenceTime)
@@ -344,7 +374,8 @@ class ThreesimSimulationMonitor(
             if (oldCanonical && !newCanonical) {
               canonicalMeasurementBlocks.removeNodeFromBlock(e.block.hash, nodeId)
             } else if (!oldCanonical && newCanonical) {
-              canonicalMeasurementBlocks.addNodeToBlock(e.block, nodeId, e.occurrenceTime)
+              measurementCanonicalBecameValid = canonicalMeasurementBlocks.addNodeToBlock(
+                e.block, nodeId, e.occurrenceTime)
             }
           }
 
@@ -356,7 +387,7 @@ class ThreesimSimulationMonitor(
         if (confirmationBecameValid) {
           recordMeasurementTransactionConfirmations(e.block, e.occurrenceTime)
         }
-        if (canonicalBecameValid) {
+        if (canonicalBecameValid || measurementCanonicalBecameValid) {
           updateRefinedPhaseAfterCanonicalProgress(e.occurrenceTime)
         }
       }
@@ -399,7 +430,16 @@ class ThreesimSimulationMonitor(
       return
     }
 
-    if (phase == Phase.MEASUREMENT && canonicalCount >= measurementTargetCanonicalBlocks) {
+    // Warm-up progress is controlled by the cumulative canonical set, while
+    // measurement progress is controlled by the measurement-local canonical set.
+    // Using the cumulative count for both phases allowed a reorganization across
+    // the phase boundary to produce 79 or 81 measured canonical blocks instead
+    // of exactly kappa_measure * N_V.
+    val measurementCanonicalTarget = measuredBlocksPerValidator * nodes.size
+    if (
+      phase == Phase.MEASUREMENT &&
+      canonicalMeasurementBlocks.getNumberOfValidBlocks() >= measurementCanonicalTarget
+    ) {
       measurementEndTimeMs = occurrenceTime
       phase = Phase.DRAIN
       transactionSubmissionProcess.stopTransactionSubmissionProcess()
@@ -570,6 +610,19 @@ class ThreesimSimulationMonitor(
     return area
   }
 
+  /**
+   * Window-control progress on the same cumulative scale as
+   * measurementTargetCanonicalBlocks. During measurement, use the
+   * measurement-local canonical set so cross-boundary reorganizations cannot
+   * change the requested measurement sample size.
+   */
+  private fun canonicalBlocksObservedForWindowControl(): Int = when (phase) {
+    Phase.WARMUP -> canonicalProgressBlocks.getNumberOfValidBlocks()
+    Phase.MEASUREMENT, Phase.DRAIN ->
+      warmupTargetCanonicalBlocks + canonicalMeasurementBlocks.getNumberOfValidBlocks()
+    Phase.LEGACY -> canonicalProgressBlocks.getNumberOfValidBlocks()
+  }
+
   private fun isSpsmObservationPhase(): Boolean = phase == Phase.LEGACY || phase == Phase.MEASUREMENT
 
   override fun shouldTerminate(): Boolean {
@@ -600,6 +653,12 @@ class ThreesimSimulationMonitor(
       if (simulationClock.currentTime >= latestDeadline) {
         return markTermination("DRAIN_DEADLINE_REACHED", true)
       }
+
+      // Long inter-block gaps are expected for large BCI values. Once the
+      // measurement window has completed, generic inactivity must not truncate
+      // transaction follow-up before the cohort has resolved or reached its
+      // prespecified drain deadline.
+      return false
     }
 
     if (inactivityThresholdCondition.hasProlongedInactivityExceeded()) {
