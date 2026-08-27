@@ -15,6 +15,7 @@ import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEve
 import org.palladiosimulator.blockchainsystems.core.geography.GeographicalRegions
 import org.palladiosimulator.blockchainsystems.core.mining.BlockMinedTraceEvent
 import org.palladiosimulator.blockchainsystems.core.monitoring.abstractions.SimulationMonitor
+import org.palladiosimulator.blockchainsystems.core.propagation.block.BlockReceivedTraceEvent
 import org.palladiosimulator.blockchainsystems.core.simulation.termination.InActivityThresholdCondition
 import org.palladiosimulator.blockchainsystems.core.simulation.termination.LongestChainExceededMaxLengthCondition
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem
@@ -109,6 +110,21 @@ class ThreesimSimulationMonitor(
   /** txId -> first qualifying canonical confirmation time. */
   private val measurementTransactionConfirmationTimes = mutableMapOf<String, Long>()
 
+  /**
+   * Follow-up diagnostic for P-B. Only blocks mined while phase==MEASUREMENT
+   * are eligible. For each eligible block, retain only the first full-block
+   * receipt time observed at each non-miner validating node.
+   */
+  private data class MeasurementBlockPropagationObservation(
+    val minedTimeMs: Long,
+    val minerNodeId: String?,
+    val firstReceiptTimeByNode: MutableMap<String, Long> = linkedMapOf(),
+    var t90Ms: Long? = null
+  )
+
+  private val measurementBlockPropagation =
+    linkedMapOf<String, MeasurementBlockPropagationObservation>()
+
   private val failureLog = BlockchainSystemFailureLog()
   private val throughputsDuringFailure: MutableList<Double> = mutableListOf()
   private val confirmationLatenciesDuringFailure: MutableList<Long> = mutableListOf()
@@ -167,6 +183,7 @@ class ThreesimSimulationMonitor(
     } else finalSystemTime
     val spsmSummary = selfishMiningAttackRoundTracker.summary()
     val followUpSummary = buildTransactionFollowUpSummary(finalSystemTime)
+    val propagationSummary = buildBlockPropagationSummary()
 
     return ThreesimSimulationMonitorState(
       numberOfNodes = nodes.size,
@@ -212,6 +229,10 @@ class ThreesimSimulationMonitor(
       totalTransactionSubmissionsAllPhases = totalTransactionSubmissionsAllPhases,
       blockRateObservationTimeMs = finalSystemTime,
       transactionRateObservationTimeMs = if (measurementEndTimeMs > 0L) measurementEndTimeMs else finalSystemTime,
+      measurementBlocksEligibleForPropagationT90 = propagationSummary.eligibleBlocks,
+      measurementBlocksReachingPropagationT90 = propagationSummary.blocksReachingT90,
+      meanBlockPropagationT90Ms = propagationSummary.meanT90Ms,
+      medianBlockPropagationT90Ms = propagationSummary.medianT90Ms,
       selfishMiningAttackRoundsStarted = spsmSummary.startedRounds,
       successfulSelfishMiningAttackRounds = spsmSummary.successfulRounds,
       failedSelfishMiningAttackRounds = spsmSummary.failedRounds,
@@ -271,6 +292,16 @@ class ThreesimSimulationMonitor(
         val e = event as BlockMinedTraceEvent
         totalBlockProposalsAllPhases++
 
+        if (phase == Phase.MEASUREMENT) {
+          measurementBlockPropagation.putIfAbsent(
+            e.block.hash,
+            MeasurementBlockPropagationObservation(
+              minedTimeMs = e.block.blockMinedTimestamp,
+              minerNodeId = e.block.originId
+            )
+          )
+        }
+
         if (
           blockProgressEvery > 0 &&
           totalBlockProposalsAllPhases % blockProgressEvery == 0
@@ -290,6 +321,38 @@ class ThreesimSimulationMonitor(
             forkedBlocks.addNodeToBlock(e.block, logOrigin.id, e.occurrenceTime)
           }
           blocksProposedPerNode.increment(logOrigin.id)
+        }
+      }
+
+      BlockReceivedTraceEvent.EVENT_TYPE -> {
+        val e = event as BlockReceivedTraceEvent
+        val block = e.sentBlock
+        if (block != null) {
+          val observation = measurementBlockPropagation[block.hash]
+          if (observation != null && logOrigin.id != observation.minerNodeId) {
+            val previous = observation.firstReceiptTimeByNode.putIfAbsent(
+              logOrigin.id,
+              e.occurrenceTime
+            )
+
+            if (previous == null && observation.t90Ms == null) {
+              // T90 is defined over non-miner validating nodes.
+              // For N=20, there are 19 possible receivers and T90 is the
+              // 18th first receipt.
+              val nonMinerValidatorCount = (nodes.size - 1).coerceAtLeast(0)
+              val requiredReceivers = (9 * nonMinerValidatorCount + 9) / 10
+
+              if (
+                requiredReceivers > 0 &&
+                observation.firstReceiptTimeByNode.size >= requiredReceivers
+              ) {
+                val thresholdReceiveTime =
+                  observation.firstReceiptTimeByNode.values.sorted()[requiredReceivers - 1]
+                observation.t90Ms =
+                  (thresholdReceiveTime - observation.minedTimeMs).coerceAtLeast(0L)
+              }
+            }
+          }
         }
       }
 
@@ -403,6 +466,38 @@ class ThreesimSimulationMonitor(
         }
       }
     }
+  }
+
+  private data class BlockPropagationSummary(
+    val eligibleBlocks: Int,
+    val blocksReachingT90: Int,
+    val meanT90Ms: Double?,
+    val medianT90Ms: Double?
+  )
+
+  private fun buildBlockPropagationSummary(): BlockPropagationSummary {
+    val t90Values = measurementBlockPropagation.values
+      .mapNotNull { it.t90Ms }
+      .sorted()
+
+    val mean = if (t90Values.isEmpty()) null else t90Values.average()
+    val median = if (t90Values.isEmpty()) {
+      null
+    } else {
+      val middle = t90Values.size / 2
+      if (t90Values.size % 2 == 1) {
+        t90Values[middle].toDouble()
+      } else {
+        (t90Values[middle - 1].toDouble() + t90Values[middle].toDouble()) / 2.0
+      }
+    }
+
+    return BlockPropagationSummary(
+      eligibleBlocks = measurementBlockPropagation.size,
+      blocksReachingT90 = t90Values.size,
+      meanT90Ms = mean,
+      medianT90Ms = median
+    )
   }
 
   private fun updateRefinedPhaseAfterCanonicalProgress(occurrenceTime: Long) {
