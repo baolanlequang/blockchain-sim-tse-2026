@@ -2,58 +2,45 @@ package org.palladiosimulator.blockchainsystems.threesim.utils
 
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block
 
-/**
- * @property threshold The minimum number of nodes that must agree on a block for it to be considered valid.
- *
- * @author Davis Riedel
- */
-class BlocksMap(
-  private val threshold: Int
-) {
-  private val blocks: MutableMap<String, Pair<Block, MutableList<String>>> = mutableMapOf()
-
+/** Tracks how many validators currently classify each block with one block type. */
+class BlocksMap(private val threshold: Int) {
+  private val blocks: MutableMap<String, Pair<Block, MutableSet<String>>> = mutableMapOf()
   private val timestamps: MutableMap<String, Long> = mutableMapOf()
 
-  fun addNodeToBlock(block: Block, nodeId: String, timestamp: Long) {
-    blocks
-      .computeIfAbsent(block.hash) { Pair(block, mutableListOf()) }
-      .second
-      .add(nodeId)
-
-    if (isBlockValid(block.hash)) {
-      timestamps[block.hash] = timestamp
-    }
+  /**
+   * Add one validator observation and return true only when the block crosses
+   * the validity threshold for the first time in its current membership state.
+   */
+  fun addNodeToBlock(block: Block, nodeId: String, timestamp: Long): Boolean {
+    val wasValid = isBlockValid(block.hash)
+    blocks.computeIfAbsent(block.hash) { Pair(block, mutableSetOf()) }.second.add(nodeId)
+    val isValid = isBlockValid(block.hash)
+    if (isValid && !wasValid) timestamps[block.hash] = timestamp
+    return isValid && !wasValid
   }
 
-  fun removeNodeFromBlock(blockHash: String, nodeId: String) {
+  fun removeNodeFromBlock(blockHash: String, nodeId: String): Boolean {
+    val wasValid = isBlockValid(blockHash)
     blocks[blockHash]?.second?.remove(nodeId)
-
-    if (!isBlockValid(blockHash)) {
-      timestamps.remove(blockHash)
-    }
+    val isValid = isBlockValid(blockHash)
+    if (!isValid) timestamps.remove(blockHash)
+    return wasValid && !isValid
   }
 
-  fun isBlockValid(blockHash: String): Boolean {
-    return (blocks[blockHash]?.second?.size ?: 0) >= threshold
+  fun isBlockValid(blockHash: String): Boolean =
+    (blocks[blockHash]?.second?.size ?: 0) >= threshold
+
+  fun getNumberOfBlocks(): Int = blocks.size
+
+  fun getNumberOfValidBlocks(): Int = blocks.count { it.value.second.size >= threshold }
+
+  fun getBlocks(): List<Pair<Block, Long>> = blocks.mapNotNull { (hash, value) ->
+    timestamps[hash]?.let { Pair(value.first, it) }
   }
 
-  fun getNumberOfBlocks(): Int {
-    return blocks.size
-  }
-
-  fun getNumberOfValidBlocks(): Int {
-    return blocks.count { it.value.second.size >= threshold }
-  }
-
-  fun getBlocks(): List<Pair<Block, Long>> {
-    return blocks.map { Pair(it.value.first, timestamps[it.key]!!) }
-  }
-
-  fun getValidBlocks(): List<Pair<Block, Long>> {
-    return blocks
-      .filter { it.value.second.size >= threshold }
-      .map { Pair(it.value.first, timestamps[it.key]!!) }
-  }
+  fun getValidBlocks(): List<Pair<Block, Long>> = blocks
+    .filter { it.value.second.size >= threshold }
+    .mapNotNull { (hash, value) -> timestamps[hash]?.let { Pair(value.first, it) } }
 
   fun clear() {
     blocks.clear()

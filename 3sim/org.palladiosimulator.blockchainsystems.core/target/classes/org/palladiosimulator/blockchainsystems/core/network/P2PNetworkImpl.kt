@@ -9,6 +9,7 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.NodeP2PN
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetwork
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetworkEndpoint
 import java.util.*
+import java.util.random.RandomGenerator
 import java.util.function.Consumer
 
 /**
@@ -89,9 +90,20 @@ class P2PNetworkImpl internal constructor(
   }
 
   companion object {
-    fun create(networkGraph: Graph<P2PNode, P2PLink>): P2PNetworkImpl {
-      val p2pNetworkId = UUID.randomUUID().toString()
-      return P2PNetworkImpl(p2pNetworkId, networkGraph, "P2PNetwork_" + networkGraph.hashCode())
+    /** Legacy convenience overload. Refined experiments supply an explicit RNG. */
+    fun create(networkGraph: Graph<P2PNode, P2PLink>): P2PNetworkImpl =
+      create(networkGraph, RandomGenerator.of("Random"))
+
+    fun create(
+      networkGraph: Graph<P2PNode, P2PLink>,
+      randomGenerator: RandomGenerator
+    ): P2PNetworkImpl {
+      val p2pNetworkId = UUID(randomGenerator.nextLong(), randomGenerator.nextLong()).toString()
+      return P2PNetworkImpl(
+        p2pNetworkId,
+        networkGraph,
+        "P2PNetwork_" + p2pNetworkId.substring(0, 8)
+      )
     }
   }
 }

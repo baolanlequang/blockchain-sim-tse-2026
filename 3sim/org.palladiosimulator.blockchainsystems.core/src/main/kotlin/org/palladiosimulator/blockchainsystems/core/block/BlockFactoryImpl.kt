@@ -4,6 +4,7 @@ import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.BlockFactory
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Transaction
 import java.util.UUID
+import java.util.random.RandomGenerator
 
 /**
  * The @code{BlockFactoryImpl} class implements the @code{BlockFactory} interface
@@ -12,7 +13,9 @@ import java.util.UUID
  *
  * @author Yannik Sproll, Davis Riedel
  */
-class BlockFactoryImpl : BlockFactory {
+class BlockFactoryImpl @JvmOverloads constructor(
+  private val randomGenerator: RandomGenerator = RandomGenerator.of("Random")
+) : BlockFactory {
   override fun createBlock(
     hash: String,
     previousHash: String,
@@ -34,7 +37,7 @@ class BlockFactoryImpl : BlockFactory {
 
   override fun createGenesisBlock(): Block {
     return BlockImpl(
-      UUID.randomUUID().toString(),
+      UUID(randomGenerator.nextLong(), randomGenerator.nextLong()).toString(),
       null,
       null,
       0,

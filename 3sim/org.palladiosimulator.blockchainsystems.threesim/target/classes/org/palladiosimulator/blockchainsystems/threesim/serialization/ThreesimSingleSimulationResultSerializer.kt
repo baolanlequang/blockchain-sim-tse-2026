@@ -10,6 +10,7 @@ import kotlinx.serialization.serializer
 import org.palladiosimulator.blockchainsystems.core.simulation.SingleSimulationParameters
 import org.palladiosimulator.blockchainsystems.threesim.metrics.utils.OutputMetricsSet
 import org.palladiosimulator.blockchainsystems.threesim.simulation.ThreesimSimulationParameters
+import org.palladiosimulator.blockchainsystems.threesim.simulation.results.RefinedExecutionAudit
 import org.palladiosimulator.blockchainsystems.threesim.simulation.results.ThreesimSingleSimulationResult
 
 /**
@@ -22,6 +23,7 @@ object ThreesimSingleSimulationResultSerializer : KSerializer<ThreesimSingleSimu
     element("simulationParameters", serialDescriptor<SingleSimulationParameters>())
     element("threesimSimulationParameters", serialDescriptor<ThreesimSimulationParameters>())
     element("simulationRoundResult", serialDescriptor<OutputMetricsSet>())
+    element("refinedExecutionAudit", serialDescriptor<RefinedExecutionAudit?>())
   }
 
   override fun serialize(encoder: Encoder, value: ThreesimSingleSimulationResult) {
@@ -43,6 +45,15 @@ object ThreesimSingleSimulationResultSerializer : KSerializer<ThreesimSingleSimu
         2,
         OutputMetricsSetSerializer,
         value.simulationRoundResult.outputMetrics
+      )
+      // Keep the legacy simulationRoundResult JSON unchanged and expose the
+      // refined-study audit beside it.  This avoids breaking existing result
+      // consumers while making pilot verification data directly available.
+      encodeSerializableElement(
+        descriptor,
+        3,
+        serializer<RefinedExecutionAudit?>(),
+        value.simulationRoundResult.refinedExecutionAudit
       )
       endStructure(descriptor)
     }
