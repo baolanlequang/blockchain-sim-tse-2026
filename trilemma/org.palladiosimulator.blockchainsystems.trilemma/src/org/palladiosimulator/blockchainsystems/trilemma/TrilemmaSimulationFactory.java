@@ -31,10 +31,11 @@ public class TrilemmaSimulationFactory implements Simulation {
 
     public TrilemmaSimulationFactory(
             SimulationParameters simulationParameters,
-            Map<String, String> configuration) {
+            Map<String, String> configuration,
+            int runId) {
 
         ThreesimBlockchainSystemFactory blockchainSystemFactory =
-                createBlockchainSystemFactory(simulationParameters, configuration);
+                createBlockchainSystemFactory(simulationParameters, configuration, runId);
         blockchainSystemFactory.createBlockchainSystem();
         
 
@@ -60,6 +61,8 @@ public class TrilemmaSimulationFactory implements Simulation {
             MonteCarloSimulationProgressMonitorAdapter progressMonitor =
                     new MonteCarloSimulationProgressMonitorAdapter(null);
 
+            int concurrency = parseConcurrency(configuration);
+
             this.simulation =
                     new ThreesimMonteCarloSimulation(
                             progressMonitor,
@@ -67,7 +70,8 @@ public class TrilemmaSimulationFactory implements Simulation {
                             logOutputProvider,
                             maxAllowedBlockchainLength,
                             (MonteCarloSimulationParameters) simulationParameters,
-                            threesimSimulationParameters
+                            threesimSimulationParameters,
+                            concurrency
                     );
 
         } else {
@@ -86,6 +90,29 @@ public class TrilemmaSimulationFactory implements Simulation {
     @Override
     public SimulationResult run() {
         return simulation.run();
+    }
+
+    /**
+     * Number of Monte-Carlo rounds to run in parallel at any one time. Remaining rounds
+     * are queued and started as running ones finish, so total rounds are unchanged - this
+     * only bounds peak memory (each round holds a full blockchain system). Configured via
+     * "numberOfParallelTasks" in configuration.json; the configured value is authoritative
+     * (not capped at CPU count) so it can be lowered below the core count to avoid
+     * out-of-memory. Falls back to available CPU cores when unset or invalid.
+     */
+    private static int parseConcurrency(Map<String, String> configuration) {
+        int cores = Runtime.getRuntime().availableProcessors();
+
+        String raw = configuration.get("numberOfParallelTasks");
+        if (raw == null || raw.isBlank()) {
+            return cores;
+        }
+        try {
+            int requested = Integer.parseInt(raw.trim());
+            return Math.max(1, requested);
+        } catch (NumberFormatException e) {
+            return cores;
+        }
     }
 
     private ThreesimSimulationParameters getThreesimSimulationParametersFromConfiguration(
@@ -116,7 +143,8 @@ public class TrilemmaSimulationFactory implements Simulation {
 
     private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(
             SimulationParameters simulationParameters,
-            Map<String, String> configuration) {
+            Map<String, String> configuration,
+            int runId) {
 
         BlockchainSystemModelLoader loader =
                 new BlockchainSystemModelLoader();
@@ -124,7 +152,7 @@ public class TrilemmaSimulationFactory implements Simulation {
         BlockchainSystem designBlockchainSystem =
                 loader.load(
                         simulationParameters.getBlockchainSystemModelFilePath(),
-                        configuration);  
+                        configuration);
 
         var networkTopology =
                 designBlockchainSystem.getNetwork().getTopology();
@@ -133,14 +161,16 @@ public class TrilemmaSimulationFactory implements Simulation {
             return new ConnectedSubgraphNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ConnectedSubgraphsNetworkTopology) networkTopology,
-                    false);
+                    false,
+                    runId);
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {
             return new ExplicitNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ExplicitNetworkTopology) networkTopology,
-                    false);
+                    false,
+                    runId);
         }
 
         throw new IllegalStateException(

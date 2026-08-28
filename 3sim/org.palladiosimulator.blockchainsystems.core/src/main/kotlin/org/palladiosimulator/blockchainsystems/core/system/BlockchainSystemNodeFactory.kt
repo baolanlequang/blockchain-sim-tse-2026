@@ -29,7 +29,8 @@ class BlockchainSystemNodeFactory(
   private val behaviorFactory: BlockchainSystemNodeBehaviorFactory,
   private val geographicalRegionsResolver: GeographicalRegionsResolver,
   private val resourcePowerCalculator: ResourcePowerCalculator,
-  private val tagProvider: BlockchainSystemNodeTagProvider
+  private val tagProvider: BlockchainSystemNodeTagProvider,
+  private val maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider
 ) {
   fun createBlockchainSystemNode(
     networkInterface: NodeP2PNetworkInterface,
@@ -51,7 +52,7 @@ class BlockchainSystemNodeFactory(
       trxMemPoolFactory.createEmptyTransactionMemPool(nodeId),
       orphanBlockPoolFactory.createOrphanBlockPool(nodeId),
       blockFactory,
-      behaviorFactory.create(nodeId),
+      behaviorFactory.create(nodeId, maliciousNodesIdProvider),
       geographicalRegionsResolver.getGeographicalRegionOfNode(nodeId),
       tagProvider.getTags(nodeId)
     )

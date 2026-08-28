@@ -11,7 +11,8 @@ class InActivityThresholdCondition (
     var lastLoggedSimulationClock: Long = simulationClock?.currentTime ?: 0
         private set
 
-    val inactivityThreshold =  -(blockCreationInterval * ln(0.01))
+//    val inactivityThreshold =  -(blockCreationInterval * ln(0.01))
+    val inactivityThreshold = blockCreationInterval + 1800000  // BCI + 30 mins
 
     fun restartLoggedSimulationClock() {
         lastLoggedSimulationClock = simulationClock?.currentTime ?: 0
@@ -22,6 +23,7 @@ class InActivityThresholdCondition (
 //        println("blockCreationInterval: " + blockCreationInterval)
 //        println("inactivityThreshold: " + inactivityThreshold)
 //        println("inactivateTime: " + inactivityTime)
+//        println("hasProlongedInactivityExceeded: " + (inactivityTime > inactivityThreshold))
         return inactivityTime > inactivityThreshold
     }
 }
