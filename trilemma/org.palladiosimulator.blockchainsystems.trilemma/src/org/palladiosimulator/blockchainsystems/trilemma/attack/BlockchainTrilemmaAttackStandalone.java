@@ -68,7 +68,7 @@ public class BlockchainTrilemmaAttackStandalone {
                 getSimulationParametersFromConfiguration(configuration);
 
         var simulationFactory =
-                new SelfishMiningSimulationFactory(simulationParameters, configuration);
+                new SelfishMiningSimulationFactory(simulationParameters, configuration, runId);
 
         String simulationJson = simulationFactory.run();
         
@@ -77,9 +77,11 @@ public class BlockchainTrilemmaAttackStandalone {
         long after = runtime.totalMemory() - runtime.freeMemory();
         var memoryUsed = (after - before) / (1024 * 1024);
 
+        String idKey = configuration.containsKey("pair_id") ? "pair_id" : "config_id";
+
         Map<String, Object> finalResult = new LinkedHashMap<>();
         finalResult.put("runId", runId);
-        finalResult.put("config_id", configuration.get("config_id"));
+        finalResult.put(idKey, configuration.get(idKey));
         finalResult.put("inputParameters", configuration);
         finalResult.put("simulationResult",
                 com.google.gson.JsonParser.parseString(simulationJson));
@@ -94,7 +96,7 @@ public class BlockchainTrilemmaAttackStandalone {
                 .toJson(finalResult);
         
         try {
-            Path outputFile = createOutputPath(runId);
+            Path outputFile = createOutputPath(idKey, configuration.get(idKey), runId);
             Files.createDirectories(outputFile.getParent());
 
             try (BufferedWriter writer =
@@ -108,12 +110,19 @@ public class BlockchainTrilemmaAttackStandalone {
         } catch (IOException e) {
             logger.error("Failed to write simulation result", e);
         }
-        
+
     }
-    
-    private Path createOutputPath(int runId) {
+
+    private Path createOutputPath(String idKey, String idValue, int runId) {
+        // Name results by pair_id/config_id, which is globally unique across the whole CSV.
+        // runId restarts at 1 in every jar invocation, so a runId-based name would collide when
+        // the configs/pairs are split across SLURM array tasks. Fall back to runId only if the
+        // identifier is somehow absent. Prefix distinguishes pair_id- from config_id-keyed
+        // results so nested and legacy runs never collide.
+        String prefix = "pair_id".equals(idKey) ? "pair_" : "config_";
+        String key = (idValue == null || idValue.isBlank()) ? ("run_" + runId) : (prefix + idValue);
         return Paths.get("result_selfishmining")
-                .resolve("result_run_" + runId + ".json");
+                .resolve("result_" + key + ".json");
     }
     
     private SimulationParameters getSimulationParametersFromConfiguration(
