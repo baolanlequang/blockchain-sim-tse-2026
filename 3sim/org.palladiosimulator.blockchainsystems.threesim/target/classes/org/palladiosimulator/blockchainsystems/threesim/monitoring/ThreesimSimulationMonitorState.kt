@@ -52,6 +52,14 @@ class ThreesimSimulationMonitorState(
   val totalTransactionSubmissionsAllPhases: Int = 0,
   val blockRateObservationTimeMs: Long = 0L,
   val transactionRateObservationTimeMs: Long = 0L,
+  /** Blocks mined during the measurement window and therefore eligible for P-B T90. */
+  val measurementBlocksEligibleForPropagationT90: Int = 0,
+  /** Eligible blocks that reached first full-block receipt at 90% of non-miner validators. */
+  val measurementBlocksReachingPropagationT90: Int = 0,
+  /** Mean mining-to-T90 dissemination delay over eligible blocks that reached T90. */
+  val meanBlockPropagationT90Ms: Double? = null,
+  /** Median mining-to-T90 dissemination delay over eligible blocks that reached T90. */
+  val medianBlockPropagationT90Ms: Double? = null,
   val selfishMiningAttackRoundsStarted: Int = 0,
   val successfulSelfishMiningAttackRounds: Int = 0,
   val failedSelfishMiningAttackRounds: Int = 0,

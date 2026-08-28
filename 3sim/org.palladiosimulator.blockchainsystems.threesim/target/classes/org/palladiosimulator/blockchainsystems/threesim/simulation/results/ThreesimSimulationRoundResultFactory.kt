@@ -135,6 +135,10 @@ class ThreesimSimulationRoundResultFactory(
         if (produced > 0) state.numberOfStaleBlocks.toDouble() / produced.toDouble() else 0.0
       },
       restrictedMeanConfirmationLatencyMs = state.restrictedMeanConfirmationLatencyMs,
+      measurementBlocksEligibleForPropagationT90 = state.measurementBlocksEligibleForPropagationT90,
+      measurementBlocksReachingPropagationT90 = state.measurementBlocksReachingPropagationT90,
+      meanBlockPropagationT90Ms = state.meanBlockPropagationT90Ms,
+      medianBlockPropagationT90Ms = state.medianBlockPropagationT90Ms,
       // Paper-defined SPSM is calculated in the runtime from explicit selfish-mining
       // attack rounds. Pair-level analysis pools these counts across R_S and R_E; it
       // must not average the per-run percentages.

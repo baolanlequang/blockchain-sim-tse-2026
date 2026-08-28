@@ -54,6 +54,14 @@ data class RefinedExecutionAudit(
   val transactionConfirmationRatio: Double? = null,
   val staleBlockRatio: Double,
   val restrictedMeanConfirmationLatencyMs: Double? = null,
+  /** Blocks mined during measurement and eligible for the P-B propagation diagnostic. */
+  val measurementBlocksEligibleForPropagationT90: Int = 0,
+  /** Eligible blocks that reached 90% of non-miner validators by first full-block receipt. */
+  val measurementBlocksReachingPropagationT90: Int = 0,
+  /** Mean mining-to-T90 propagation delay in milliseconds. */
+  val meanBlockPropagationT90Ms: Double? = null,
+  /** Median mining-to-T90 propagation delay in milliseconds. */
+  val medianBlockPropagationT90Ms: Double? = null,
   /**
    * Runtime attack-round counts for the revised paper-defined SPSM. A round is counted only
    * when it starts inside the measurement window. Pending rounds at measurement end are
