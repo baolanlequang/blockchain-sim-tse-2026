@@ -7,7 +7,6 @@ import org.palladiosimulator.blockchainsystems.threesim.metrics.TransactionThrou
 import org.palladiosimulator.blockchainsystems.threesim.metrics.Consistency
 import org.palladiosimulator.blockchainsystems.threesim.metrics.FaultTolerance
 import org.palladiosimulator.blockchainsystems.threesim.metrics.GeographicalDiversity
-import org.palladiosimulator.blockchainsystems.threesim.metrics.GiniCoefficient
 import org.palladiosimulator.blockchainsystems.threesim.metrics.HerfindahlHirschmanIndex
 import org.palladiosimulator.blockchainsystems.threesim.metrics.NakamotoCoefficient
 import org.palladiosimulator.blockchainsystems.threesim.metrics.Reliability
@@ -20,7 +19,6 @@ import org.palladiosimulator.blockchainsystems.threesim.metrics.calculators.Tran
 import org.palladiosimulator.blockchainsystems.threesim.metrics.calculators.ConsistencyCalculator
 import org.palladiosimulator.blockchainsystems.threesim.metrics.calculators.FaultToleranceCalculator
 import org.palladiosimulator.blockchainsystems.threesim.metrics.calculators.GeographicalDiversityCalculator
-import org.palladiosimulator.blockchainsystems.threesim.metrics.calculators.GiniCoefficientCalculator
 import org.palladiosimulator.blockchainsystems.threesim.metrics.calculators.HerfindahlHirschmanIndexCalculator
 import org.palladiosimulator.blockchainsystems.threesim.metrics.calculators.NakamotoCoefficientCalculator
 import org.palladiosimulator.blockchainsystems.threesim.metrics.calculators.ReliabilityCalculator
@@ -54,7 +52,6 @@ class ThreesimAverageSimulationRoundResult private constructor(
               Consistency.NAME -> ConsistencyCalculator.calculateAverage(it.value as List<Consistency>)
               FaultTolerance.NAME -> FaultToleranceCalculator.calculateAverage(it.value as List<FaultTolerance>)
               GeographicalDiversity.NAME -> GeographicalDiversityCalculator.calculateAverage(it.value as List<GeographicalDiversity>)
-              GiniCoefficient.NAME -> GiniCoefficientCalculator.calculateAverage(it.value as List<GiniCoefficient>)
               HerfindahlHirschmanIndex.NAME -> HerfindahlHirschmanIndexCalculator.calculateAverage(it.value as List<HerfindahlHirschmanIndex>)
               NakamotoCoefficient.NAME -> NakamotoCoefficientCalculator.calculateAverage(it.value as List<NakamotoCoefficient>)
               Reliability.NAME -> ReliabilityCalculator.calculateAverage(it.value as List<Reliability>)

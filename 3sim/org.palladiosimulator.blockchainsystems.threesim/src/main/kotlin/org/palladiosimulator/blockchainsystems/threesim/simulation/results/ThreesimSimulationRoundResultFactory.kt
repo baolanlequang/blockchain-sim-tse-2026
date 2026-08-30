@@ -41,9 +41,6 @@ class ThreesimSimulationRoundResultFactory(
       HerfindahlHirschmanIndexCalculator(
         tokensHeldPerNode = state.tokensHeldPerNode
       ).calculate(),
-      GiniCoefficientCalculator(
-        tokensHeldPerNode = state.tokensHeldPerNode
-      ).calculate(),
       AvailabilityScalabilityCalculator(
         numberOfConfirmedTransactions = state.numberOfConfirmedTransactions,
         numberOfTransactions = state.numberOfSubmittedTransactions

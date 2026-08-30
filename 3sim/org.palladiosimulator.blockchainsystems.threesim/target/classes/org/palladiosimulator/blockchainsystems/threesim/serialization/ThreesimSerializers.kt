@@ -54,7 +54,6 @@ object ThreesimSerializers {
         subclass(Consistency::class)
         subclass(FaultTolerance::class)
         subclass(GeographicalDiversity::class)
-        subclass(GiniCoefficient::class)
         subclass(HerfindahlHirschmanIndex::class)
         subclass(NakamotoCoefficient::class)
         subclass(Reliability::class)
