@@ -26,6 +26,7 @@ object BehaviorUtils {
 
     when (blockAppendingResult.type) {
       BlockAppendingResultType.Appended -> {
+        reconcileMempoolAfterAppend(block, blockAppendingResult, context)
         val appendedBlockType = blockAppendingResult.blockType
 
         val orphanBlocks = context.orphanBlockPool
@@ -74,6 +75,7 @@ object BehaviorUtils {
 
     return when (blockAppendingResult.type) {
       BlockAppendingResultType.Appended -> {
+        reconcileMempoolAfterAppend(block, blockAppendingResult, context)
         val orphanBlocks = context.orphanBlockPool
           .getBlocksByPreviousBlockHash(block.hash)
 
@@ -100,6 +102,59 @@ object BehaviorUtils {
       BlockAppendingResultType.AlreadyAppended -> AppendOutcome.ALREADY_APPENDED
 
       else -> AppendOutcome.NOT_APPENDED
+    }
+  }
+
+  /**
+   * Keep the node mempool consistent with local longest-chain changes.
+   *
+   * Transactions from a newly accepted longest/forking block are removed. If a
+   * fork is later resolved, transactions unique to blocks that became stale are
+   * restored, while transactions already present anywhere on a surviving
+   * longest branch remain out of the mempool. Re-storing locally does not restart gossip because
+   * TransactionPropagationStrategy keeps persistent transaction IDs.
+   */
+  private fun reconcileMempoolAfterAppend(
+    appendedBlock: Block,
+    result: org.palladiosimulator.blockchainsystems.core.block.abstractions.BlockAppendingResult,
+    context: BlockchainSystemNodeContext
+  ) {
+    val toRestore = if (result.blocksBecameStale.isEmpty()) {
+      emptyList()
+    } else {
+      // Restore only transactions absent from every currently longest branch.
+      // Looking only at blocks whose type changed in this append is insufficient:
+      // the same transaction may already exist in an older surviving block.
+      val activeLongestChainTxIds = context.blockchain.getLongestChains()
+        .asSequence()
+        .flatten()
+        .flatMap { it.transactions.asSequence() }
+        .map { it.txId }
+        .toHashSet()
+
+      result.blocksBecameStale
+        .asSequence()
+        .flatMap { it.transactions.asSequence() }
+        .filter { it.txId !in activeLongestChainTxIds }
+        .distinctBy { it.txId }
+        .toList()
+    }
+
+    if (toRestore.isNotEmpty()) {
+      context.trxMemPool.storeTransactions(toRestore)
+    }
+
+    if (
+      result.blockType == BlockType.IncludedBlock ||
+      result.blockType == BlockType.ForkingBlock
+    ) {
+      context.trxMemPool.removeTransactions(appendedBlock.transactions)
+    }
+
+    if (result.blocksBecameIncluded.isNotEmpty()) {
+      context.trxMemPool.removeTransactions(
+        result.blocksBecameIncluded.flatMap { it.transactions }.distinctBy { it.txId }
+      )
     }
   }
 }
