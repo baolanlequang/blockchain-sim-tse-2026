@@ -25,7 +25,8 @@ import java.util.random.RandomGenerator
 abstract class AbstractThreesimP2PNetworkFactory() : P2PNetworkFactory {
 
   protected fun createLatencyValueProvider(
-    latencySpecification: LinkLatencySpecification
+    latencySpecification: LinkLatencySpecification,
+    randomGenerator: RandomGenerator = RandomGenerator.of("Random")
   ): SimulationLifecycleAwareValueProvider<Long> {
     return when (latencySpecification) {
       is StaticLinkLatencySpecification -> {
@@ -35,7 +36,7 @@ abstract class AbstractThreesimP2PNetworkFactory() : P2PNetworkFactory {
       is DynamicLinkLatencySpecification -> {
         LatencyValueProviderAdapter.create(
           latencySpecification,
-          RandomGenerator.of("Random")
+          randomGenerator
         )
       }
 
@@ -48,7 +49,8 @@ abstract class AbstractThreesimP2PNetworkFactory() : P2PNetworkFactory {
   }
 
   protected fun createThroughputValueProvider(
-    throughputSpecification: LinkThroughputSpecification
+    throughputSpecification: LinkThroughputSpecification,
+    randomGenerator: RandomGenerator = RandomGenerator.of("Random")
   ): SimulationLifecycleAwareValueProvider<Long> {
     return when (throughputSpecification) {
       is StaticLinkThroughputSpecification -> {
@@ -58,7 +60,7 @@ abstract class AbstractThreesimP2PNetworkFactory() : P2PNetworkFactory {
       is DynamicLinkThroughputSpecification -> {
         ThroughputValueProviderAdapter.create(
           throughputSpecification,
-          RandomGenerator.of("Random")
+          randomGenerator
         )
       }
 
@@ -69,6 +71,64 @@ abstract class AbstractThreesimP2PNetworkFactory() : P2PNetworkFactory {
       }
     }
   }
+
+
+  /**
+   * Sample one fixed latency value for a structural/network instance.
+   *
+   * The refined TSE execution design keeps network characteristics fixed across
+   * event replications R_E that share one network instance R_S.  Therefore a
+   * dynamic latency specification from the reusable base model is interpreted as
+   * a distribution from which one L_ij value is drawn per undirected connection
+   * using a network-seed stream; it is not re-sampled over simulated time.
+   */
+  protected fun createNetworkFixedLatencyValueProvider(
+    latencySpecification: LinkLatencySpecification,
+    randomGenerator: RandomGenerator
+  ): SimulationLifecycleAwareValueProvider<Long> {
+    val latency = when (latencySpecification) {
+      is StaticLinkLatencySpecification -> latencySpecification.latency
+      is DynamicLinkLatencySpecification -> {
+        require(latencySpecification.values.isNotEmpty()) {
+          "Dynamic latency specification must contain at least one value."
+        }
+        val weighted = latencySpecification.values.map { value ->
+          require(value.probability >= 0.0 && value.probability.isFinite()) {
+            "Latency probabilities must be finite and non-negative."
+          }
+          value to value.probability
+        }
+        val total = weighted.sumOf { it.second }
+        require(total > 0.0 && total.isFinite()) {
+          "Latency probabilities must have a finite positive sum."
+        }
+        var draw = randomGenerator.nextDouble() * total
+        var selected = weighted.last().first.latency
+        for ((value, probability) in weighted) {
+          draw -= probability
+          if (draw <= 0.0) {
+            selected = value.latency
+            break
+          }
+        }
+        selected
+      }
+      else -> throw IllegalArgumentException(
+        "Unsupported latency specification type: ${latencySpecification::class.java.name}"
+      )
+    }
+    require(latency >= 0L) { "Connection latency must be >= 0 ms, got $latency." }
+    return StaticLatencyValueProvider(latency)
+  }
+
+  /**
+   * Refined experiments model propagation with B_ij^eff and L_ij only.
+   * The legacy throughput provider is therefore kept permanently available so
+   * it acts only as the existing link-up/link-down gate and introduces no
+   * unreported time-varying failure process.
+   */
+  protected fun createAlwaysAvailableThroughputValueProvider(): SimulationLifecycleAwareValueProvider<Long> =
+    StaticThroughputValueProvider(Long.MAX_VALUE)
 
   protected fun createBandwidthValueProvider(
     bandwidthSpecification: BandwidthSpecification

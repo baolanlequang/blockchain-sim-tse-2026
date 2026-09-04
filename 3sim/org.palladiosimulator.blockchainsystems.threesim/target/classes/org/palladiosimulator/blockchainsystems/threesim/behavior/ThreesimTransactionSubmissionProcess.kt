@@ -11,26 +11,22 @@ import org.palladiosimulator.blockchainsystems.core.transaction.TransactionSubmi
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Transaction
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.TransactionSubmissionProcess
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.TransactionSubmittedCallbackSubscriber
-import java.util.random.RandomGenerator
 import java.util.UUID
+import java.util.random.RandomGenerator
 
-/**
- * The process that randomly submits transactions to the blockchain system in 3SIM.
- *
- * @author Davis Riedel
- */
+/** Poisson transaction submission process with explicit reproducible RNG streams. */
 class ThreesimTransactionSubmissionProcess(
   id: String,
   name: String,
   meanTransactionCreationTime: Double,
   private val transactionPropertiesProvider: ValueProvider<TransactionProperties>,
+  arrivalRandomGenerator: RandomGenerator = RandomGenerator.of("Random"),
+  private val identityRandomGenerator: RandomGenerator = RandomGenerator.of("Random")
 ) : BlockchainSimulationObject(id, name), TransactionSubmissionProcess {
-  private val poissonProcess = PoissonProcess(1.0 / meanTransactionCreationTime, RandomGenerator.of("Random"))
+  private val poissonProcess = PoissonProcess(1.0 / meanTransactionCreationTime, arrivalRandomGenerator)
 
   private var onSelectRecipientNodeIdCallback: (() -> String)? = null
-
   private val onTransactionSubmittedCallbackSubscribers = HashSet<TransactionSubmittedCallbackSubscriber>()
-
   private var isSubmittingTransactions = false
 
   override fun addOnTransactionSubmittedCallbackSubscriber(subscriber: TransactionSubmittedCallbackSubscriber) {
@@ -56,46 +52,36 @@ class ThreesimTransactionSubmissionProcess(
       if (!isSubmittingTransactions) return
 
       val e = event as TransactionSubmittedEvent
-
       val recipientId = onSelectRecipientNodeIdCallback?.invoke() ?: return
-
       val trx = createTransaction(e.occurrenceTime, recipientId)
-
       logTrxSubmitted(trx)
-
       notifyTrxSubmitted(trx)
-
       scheduleNewTrxSubmittedEvent()
     }
   }
 
-  private fun createTransaction(
-    creationTime: Long,
-    recipientId: String
-  ): Transaction {
+  private fun nextUuid(): String = UUID(
+    identityRandomGenerator.nextLong(),
+    identityRandomGenerator.nextLong()
+  ).toString()
+
+  private fun createTransaction(creationTime: Long, recipientId: String): Transaction {
     val trxProps = transactionPropertiesProvider.getValue()
-
-    // NOTE: In 3SIM transactions are considered to be sent from an anonymous user
-    val senderId = UUID.randomUUID().toString()
-
     return TransactionFactoryImpl().createTransaction(
-      txId = UUID.randomUUID().toString(),
+      txId = nextUuid(),
       size = trxProps.size,
       amount = trxProps.amount,
       fee = trxProps.fee,
       creationTime = creationTime,
-      senderId = senderId,
+      senderId = nextUuid(),
       recipientId = recipientId
     )
   }
 
   private fun logTrxSubmitted(trx: Transaction) {
-    val event = TransactionSubmittedTraceEvent(
-      simulationContext.systemClock.currentTime,
-      trx
+    traceEventLogger.logEvent(
+      TransactionSubmittedTraceEvent(simulationContext.systemClock.currentTime, trx)
     )
-
-    traceEventLogger.logEvent(event)
   }
 
   private fun notifyTrxSubmitted(trx: Transaction) {
@@ -108,12 +94,8 @@ class ThreesimTransactionSubmissionProcess(
   }
 
   private fun scheduleNewTrxSubmittedEvent() {
-    simulationContext.eventCoordinator
-      .raiseEvent(
-        TransactionSubmittedEvent(
-          getNextTransactionSubmittedEventOccurrenceTimestamp(),
-          this
-        )
-      )
+    simulationContext.eventCoordinator.raiseEvent(
+      TransactionSubmittedEvent(getNextTransactionSubmittedEventOccurrenceTimestamp(), this)
+    )
   }
 }

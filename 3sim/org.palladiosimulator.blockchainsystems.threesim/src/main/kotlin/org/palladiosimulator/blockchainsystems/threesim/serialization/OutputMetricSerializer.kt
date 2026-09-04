@@ -42,7 +42,9 @@ object OutputMetricSerializer : KSerializer<OutputMetric<*>> {
           value.value as FaultToleranceValue
         )
 
-        else -> throw SerializationException("Unsupported type for OutputMetric value: ${value.value::class.simpleName}")
+        else -> throw SerializationException(
+          "Unsupported type for OutputMetric value: ${value.value?.let { it::class.simpleName } ?: "null"}"
+        )
       }
 
       // Serialize unit if specified

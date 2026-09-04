@@ -24,8 +24,8 @@ import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Logger;
-import org.eclipse.core.runtime.Plugin;
 import org.eclipse.emf.ecore.plugin.EcorePlugin;
 
 import tools.mdsd.library.standalone.initialization.StandaloneInitializationException;
@@ -43,13 +43,22 @@ public class BlockchainTrilemmaStandalone {
     private final Logger logger =
             Logger.getLogger(BlockchainTrilemmaStandalone.class);
 
-    private String modelProjectName;
-    private Class<? extends Plugin> modelProjectActivator;
+    private final String modelProjectName;
+    private final Class<?> modelProjectActivator;
 
     public BlockchainTrilemmaStandalone(String modelProjectName,
-                                        Class<? extends Plugin> modelProjectActivator) {
+                                        Class<?> modelProjectActivator) {
         this.modelProjectName = modelProjectName;
         this.modelProjectActivator = modelProjectActivator;
+
+        // The standalone/fat-JAR runner is intentionally independent of an
+        // Eclipse launch configuration. Configure a minimal console appender
+        // only when no Log4j configuration has been installed already. This
+        // removes the misleading "No appenders" warning without overriding a
+        // user-supplied logging configuration.
+        if (!Logger.getRootLogger().getAllAppenders().hasMoreElements()) {
+            BasicConfigurator.configure();
+        }
     }
 
     public boolean initAnalysis() {
@@ -89,11 +98,9 @@ public class BlockchainTrilemmaStandalone {
         long after = runtime.totalMemory() - runtime.freeMemory();
         var memoryUsed = (after - before) / (1024 * 1024);
 
-        String idKey = configuration.containsKey("pair_id") ? "pair_id" : "config_id";
-
         Map<String, Object> finalResult = new LinkedHashMap<>();
         finalResult.put("runId", runId);
-        finalResult.put(idKey, configuration.get(idKey));
+        finalResult.put("config_id", configuration.get("config_id"));
         finalResult.put("inputParameters", configuration);
         finalResult.put("simulationResult",
                 com.google.gson.JsonParser.parseString(simulationJson));
@@ -108,7 +115,7 @@ public class BlockchainTrilemmaStandalone {
                 .toJson(finalResult);
 
         try {
-            Path outputFile = createOutputPath(idKey, configuration.get(idKey), runId);
+            Path outputFile = createOutputPath(configuration.get("config_id"), runId);
             Files.createDirectories(outputFile.getParent());
 
             try (BufferedWriter writer =
@@ -121,6 +128,10 @@ public class BlockchainTrilemmaStandalone {
 
         } catch (IOException e) {
             logger.error("Failed to write simulation result", e);
+            // A simulation whose result cannot be persisted is not a successful
+            // scientific execution. Propagate the failure so the batch runner
+            // can retain a FAILED audit record and return a non-zero exit code.
+            throw new IllegalStateException("Simulation completed but its result JSON could not be written", e);
         }
 
     }
@@ -130,14 +141,12 @@ public class BlockchainTrilemmaStandalone {
  * Keeps results colocated with the corresponding model folder.
  */
 
-    private Path createOutputPath(String idKey, String idValue, int runId) {
-        // Name results by pair_id/config_id, which is globally unique across the whole CSV.
-        // runId restarts at 1 in every jar invocation, so a runId-based name would collide when
-        // the configs/pairs are split across SLURM array tasks. Fall back to runId only if the
-        // identifier is somehow absent. Prefix distinguishes pair_id- from config_id-keyed
-        // results so nested and legacy runs never collide.
-        String prefix = "pair_id".equals(idKey) ? "pair_" : "config_";
-        String key = (idValue == null || idValue.isBlank()) ? ("run_" + runId) : (prefix + idValue);
+    private Path createOutputPath(String configId, int runId) {
+        // Name results by config_id, which is globally unique across the whole CSV. runId
+        // restarts at 1 in every jar invocation, so a runId-based name would collide when the
+        // 500 configs are split across SLURM array tasks. Fall back to runId only if config_id
+        // is somehow absent.
+        String key = (configId == null || configId.isBlank()) ? ("run_" + runId) : ("config_" + configId);
         return Paths.get("result_trilemma")
                 .resolve("result_" + key + ".json");
     }
@@ -158,7 +167,6 @@ public class BlockchainTrilemmaStandalone {
 
         } catch (StandaloneInitializationException e) {
         	e.printStackTrace();
-        	System.out.println("test");
             logger.error("Unable to initialize standalone environment.", e);
             return false;
         }
@@ -167,8 +175,14 @@ public class BlockchainTrilemmaStandalone {
     private SimulationParameters getSimulationParametersFromConfiguration(
             Map<String, String> configuration) {
 
+        // For externally sampled batches, preserve the legacy experiment-level
+        // simulationType in the audit record while allowing the batch runner to
+        // request one engine execution per explicit CSV/manifest row.
+        String effectiveSimulationType = configuration.getOrDefault(
+                "engineSimulationType",
+                configuration.getOrDefault("simulationType", "Single"));
         SimulationType simulationType = SimulationType.Single;
-        if ("Monte-Carlo".equals(configuration.getOrDefault("simulationType", ""))) {
+        if ("Monte-Carlo".equals(effectiveSimulationType)) {
             simulationType = SimulationType.MonteCarlo;
         }
 
@@ -180,21 +194,44 @@ public class BlockchainTrilemmaStandalone {
         int numberOfMonteCarloRounds =
                 Integer.parseInt(
                         configuration.getOrDefault(
-                                "numberOfMonteCarloRounds", "1"));
+                                "engineNumberOfMonteCarloRounds",
+                                configuration.getOrDefault("numberOfMonteCarloRounds", "1")));
 
         String blockchainSystemModelFilePath =
                 configuration.getOrDefault(
                         "blockchainSystemModelFilePath", "");
+
+        /*
+         * RESULT-AUDIT CONSISTENCY:
+         * Refined manifests already contain the deterministic derived attacker
+         * count as `number_of_attackers`. The previous standalone runner
+         * hard-coded zero into SimulationParameters even though the model loader
+         * correctly created adversarial nodes. This produced contradictory JSON:
+         * legacy simulationParameters.numberOfAttacker=0 while
+         * refinedExecutionAudit.creation.numberOfAttackers was non-zero.
+         *
+         * Use the manifest value here so the legacy metadata agrees with the
+         * actual refined execution. The model loader remains authoritative for
+         * constructing attacker behavior; this change fixes metadata only.
+         */
+        String attackerCountRaw = configuration.getOrDefault(
+                "number_of_attackers",
+                configuration.getOrDefault("numberOfAttacker", "0"));
+        int numberOfAttacker = Integer.parseInt(attackerCountRaw.trim());
+        if (numberOfAttacker < 0) {
+            throw new IllegalArgumentException(
+                    "number_of_attackers must be >= 0, got " + numberOfAttacker);
+        }
 
         return (simulationType == SimulationType.MonteCarlo)
                 ? new MonteCarloSimulationParameters(
                 maxAllowedBlockchainLength,
                 numberOfMonteCarloRounds,
                 blockchainSystemModelFilePath,
-                0)
+                numberOfAttacker)
                 : new SingleSimulationParameters(
                 maxAllowedBlockchainLength,
                 blockchainSystemModelFilePath,
-                0);
+                numberOfAttacker);
     }
 }

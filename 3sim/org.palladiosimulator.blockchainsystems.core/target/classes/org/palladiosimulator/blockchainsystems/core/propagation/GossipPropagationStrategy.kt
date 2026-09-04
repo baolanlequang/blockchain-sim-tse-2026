@@ -42,7 +42,19 @@ abstract class GossipPropagationStrategy<E : Propagatable> : BlockchainNodeObjec
   }
 
 
+  /**
+   * Hook invoked before a full-network inventory announcement.
+   *
+   * The default keeps the legacy behavior. Specialized propagation strategies can
+   * use this hook to make gossip idempotent without changing the public interface.
+   * This matters for long finite-horizon simulations: re-announcing the same
+   * object after it has already been seen can create an unbounded number of future
+   * network-delivery events even though it carries no new protocol information.
+   */
+  protected open fun shouldAnnounce(element: E): Boolean = true
+
   override fun distribute(element: E) {
+    if (!shouldAnnounce(element)) return
     networkInterface?.multicast(createInvMessage(element))
   }
 

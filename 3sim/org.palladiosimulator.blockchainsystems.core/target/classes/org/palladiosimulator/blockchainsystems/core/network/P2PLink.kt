@@ -94,10 +94,10 @@ class P2PLink(
       val latency = latencyValueProvider.getValue() // in ms
       val messageSize = event.message.content.size.toLong() // in byte
 
-      // T_ij = S / B_ij^eff + L_ij (paper Eq. in sec-simulation-approach): transmission time
-      // for the message plus link latency. bandwidth here already is B_ij^eff = min(B_ij, B_ji)
-      // (see ConnectedSubgraphP2PNetworkFactory.kt).
-      val transmissionDuration = (latency + (messageSize * 8 * 1000) / (bandwidth.toDouble() * 1000000)).roundToLong() // in ms
+      // Refined model: T_ij = S / B_ij^eff + L_ij.  `bandwidth` is in
+      // Mbit/s, message size is in bytes, and latency is in milliseconds.
+      val serializationDelay = ((messageSize * 8.0 * 1000.0) / (bandwidth * 1_000_000.0)).roundToLong()
+      val transmissionDuration = latency + serializationDelay
 
       MessageReceivedEvent(
         event.message,

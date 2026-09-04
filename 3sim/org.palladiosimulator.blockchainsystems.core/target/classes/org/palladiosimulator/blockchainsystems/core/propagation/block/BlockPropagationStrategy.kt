@@ -22,6 +22,28 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
   private val INV_MESSAGE_BYTE_SIZE = 20
   private val GET_DATA_MESSAGE_BYTE_SIZE = 20
 
+  /*
+   * Keep block gossip idempotent while a received block is still waiting for
+   * validation. Blockchain membership alone cannot suppress duplicates during
+   * that interval because the block has not yet been appended.
+   */
+  private val knownBlockHashes = HashSet<String>()
+  private val announcedBlockHashes = HashSet<String>()
+
+  /*
+   * Lifecycle note: BlockchainNodeObject.onInitialize()/onCleanup() are final
+   * protected hooks in this source revision. These per-strategy sets therefore
+   * rely on normal object construction for an empty initial state. Strategy
+   * instances are per-node/per-run and are discarded with the simulation, so an
+   * explicit lifecycle override is neither legal nor required.
+   */
+
+
+  override fun shouldAnnounce(element: Block): Boolean {
+    knownBlockHashes.add(element.hash)
+    return announcedBlockHashes.add(element.hash)
+  }
+
 
   override fun createInvMessage(element: Block): Message {
     return MessageImpl(element.hash, INV_MESSAGE_KEY, MESSAGE_HEADER_BYTE_SIZE + INV_MESSAGE_BYTE_SIZE)
@@ -42,8 +64,8 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
   ) {
     context?.blockchain?.let { blockchain ->
       val hash = message.content as String
-      if (blockchain.hasBlockWithHash(hash)) {
-        // Block already exists, no need to request it
+      if (knownBlockHashes.contains(hash) || blockchain.hasBlockWithHash(hash)) {
+        // Block already exists or is already being handled; no need to request it.
         return
       }
       networkInterface?.send(
@@ -70,8 +92,14 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
   ) {
     val block = message.content as Block
 
-    logBlockReceived(block, senderNetworkEndpoint)
+    // Suppress duplicate full-block deliveries before they can trigger duplicate
+    // validation and redistribution. The first arrival still follows the original
+    // validation/propagation path unchanged.
+    if (!knownBlockHashes.add(block.hash)) {
+      return
+    }
 
+    logBlockReceived(block, senderNetworkEndpoint)
     notifyBlockReceived(block)
   }
 

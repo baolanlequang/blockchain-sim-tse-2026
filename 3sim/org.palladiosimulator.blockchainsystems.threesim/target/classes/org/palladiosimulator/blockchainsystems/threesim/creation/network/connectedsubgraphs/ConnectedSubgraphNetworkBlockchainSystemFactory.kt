@@ -2,29 +2,34 @@ package org.palladiosimulator.blockchainsystems.threesim.creation.network.connec
 
 import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectedSubgraphsNetworkTopology
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.*
+import org.palladiosimulator.blockchainsystems.threesim.creation.RefinedExperimentRandomness
 import org.palladiosimulator.blockchainsystems.threesim.creation.ThreesimBlockchainSystemFactory
 import org.palladiosimulator.blockchainsystems.threesim.creation.abstractions.NodeAllocationResolver
-import java.util.random.RandomGenerator
 import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystem as DesignBlockchainSystem
 
-/**
- * Factory for creating a [BlockchainSystem] based on an [ConnectedSubgraphsNetworkTopology].
- *
- * @author Davis Riedel
- */
+/** Factory for the refined connected NSB topology. */
 class ConnectedSubgraphNetworkBlockchainSystemFactory @JvmOverloads constructor(
   designBlockchainSystem: DesignBlockchainSystem,
   connectedSubgraphsTopology: ConnectedSubgraphsNetworkTopology,
   attackSimulation: Boolean,
   runId: Int = 0,
   gamma: Double = 0.5,
-  attackerSelectionSeed: Long? = null
-) : ThreesimBlockchainSystemFactory(designBlockchainSystem, connectedSubgraphsTopology, attackSimulation, runId, gamma, attackerSelectionSeed) {
-  override fun createP2PNetworkFactory(): P2PNetworkFactory {
-    return ConnectedSubgraphP2PNetworkFactory(
-      networkTopology as ConnectedSubgraphsNetworkTopology
+  networkSeed: Long = 0L,
+  eventSeed: Long = 0L
+) : ThreesimBlockchainSystemFactory(
+  designBlockchainSystem,
+  connectedSubgraphsTopology,
+  attackSimulation,
+  runId,
+  gamma,
+  networkSeed,
+  eventSeed
+) {
+  override fun createP2PNetworkFactory(): P2PNetworkFactory =
+    ConnectedSubgraphP2PNetworkFactory(
+      networkTopology as ConnectedSubgraphsNetworkTopology,
+      randomness
     )
-  }
 
   override fun getNodeAllocationResolver(networkCreationResult: P2PNetworkCreationResult): NodeAllocationResolver {
     networkCreationResult as ConnectedSubgraphNetworkCreationResult
@@ -40,7 +45,8 @@ class ConnectedSubgraphNetworkBlockchainSystemFactory @JvmOverloads constructor(
       networkTopology as ConnectedSubgraphsNetworkTopology,
       networkCreationResult.nodeIdToNodeTemplateIdMapping,
       designBlockchainSystem.specification.hashRateConcentration,
-      networkCreationResult.nodeIdToIndexMapping
+      networkCreationResult.nodeIdToIndexMapping,
+      randomness
     )
   }
 }

@@ -1,0 +1,211 @@
+{
+  "runId": 3,
+  "config_id": "P10_S02_E01",
+  "inputParameters": {
+    "experimentPhase": "pilot",
+    "requireHierarchicalManifest": "true",
+    "declaredSamplePairs": "1",
+    "blockchainSystemModelFilePath": "testmodels/threesim-P10/Net.blockchainsystem",
+    "warmup_blocks_per_validator": "4",
+    "measured_blocks_per_validator": "4",
+    "transaction_drain_seconds": "14400",
+    "masterSeed": "1024",
+    "baselineBandwidthPerEndpointMbps": "1000",
+    "failureThroughputThreshold": "1.0",
+    "shannonEntropyK": "1.0",
+    "nakamotoCoefficientThreshold": "50.0",
+    "reliabilityObservationTimespan": "24.0",
+    "pilot_id": "P10",
+    "pilot_case_role": "NV_low",
+    "connection_count": "5",
+    "block_creation_interval": "268",
+    "maximum_block_size": "1.414213562",
+    "validating_node_count": "20",
+    "node_bandwidth_heterogeneity": "0.25",
+    "link_bandwidth_heterogeneity": "0.2",
+    "hashing_power_concentration": "0.25",
+    "number_of_attackers": "3",
+    "transaction_arrival_rate": "9.128709292",
+    "fraction_of_attackers": "0.15",
+    "realized_fraction_of_attackers": "0.15",
+    "execution_index": "3",
+    "manifest_pair_id": "P10",
+    "network_instance": "2",
+    "event_replication": "1",
+    "network_realization_id": "P10_S02",
+    "network_seed": "-7842435291366778751",
+    "event_seed": "3088120890187879358",
+    "run_id": "P10_S02_E01",
+    "config_id": "P10_S02_E01",
+    "id": "P10_S02_E01",
+    "engineSimulationType": "Single",
+    "engineNumberOfMonteCarloRounds": "1",
+    "engineNumberOfParallelTasks": "1"
+  },
+  "simulationResult": {
+    "simulationParameters": {
+      "maxAllowedBlockchainLength": 30,
+      "blockchainSystemModelFilePath": "testmodels/threesim-P10/Net.blockchainsystem",
+      "numberOfAttacker": 3
+    },
+    "threesimSimulationParameters": {
+      "failureThroughputThreshold": 1.0,
+      "shannonEntropyK": 1.0,
+      "nakamotoCoefficientThreshold": 50.0,
+      "reliabilityObservationTimespan": 24.0,
+      "warmupBlocksPerValidator": 4,
+      "measuredBlocksPerValidator": 4,
+      "transactionDrainMillis": 14400000
+    },
+    "simulationRoundResult": [
+      {
+        "name": "AvailabilityScalability",
+        "value": 0.23326067275936538,
+        "unit": "%"
+      },
+      {
+        "name": "AvailabilitySecurity",
+        "value": 0.9462019669859809,
+        "unit": "%"
+      },
+      {
+        "name": "Consistency",
+        "value": 1626415.911392405,
+        "unit": "ms"
+      },
+      {
+        "name": "FaultTolerance",
+        "value": {
+          "throughputDelta": {
+            "value": 436.44264081587596,
+            "unit": "transactions/min"
+          },
+          "confirmationLatencyDelta": {
+            "value": 115717.97666666657,
+            "unit": "ms"
+          }
+        }
+      },
+      {
+        "name": "GeographicalDiversity",
+        "value": 0.0,
+        "unit": "%"
+      },
+      {
+        "name": "HerfindahlHirschmanIndex",
+        "value": 0.4614177270396187
+      },
+      {
+        "name": "NakamotoCoefficient",
+        "value": 1,
+        "unit": "validating nodes"
+      },
+      {
+        "name": "Reliability",
+        "value": 1.1736454103526703E-7,
+        "unit": "%"
+      },
+      {
+        "name": "ShannonEntropy",
+        "value": 1.4932274424224978,
+        "unit": "bits"
+      },
+      {
+        "name": "StaleBlockRate",
+        "value": 0.012658227848101266
+      },
+      {
+        "name": "TransactionThroughput",
+        "value": 127.77743788058066,
+        "unit": "transactions/min"
+      }
+    ],
+    "refinedExecutionAudit": {
+      "creation": {
+        "networkSeed": -7842435291366778751,
+        "eventSeed": 3088120890187879358,
+        "validatingNodeCount": 20,
+        "connectionCount": 5,
+        "undirectedConnectionCount": 100,
+        "topologyFeasible": true,
+        "topologyConnected": true,
+        "noSelfConnections": true,
+        "noDuplicateOrReciprocalInitiations": true,
+        "initiatedAcceptedEachEqualC": true,
+        "topologyFingerprint": "d0424a76ffa2bfdfee2f741b47f8e4516453080cfb5b2164d4b5ad666a995ee4",
+        "bandwidthAllocationFingerprint": "eb3af69d8b3c889ccb23574f852934aa1af0463919f29638e3f62f9a9597abb9",
+        "latencyAllocationFingerprint": "2f744a5f50cafb2f4723ac3b31427b7d51b2221e02c1c114c4a44462403dac91",
+        "networkRealizationFingerprint": "fab16f644b11e8827fb22fa1bcb96583e0514358a12dbf50574198a32eb566bf",
+        "systemBandwidthBudgetMbps": 200000.0,
+        "nodeBandwidthSumMbps": 200000.00000000003,
+        "bandwidthUniformFloorFraction": 0.1,
+        "guaranteedMinimumEndpointBandwidthMbps": 10.000000000000002,
+        "minimumRealizedEffectiveConnectionBandwidthMbps": 10.000065394244839,
+        "targetNodeBandwidthH": 0.25,
+        "realizedNodeBandwidthH": 0.3050404497379448,
+        "targetLinkBandwidthH": 0.2,
+        "meanRealizedLinkBandwidthH": 0.2170347768664908,
+        "meanConnectionLatencyMs": 101.25,
+        "minConnectionLatencyMs": 95,
+        "maxConnectionLatencyMs": 110,
+        "targetHashingPowerH": 0.25,
+        "realizedHashingPowerH": 0.47219148001879,
+        "hashingPowerShareSum": 1.0000000000000002,
+        "numberOfAttackers": 3,
+        "realizedFractionOfAttackers": 0.15,
+        "realizedAdversarialHashingPowerShare": 0.003931959507049823,
+        "attackerNodeIds": [
+          "validator-00000",
+          "validator-00012",
+          "validator-00016"
+        ]
+      },
+      "refinedWindowEnabled": true,
+      "warmupBlocksPerValidator": 4,
+      "measuredBlocksPerValidator": 4,
+      "transactionDrainMillis": 14400000,
+      "warmupTargetCanonicalBlocks": 80,
+      "measurementTargetCanonicalBlocks": 160,
+      "canonicalBlocksObservedForWindowControl": 160,
+      "measurementStartTimeMs": 24805749,
+      "measurementEndTimeMs": 46462624,
+      "measurementDurationMs": 21656875,
+      "executionPhaseAtTermination": "DRAIN",
+      "terminationReason": "DRAIN_DEADLINE_REACHED",
+      "measurementWindowCompleted": true,
+      "transactionFollowUpCompleted": true,
+      "totalBlockProposalsAllPhases": 217,
+      "totalTransactionSubmissionsAllPhases": 423849,
+      "blockRateObservationTimeMs": 61736265,
+      "transactionRateObservationTimeMs": 46462624,
+      "measurementSubmittedTransactions": 197723,
+      "measurementConfirmedTransactionsInCanonicalBlocks": 46121,
+      "measurementCanonicalBlocks": 80,
+      "measurementConfirmedBlocks": 79,
+      "measurementStaleBlocks": 1,
+      "measurementTransactionsConfirmedWithinDrain": 44420,
+      "measurementTransactionsRightCensored": 153303,
+      "transactionFollowUpObservationCount": 197723,
+      "transactionFollowUpObservationsRetained": false,
+      "transactionFollowUpObservations": [],
+      "proposalEntropyNormalized": 0.34550029746883476,
+      "canonicalBlockHhiNormalized": 0.4641447368421053,
+      "transactionsPerSecond": 2.129623964676344,
+      "transactionConfirmationRatio": 0.22465772823596647,
+      "staleBlockRatio": 0.012345679012345678,
+      "restrictedMeanConfirmationLatencyMs": 1.2174567719977783E7,
+      "measurementBlocksEligibleForPropagationT90": 81,
+      "measurementBlocksReachingPropagationT90": 81,
+      "meanBlockPropagationT90Ms": 12060.530864197532,
+      "medianBlockPropagationT90Ms": 5414.0,
+      "selfishMiningAttackRoundsStarted": 1,
+      "failedSelfishMiningAttackRounds": 1,
+      "unambiguousSelfishMiningAttackRounds": 1,
+      "selfishMiningSuccessProbability": 0.0
+    }
+  },
+  "startSimulationTime": 222026486198000,
+  "stopSimulationTime": 222041570805541,
+  "simulationTime": 15084607541,
+  "memoryUsed": 328
+}

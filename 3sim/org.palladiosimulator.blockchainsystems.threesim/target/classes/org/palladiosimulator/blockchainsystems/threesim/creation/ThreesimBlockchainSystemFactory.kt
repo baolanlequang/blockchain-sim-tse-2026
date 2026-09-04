@@ -2,101 +2,77 @@ package org.palladiosimulator.blockchainsystems.threesim.creation
 
 import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystemSpecification
 import org.palladiosimulator.blockchainsystems.bscm.blockchainsystem.BlockchainSystem as DesignBlockchainSystem
-import org.palladiosimulator.blockchainsystems.core.blockchain.BlockchainFactoryImpl
-import org.palladiosimulator.blockchainsystems.core.propagation.block.BlockPropagationStrategyFactoryImpl
-import org.palladiosimulator.blockchainsystems.core.propagation.transaction.TransactionPropagationStrategyFactoryImpl
+import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.ConnectedSubgraphsNetworkTopology
+import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.NetworkTopology
 import org.palladiosimulator.blockchainsystems.core.block.BlockFactoryImpl
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.BlockFactory
+import org.palladiosimulator.blockchainsystems.core.blockchain.BlockchainFactoryImpl
 import org.palladiosimulator.blockchainsystems.core.geography.GeographicalRegionsResolver
+import org.palladiosimulator.blockchainsystems.core.network.P2PNetworkImpl
 import org.palladiosimulator.blockchainsystems.core.orphanblockpool.OrphanBlockPoolFactoryImpl
+import org.palladiosimulator.blockchainsystems.core.propagation.block.BlockPropagationStrategyFactoryImpl
+import org.palladiosimulator.blockchainsystems.core.propagation.transaction.TransactionPropagationStrategyFactoryImpl
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNodeFactory
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.*
-import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNode
-import org.palladiosimulator.blockchainsystems.core.network.P2PNetworkImpl
 import org.palladiosimulator.blockchainsystems.core.transaction.TrxMemPoolFactoryImpl
+import org.palladiosimulator.blockchainsystems.threesim.behavior.MaliciousNodesIdProviderImpl
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimBlockchainSystemNodeBehaviorFactory
-import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransactionSelectionProcessFactory
-import org.palladiosimulator.blockchainsystems.threesim.creation.geography.ThreesimGeographicalRegionsResolver
-import java.util.random.RandomGenerator
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimBlockchainSystemNodeTagProvider
+import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransactionSelectionProcessFactory
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransactionSubmissionProcess
 import org.palladiosimulator.blockchainsystems.threesim.creation.abstractions.NodeAllocationResolver
-import java.util.UUID
-import org.palladiosimulator.blockchainsystems.bscm.p2pnetwork.NetworkTopology
-import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider
-import org.palladiosimulator.blockchainsystems.threesim.behavior.MaliciousNodesIdProviderImpl
+import org.palladiosimulator.blockchainsystems.threesim.creation.geography.ThreesimGeographicalRegionsResolver
+import org.palladiosimulator.blockchainsystems.threesim.creation.network.connectedsubgraphs.ConnectedSubgraphNetworkCreationResult
+import org.palladiosimulator.blockchainsystems.threesim.creation.network.connectedsubgraphs.ConnectedSubgraphNetworkResourcePowerCalculator
 import org.palladiosimulator.blockchainsystems.threesim.selfishmining.behavior.SelfishMiningBlockchainSystemNodeBehaviorFactory
-import java.util.HashSet
+import java.util.UUID
+import java.security.MessageDigest
 
-/**
- * Factory for creating a generic [BlockchainSystem]
- *
- * @author Davis Riedel
- */
+/** Factory for creating a generic 3SIM blockchain system. */
 abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
   protected val designBlockchainSystem: DesignBlockchainSystem,
   protected val networkTopology: NetworkTopology,
   protected val attackSimulation: Boolean,
   protected val runId: Int = 0,
   protected val gamma: Double = 0.5,
-  // Explicit, caller-overridable seed for attacker-node selection (see selectAttackerNodeIds).
-  // Defaults to null, meaning "derive from runId" -- there is no pre-existing simulation-wide
-  // seed to reuse (mining/transaction/latency/bandwidth all use unseeded RandomGenerator.of
-  // ("Random") deliberately, for genuine run-to-run Monte Carlo variation), so this is a new,
-  // dedicated parameter rather than a repurposed one. Deriving the default from runId keeps
-  // each Monte Carlo round's attacker draw distinct while remaining fully reproducible for a
-  // fixed (config, runId) pair; pass an explicit value to control it independently of runId.
-  protected val attackerSelectionSeed: Long? = null
+  networkSeed: Long = 0L,
+  eventSeed: Long = 0L
 ) {
-  protected abstract fun createP2PNetworkFactory(): P2PNetworkFactory
+  protected val randomness = RefinedExperimentRandomness(networkSeed, eventSeed)
 
+  @Volatile
+  private var lastCreationAudit: RefinedCreationAudit? = null
+
+  protected abstract fun createP2PNetworkFactory(): P2PNetworkFactory
   protected abstract fun getNodeAllocationResolver(networkCreationResult: P2PNetworkCreationResult): NodeAllocationResolver
   protected abstract fun getResourcePowerCalculator(networkCreationResult: P2PNetworkCreationResult): ResourcePowerCalculator
 
-  // Set by createBlockchainSystemNodeFactory (during createBlockchainSystem), read by
-  // logNodeInitializationInfo -- the actual seed used for attacker selection on this run, so it
-  // ends up in the run's node-init JSON output and results are traceable/reproducible after the
-  // fact.
-  private var lastAttackerSelectionSeed: Long? = null
-
-  /**
-   * Selects exactly `numberOfAttacker` node IDs uniformly at random from `nodeIds`, using an
-   * explicit seeded RNG. Replaces the previous mechanism, which assigned the first
-   * `numberOfAttacker` nodes encountered while iterating a `HashSet<P2PNode>` (JVM
-   * object-identity hash-bucket order, since `P2PNode` does not override `equals`/`hashCode`) --
-   * not a documented or reproducible random draw. `nodeIds` must be a stably-ordered `List`
-   * (the caller sorts it) so that "same seed -> same selection" is well-defined independent of
-   * any `Set`'s iteration order.
-   */
-  private fun selectAttackerNodeIds(nodeIds: List<String>, numberOfAttacker: Int, seed: Long): Set<String> {
-    if (numberOfAttacker <= 0 || nodeIds.isEmpty()) return emptySet()
-    return nodeIds.shuffled(kotlin.random.Random(seed)).take(numberOfAttacker).toSet()
-  }
-
   fun createBlockchainSystem(): BlockchainSystem {
-    val networkFactory = createP2PNetworkFactory()
-
-    val networkCreationResult = networkFactory.createP2PNetwork()
-
-    // Create information provider based on the generated network
+    val networkCreationResult = createP2PNetworkFactory().createP2PNetwork()
     val nodeAllocationResolver = getNodeAllocationResolver(networkCreationResult)
     val resourcePowerCalculator = getResourcePowerCalculator(networkCreationResult)
 
     val geographicalRegionsResolver = ThreesimGeographicalRegionsResolver(
       designBlockchainSystem.geographicalRegionsSpecification,
       nodeAllocationResolver
-    );
-
-    // Create factories based on information providers and metamodel
+    )
     val blockFactory: BlockFactory = createBlockFactory()
+
+    val requestedAttackers = if (attackSimulation) designBlockchainSystem.specification.numberOfAttacker else 0
+    val attackerIds = sampleAdversarialNodeIds(
+      networkCreationResult.createdNetwork.nodes.map { it.endpointId },
+      requestedAttackers
+    )
+    val maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider =
+      MaliciousNodesIdProviderImpl(HashSet(attackerIds), requestedAttackers)
 
     val nodeFactory = createBlockchainSystemNodeFactory(
       nodeAllocationResolver,
       resourcePowerCalculator,
       blockFactory,
       geographicalRegionsResolver,
-      networkCreationResult
+      maliciousNodesIdProvider
     )
 
     val blockchainSystem = createBlockchainSystemInstance(
@@ -107,17 +83,120 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
       designBlockchainSystem.specification.blockReward
     )
 
-    logNodeInitializationInfo(blockchainSystem, networkCreationResult.createdNetwork)
-
+    lastCreationAudit = buildCreationAudit(
+      networkCreationResult,
+      resourcePowerCalculator,
+      attackerIds
+    )
+    logNodeInitializationInfo(blockchainSystem, networkCreationResult.createdNetwork, lastCreationAudit)
     return blockchainSystem
   }
 
-  private fun logNodeInitializationInfo(blockchainSystem: BlockchainSystem, network: P2PNetwork) {
+  /** Structural realization associated with the most recently created single run. */
+  fun getLastCreationAudit(): RefinedCreationAudit? = lastCreationAudit
+
+  private fun sampleAdversarialNodeIds(nodeIds: Collection<String>, requested: Int): Set<String> {
+    require(requested >= 0) { "Number of attackers must be >= 0." }
+    require(requested <= nodeIds.size) {
+      "Number of attackers $requested exceeds validating-node count ${nodeIds.size}."
+    }
+    if (requested == 0) return emptySet()
+
+    val shuffled = nodeIds.sorted().toMutableList()
+    val rng = randomness.network("adversarial-identity-assignment")
+    for (i in 0 until requested) {
+      val j = i + rng.nextInt(shuffled.size - i)
+      val tmp = shuffled[i]
+      shuffled[i] = shuffled[j]
+      shuffled[j] = tmp
+    }
+    return shuffled.take(requested).toSet()
+  }
+
+  private fun buildCreationAudit(
+    networkCreationResult: P2PNetworkCreationResult,
+    resourcePowerCalculator: ResourcePowerCalculator,
+    attackerIds: Set<String>
+  ): RefinedCreationAudit? {
+    val connected = networkCreationResult as? ConnectedSubgraphNetworkCreationResult ?: return null
+    val topology = networkTopology as? ConnectedSubgraphsNetworkTopology ?: return null
+    val subgraph = topology.subgraphs.singleOrNull() ?: return null
+
+    val nv = connected.createdNetwork.nodes.size
+    val c = connected.connectionCount
+    val globalPower = resourcePowerCalculator.calculateGlobalResourcePower()
+    val shares = connected.createdNetwork.nodes
+      .mapNotNull { n -> resourcePowerCalculator.getResourcePowerOfNode(n.endpointId)?.div(globalPower) }
+    val qA = connected.createdNetwork.nodes
+      .filter { it.endpointId in attackerIds }
+      .sumOf { n -> resourcePowerCalculator.getResourcePowerOfNode(n.endpointId)?.div(globalPower) ?: 0.0 }
+
+    val realizedHashH = (resourcePowerCalculator as? ConnectedSubgraphNetworkResourcePowerCalculator)
+      ?.realizedHashingPowerH ?: Double.NaN
+    val bandwidthSpec = subgraph.linkAllocation.bandwidthSpecification
+    val hashFingerprint = sha256Hex(
+      connected.createdNetwork.nodes.sortedBy { it.endpointId }.joinToString("|") { node ->
+        val share = resourcePowerCalculator.getResourcePowerOfNode(node.endpointId)?.div(globalPower) ?: 0.0
+        "${node.endpointId}=${java.lang.Double.toHexString(share)}"
+      }
+    )
+    val networkRealizationFingerprint = sha256Hex(
+      listOf(
+        connected.topologyFingerprint,
+        connected.bandwidthAllocationFingerprint,
+        connected.latencyAllocationFingerprint,
+        hashFingerprint,
+        attackerIds.sorted().joinToString(",")
+      ).joinToString("|")
+    )
+
+    return RefinedCreationAudit(
+      networkSeed = randomness.networkSeed,
+      eventSeed = randomness.eventSeed,
+      validatingNodeCount = nv,
+      connectionCount = c,
+      undirectedConnectionCount = connected.undirectedConnectionCount,
+      topologyFeasible = 2 * c <= nv - 1,
+      topologyConnected = connected.topologyConnected,
+      noSelfConnections = connected.noSelfConnections,
+      noDuplicateOrReciprocalInitiations = connected.noDuplicateOrReciprocalInitiations,
+      initiatedAcceptedEachEqualC = connected.initiatedAcceptedEachEqualC,
+      topologyFingerprint = connected.topologyFingerprint,
+      bandwidthAllocationFingerprint = connected.bandwidthAllocationFingerprint,
+      latencyAllocationFingerprint = connected.latencyAllocationFingerprint,
+      networkRealizationFingerprint = networkRealizationFingerprint,
+      systemBandwidthBudgetMbps = connected.systemBandwidthBudgetMbps,
+      nodeBandwidthSumMbps = connected.nodeBandwidthsMbps.values.sum(),
+      bandwidthUniformFloorFraction = connected.bandwidthUniformFloorFraction,
+      guaranteedMinimumEndpointBandwidthMbps = connected.guaranteedMinimumEndpointBandwidthMbps,
+      minimumRealizedEffectiveConnectionBandwidthMbps =
+        connected.minimumRealizedEffectiveConnectionBandwidthMbps,
+      targetNodeBandwidthH = bandwidthSpec.heterogeneityNodeTarget,
+      realizedNodeBandwidthH = connected.realizedNodeBandwidthH,
+      targetLinkBandwidthH = bandwidthSpec.heterogeneityLinkTarget,
+      meanRealizedLinkBandwidthH = connected.realizedLinkBandwidthHPerNode.values
+        .takeIf { it.isNotEmpty() }?.average() ?: Double.NaN,
+      meanConnectionLatencyMs = connected.connectionLatenciesMs.values
+        .takeIf { it.isNotEmpty() }?.average() ?: Double.NaN,
+      minConnectionLatencyMs = connected.connectionLatenciesMs.values.minOrNull() ?: -1L,
+      maxConnectionLatencyMs = connected.connectionLatenciesMs.values.maxOrNull() ?: -1L,
+      targetHashingPowerH = designBlockchainSystem.specification.hashRateConcentration,
+      realizedHashingPowerH = realizedHashH,
+      hashingPowerShareSum = shares.sum(),
+      numberOfAttackers = attackerIds.size,
+      realizedFractionOfAttackers = if (nv == 0) 0.0 else attackerIds.size.toDouble() / nv.toDouble(),
+      realizedAdversarialHashingPowerShare = qA,
+      attackerNodeIds = attackerIds.sorted()
+    )
+  }
+
+  private fun logNodeInitializationInfo(
+    blockchainSystem: BlockchainSystem,
+    network: P2PNetwork,
+    audit: RefinedCreationAudit?
+  ) {
     val networkImpl = network as? P2PNetworkImpl
     val systemName = "run_$runId"
-
-    // Compute all node bandwidths in a single pass over the edges (O(N)) instead of
-    // calling the per-node lookups (each an O(N) vertex scan) for every node (O(N²)).
     val (outgoingBandwidths, incomingBandwidths) =
       networkImpl?.computeTotalBandwidths() ?: (emptyMap<String, Double>() to emptyMap())
 
@@ -127,18 +206,20 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
       """{"nodeId": "${node.id}", "resourcePower": ${node.resourcePower}, "totalOutboundBandwidth": $outbound, "totalInboundBandwidth": $inbound}"""
     }
 
+    val auditJson = audit?.let {
+      """"networkSeed": ${it.networkSeed}, "eventSeed": ${it.eventSeed}, "connectionCount": ${it.connectionCount}, "bandwidthUniformFloorFraction": ${it.bandwidthUniformFloorFraction}, "guaranteedMinimumEndpointBandwidthMbps": ${it.guaranteedMinimumEndpointBandwidthMbps}, "minimumRealizedEffectiveConnectionBandwidthMbps": ${it.minimumRealizedEffectiveConnectionBandwidthMbps}, "realizedNodeBandwidthH": ${it.realizedNodeBandwidthH}, "meanRealizedLinkBandwidthH": ${it.meanRealizedLinkBandwidthH}, "realizedHashingPowerH": ${it.realizedHashingPowerH}, "numberOfAttackers": ${it.numberOfAttackers}, "realizedAdversarialHashingPowerShare": ${it.realizedAdversarialHashingPowerShare},"""
+    } ?: ""
+
     val json = """{
   "systemName": "$systemName",
+  $auditJson
   "totalNodes": ${blockchainSystem.nodes.size},
-  "attackerSelectionSeed": ${lastAttackerSelectionSeed?.toString() ?: "null"},
   "nodes": [
     $nodesJson
   ]
 }"""
 
     try {
-      // Keep selfish-mining and trilemma node-init logs in separate folders. attackSimulation
-      // is true only for the selfish-mining attack runs and false for the trilemma runs.
       val nodeInitDir = if (attackSimulation) "node_init_selfishmining" else "node_init_trilemma"
       val outputDir = java.nio.file.Paths.get(nodeInitDir)
       java.nio.file.Files.createDirectories(outputDir)
@@ -156,18 +237,18 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
     geographicalRegionsResolver: GeographicalRegionsResolver,
     blockReward: Double
   ): BlockchainSystem {
-    val blockchainSystemId = UUID.randomUUID().toString()
+    val systemIdRng = randomness.event("blockchain-system-id")
+    val blockchainSystemId = UUID(systemIdRng.nextLong(), systemIdRng.nextLong()).toString()
     val blockchainSystemName = "BlockchainSystem_" + blockchainSystemId.substring(0, 8)
-
     val genesisBlock = blockFactory.createGenesisBlock()
 
     val blockchainSystemNodes = network.nodes
       .map { nodeFactory.createBlockchainSystemNode(it, genesisBlock) }
       .toHashSet()
 
-
     val trxPropSpec = designBlockchainSystem.transactionsSpecification.transactionPropertiesSpecification
     val meanTrxCreationInterval = designBlockchainSystem.transactionsSpecification.meanTransactionCreationInterval
+    require(meanTrxCreationInterval > 0.0) { "Mean transaction creation interval must be > 0 ms." }
 
     val transactionSubmissionProcess = ThreesimTransactionSubmissionProcess(
       blockchainSystemId,
@@ -175,20 +256,21 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
       meanTrxCreationInterval,
       TransactionPropertiesValueProviderAdapter.create(
         trxPropSpec,
-        RandomGenerator.of("Random")
-      )
+        randomness.event("transaction-properties")
+      ),
+      arrivalRandomGenerator = randomness.event("transaction-arrival"),
+      identityRandomGenerator = randomness.event("transaction-identities")
     )
-
-    val geographicalRegions = geographicalRegionsResolver.resolveGeographicalRegions()
 
     return BlockchainSystem(
       blockchainSystemId,
       blockchainSystemName,
       network,
-      geographicalRegions,
+      geographicalRegionsResolver.resolveGeographicalRegions(),
       blockchainSystemNodes,
       transactionSubmissionProcess,
-      blockReward
+      blockReward,
+      randomness.event("transaction-recipient")
     )
   }
 
@@ -197,7 +279,7 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
     resourcePowerCalculator: ResourcePowerCalculator,
     blockFactory: BlockFactory,
     geographicalRegionsResolver: ThreesimGeographicalRegionsResolver,
-    networkCreationResult: P2PNetworkCreationResult
+    maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider
   ): BlockchainSystemNodeFactory {
     val blockchainFactory = BlockchainFactoryImpl(
       designBlockchainSystem.specification.numOfRequiredSecurityConfirmations
@@ -208,33 +290,19 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
     val trxMemPoolFactory = TrxMemPoolFactoryImpl()
     val miningProcessFactory = ThreesimMiningProcessFactory(
       designBlockchainSystem.specification.meanBlockTime,
-      resourcePowerCalculator
+      resourcePowerCalculator,
+      randomness
     )
     val transactionSelectionProcessFactory = ThreesimTransactionSelectionProcessFactory(
-      maxBlockSize = designBlockchainSystem.specification.maxBlockSize // in byte
+      maxBlockSize = designBlockchainSystem.specification.maxBlockSize
     )
-    val blockValidatorFactory = ThreesimBlockValidatorFactory(nodeAllocationResolver)
+    val blockValidatorFactory = ThreesimBlockValidatorFactory(nodeAllocationResolver, randomness)
 
-    val numberOfAttacker = if (attackSimulation) designBlockchainSystem.specification.numberOfAttacker else 0
-
-    // Pre-select the full attacker set upfront, via an explicit seeded uniform sample, before
-    // any node's behavior is created -- see selectAttackerNodeIds. Sorting the node IDs first
-    // gives a stable, Set-iteration-order-independent input to shuffle.
-    val effectiveAttackerSelectionSeed = attackerSelectionSeed ?: runId.toLong()
-    lastAttackerSelectionSeed = if (attackSimulation) effectiveAttackerSelectionSeed else null
-    val allNodeIds = networkCreationResult.createdNetwork.nodes.map { it.endpointId }.sorted()
-    val selectedAttackerIds = if (attackSimulation) {
-      selectAttackerNodeIds(allNodeIds, numberOfAttacker, effectiveAttackerSelectionSeed)
+    val numberOfAttacker = maliciousNodesIdProvider.getNumberOfAttacker()
+    val behaviorFactory = if (attackSimulation && numberOfAttacker > 0) {
+      SelfishMiningBlockchainSystemNodeBehaviorFactory(numberOfAttacker, gamma, randomness.eventSeed)
     } else {
-      emptySet()
-    }
-
-    val maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider =
-      MaliciousNodesIdProviderImpl(selectedAttackerIds.toMutableSet(), numberOfAttacker)
-    val behaviorFactory = if (attackSimulation) {
-      SelfishMiningBlockchainSystemNodeBehaviorFactory(numberOfAttacker, gamma)
-    } else {
-      ThreesimBlockchainSystemNodeBehaviorFactory()
+      ThreesimBlockchainSystemNodeBehaviorFactory(randomness)
     }
     val tagProvider = ThreesimBlockchainSystemNodeTagProvider(maliciousNodesIdProvider)
 
@@ -256,11 +324,12 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
     )
   }
 
-  private fun createBlockFactory(): BlockFactoryImpl {
-    return BlockFactoryImpl()
-  }
+  private fun createBlockFactory(): BlockFactoryImpl = BlockFactoryImpl(randomness.event("genesis-block-id"))
 
-  fun getBlockchainSystemSpecification(): BlockchainSystemSpecification {
-    return designBlockchainSystem.specification
-  }
+  private fun sha256Hex(value: String): String =
+    MessageDigest.getInstance("SHA-256")
+      .digest(value.toByteArray(Charsets.UTF_8))
+      .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+
+  fun getBlockchainSystemSpecification(): BlockchainSystemSpecification = designBlockchainSystem.specification
 }

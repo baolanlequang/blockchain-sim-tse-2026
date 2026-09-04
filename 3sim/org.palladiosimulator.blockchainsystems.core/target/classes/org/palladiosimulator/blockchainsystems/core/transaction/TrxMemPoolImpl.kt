@@ -51,8 +51,12 @@ class TrxMemPoolImpl(
   }
 
   override fun storeTransaction(transaction: Transaction) {
-    mempool.add(transaction) // not added!!!
-    logTransactionStoredEvent(transaction)
+    // TreeSet.add returns false for an already-present transaction. Do not emit a
+    // "stored" trace event for a no-op: duplicate trace events distort monitoring
+    // and unnecessarily allocate short-lived objects under high gossip load.
+    if (mempool.add(transaction)) {
+      logTransactionStoredEvent(transaction)
+    }
   }
 
   override fun storeTransactions(transactions: Collection<Transaction>) {
@@ -60,8 +64,10 @@ class TrxMemPoolImpl(
   }
 
   override fun removeTransaction(transaction: Transaction) {
-    mempool.remove(transaction)
-    logTransactionRemovedEvent(transaction)
+    // Likewise, record removal only when the transaction was actually present.
+    if (mempool.remove(transaction)) {
+      logTransactionRemovedEvent(transaction)
+    }
   }
 
   override fun removeTransactions(transactions: Collection<Transaction>) {

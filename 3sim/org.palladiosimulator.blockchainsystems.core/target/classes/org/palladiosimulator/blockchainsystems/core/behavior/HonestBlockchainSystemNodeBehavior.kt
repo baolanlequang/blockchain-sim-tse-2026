@@ -7,13 +7,16 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.Blockcha
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeContext
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Transaction
 import java.util.*
+import java.util.random.RandomGenerator
 
 /**
  * This behavior represents a node in the blockchain system that behaves honestly.
  *
  * @author Yannik Sproll
  */
-class HonestBlockchainSystemNodeBehavior : BlockchainNodeObject(), BlockchainSystemNodeBehavior {
+class HonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
+  private val randomGenerator: RandomGenerator = RandomGenerator.of("Random")
+) : BlockchainNodeObject(), BlockchainSystemNodeBehavior {
   override fun onBlockReceived(
     block: Block,
     context: BlockchainSystemNodeContext
@@ -63,7 +66,7 @@ class HonestBlockchainSystemNodeBehavior : BlockchainNodeObject(), BlockchainSys
 
     // Create a new block with the selected transactions
     return context.blockFactory.createBlock(
-      UUID.randomUUID().toString(),
+      UUID(randomGenerator.nextLong(), randomGenerator.nextLong()).toString(),
       previousBlockHash,
       context.id,
       blockMinedAt,
@@ -74,7 +77,7 @@ class HonestBlockchainSystemNodeBehavior : BlockchainNodeObject(), BlockchainSys
 
   override fun onPreviousBlockSelection(context: BlockchainSystemNodeContext): String {
     val blocks = context.blockchain.getLastBlocksOfLongestChains()
-    return blocks.stream().findFirst().get().hash
+    return blocks.sortedBy { it.hash }.first().hash
   }
 
   override fun onNodeInitialized(context: BlockchainSystemNodeContext) {
