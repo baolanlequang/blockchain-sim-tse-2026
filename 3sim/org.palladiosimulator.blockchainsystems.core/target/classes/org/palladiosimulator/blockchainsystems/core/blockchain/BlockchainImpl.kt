@@ -61,9 +61,15 @@ class BlockchainImpl(
       val newBlockchainElementPosition = previousBlockchainElement.position + 1
 
       if (this.length < newBlockchainElementPosition) {
-        // Appended to one of the longest branches -> branch is now the single longest branch
-        appendIncludedBlock(block, previousBlockchainElement, newBlockchainElementPosition)
-        return BlockAppendingResult.createBlockAppendedResult(BlockType.IncludedBlock)
+        // Appended to one of the longest branches -> branch is now the single longest branch.
+        // Preserve the exact fork-resolution transitions so node behavior can
+        // reconcile transactions from the losing branch back into its mempool.
+        val transitions = appendIncludedBlock(block, previousBlockchainElement, newBlockchainElementPosition)
+        return BlockAppendingResult.createBlockAppendedResult(
+          BlockType.IncludedBlock,
+          transitions.becameStale,
+          transitions.becameIncluded
+        )
       } else if (this.length == newBlockchainElementPosition) {
         // Part of a branch that is now equally long as longest branch -> Potential fork
         appendForkingBlock(block, previousBlockchainElement, newBlockchainElementPosition)
@@ -79,7 +85,18 @@ class BlockchainImpl(
   }
 
 
-  private fun appendIncludedBlock(block: Block, previousBlockchainElement: BlockchainElement, blockPosition: Long) {
+  private data class ForkResolutionTransitions(
+    val becameStale: Set<Block>,
+    val becameIncluded: Set<Block>
+  )
+
+  private fun appendIncludedBlock(
+    block: Block,
+    previousBlockchainElement: BlockchainElement,
+    blockPosition: Long
+  ): ForkResolutionTransitions {
+    val becameStale = linkedSetOf<Block>()
+    val becameIncluded = linkedSetOf<Block>()
     val newBlockchainElement = BlockchainElement(
       block,
       previousBlockchainElement,
@@ -103,25 +120,32 @@ class BlockchainImpl(
     longestChainsLastBlocks.add(newBlockchainElement)
 
     logBlockAppended(block, blockPosition, previousBlockchainElement.block, BlockType.IncludedBlock)
+    becameIncluded.add(block)
 
-    // If the blockchain is currently forked, mark blocks in other branches as stale blocks
+    // If the blockchain is currently forked, mark blocks in other branches as stale blocks.
     for (blockchainElement in staleBlockBranches) {
-      traverseBlockchainAndChangeBlockTypes(
-        blockchainElement,
-        BlockchainElementType.Forking,
-        BlockchainElementType.Stale
+      becameStale.addAll(
+        traverseBlockchainAndChangeBlockTypes(
+          blockchainElement,
+          BlockchainElementType.Forking,
+          BlockchainElementType.Stale
+        ).map { it.block }
       )
     }
 
-    // Mark (currently forked) descendants of new (latest) block as included
-    traverseBlockchainAndChangeBlockTypes(
-      previousBlockchainElement,
-      BlockchainElementType.Forking,
-      BlockchainElementType.Included
+    // Mark (currently forked) descendants of new (latest) block as included.
+    becameIncluded.addAll(
+      traverseBlockchainAndChangeBlockTypes(
+        previousBlockchainElement,
+        BlockchainElementType.Forking,
+        BlockchainElementType.Included
+      ).map { it.block }
     )
 
-    // Mark included blocks that now have enough confirmations as confirmed
+    // Mark included blocks that now have enough confirmations as confirmed.
     markConfirmedBlocks(newBlockchainElement)
+
+    return ForkResolutionTransitions(becameStale, becameIncluded)
   }
 
 
@@ -216,12 +240,15 @@ class BlockchainImpl(
     startingElement: BlockchainElement,
     whileType: BlockchainElementType,
     newType: BlockchainElementType
-  ) {
+  ): List<BlockchainElement> {
+    val changed = mutableListOf<BlockchainElement>()
     var currentElement: BlockchainElement? = startingElement
     while (currentElement?.type == whileType) {
+      changed.add(currentElement)
       changeBlockType(currentElement, newType)
       currentElement = currentElement.previousBlockchainElement
     }
+    return changed
   }
 
   private fun changeBlockType(blockchainElement: BlockchainElement, newBlockType: BlockchainElementType) {

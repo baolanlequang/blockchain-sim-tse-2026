@@ -113,6 +113,10 @@ class SelfishMiningNodeBehavior @JvmOverloads constructor(
     }
 
     privateChain.add(block)
+    // A hidden private chain must not repeatedly mine the same transaction in
+    // successive private blocks. If the published branch later loses, normal
+    // fork-resolution reconciliation restores its unique transactions.
+    context.trxMemPool.removeTransactions(block.transactions)
     ownTipHash = block.hash
     activeRoundPrivateBlockCount++
     logPrivateBlock(block, context)
@@ -170,7 +174,6 @@ class SelfishMiningNodeBehavior @JvmOverloads constructor(
     val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(block, context)
 
     if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
-      context.trxMemPool.removeTransactions(block.transactions)
       context.miningProcess.restartMining()
       context.blockPropagationStrategy.distribute(block)
 
@@ -179,8 +182,9 @@ class SelfishMiningNodeBehavior @JvmOverloads constructor(
       }
 
       // Once we meaningfully adopt public progress, the prior hidden branch is no longer treated
-      // as our active private advantage.
-      resetPrivateState()
+      // as our active private advantage. Transactions from unpublished private blocks must become
+      // eligible again unless they are already present on a surviving longest branch.
+      resetPrivateState(context)
     }
   }
 
@@ -196,7 +200,6 @@ class SelfishMiningNodeBehavior @JvmOverloads constructor(
 
     if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
       privateChain.removeAt(0)
-      context.trxMemPool.removeTransactions(publish.transactions)
       context.miningProcess.restartMining()
       context.blockPropagationStrategy.distribute(publish)
       return true
@@ -306,7 +309,27 @@ class SelfishMiningNodeBehavior @JvmOverloads constructor(
 
   private fun hiddenLead(): Int = privateChain.size
 
-  private fun resetPrivateState() {
+  private fun resetPrivateState(context: BlockchainSystemNodeContext? = null) {
+    if (context != null && privateChain.isNotEmpty()) {
+      val activeLongestChainTxIds = context.blockchain.getLongestChains()
+        .asSequence()
+        .flatten()
+        .flatMap { it.transactions.asSequence() }
+        .map { it.txId }
+        .toHashSet()
+
+      val abandonedTransactions = privateChain
+        .asSequence()
+        .flatMap { it.transactions.asSequence() }
+        .filter { it.txId !in activeLongestChainTxIds }
+        .distinctBy { it.txId }
+        .toList()
+
+      if (abandonedTransactions.isNotEmpty()) {
+        context.trxMemPool.storeTransactions(abandonedTransactions)
+      }
+    }
+
     privateChain.clear()
     ownTipHash = null
     inTieState = false

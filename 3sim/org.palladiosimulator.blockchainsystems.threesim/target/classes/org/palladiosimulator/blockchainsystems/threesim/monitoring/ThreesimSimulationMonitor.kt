@@ -58,6 +58,8 @@ class ThreesimSimulationMonitor(
   private val refinedWindowEnabled: Boolean get() = measuredBlocksPerValidator > 0
   private var phase: Phase = Phase.LEGACY
   private var warmupTargetCanonicalBlocks = 0
+  /** Unique blocks that have crossed the canonical-majority threshold during warm-up. */
+  private val warmupCanonicalBlocksSeen = linkedSetOf<String>()
   private var measurementTargetCanonicalBlocks = 0
   private var measurementStartTimeMs = 0L
   private var measurementEndTimeMs = 0L
@@ -87,6 +89,21 @@ class ThreesimSimulationMonitor(
    */
   private val blockProgressEvery: Int =
     Integer.getInteger("threesim.blockProgressEvery", 0)
+
+  /*
+   * SAFETY WATCHDOG FOR REFINED WINDOWS. Disabled by default. When enabled,
+   * terminate an execution as incomplete if the phase-local canonical-progress
+   * high-water mark has not increased for the configured amount of simulated
+   * time during WARMUP or MEASUREMENT. This does not alter consensus, fork
+   * choice, mining, transaction processing, or random-number consumption.
+   *
+   * Enable, for example, with:
+   *   -Dthreesim.canonicalProgressStallMs=7200000
+   */
+  private val canonicalProgressStallMillis: Long =
+    java.lang.Long.getLong("threesim.canonicalProgressStallMs", 0L).coerceAtLeast(0L)
+  private var canonicalProgressHighWater: Int = 0
+  private var canonicalProgressLastAdvanceTimeMs: Long = 0L
 
   /** Tracks majority-visible canonical-chain membership (Included or Confirmed) for window control. */
   private lateinit var canonicalProgressBlocks: BlocksMap
@@ -163,6 +180,7 @@ class ThreesimSimulationMonitor(
     canonicalMeasurementBlocks = BlocksMap(majorityThreshold)
 
     if (refinedWindowEnabled) {
+      warmupCanonicalBlocksSeen.clear()
       warmupTargetCanonicalBlocks = warmupBlocksPerValidator * nodes.size
       measurementTargetCanonicalBlocks = warmupTargetCanonicalBlocks + measuredBlocksPerValidator * nodes.size
       if (warmupTargetCanonicalBlocks > 0) {
@@ -369,6 +387,9 @@ class ThreesimSimulationMonitor(
         val canonicalBecameValid = if (phase != Phase.DRAIN && isCanonicalType(e.appendedBlockType)) {
           canonicalProgressBlocks.addNodeToBlock(e.appendedBlock, logOrigin.id, e.occurrenceTime)
         } else false
+        if (phase == Phase.WARMUP && canonicalBecameValid) {
+          warmupCanonicalBlocksSeen.add(e.appendedBlock.hash)
+        }
         val confirmationBecameValid = if (e.appendedBlockType == BlockType.ConfirmedBlock) {
           confirmationProgressBlocks.addNodeToBlock(e.appendedBlock, logOrigin.id, e.occurrenceTime)
         } else false
@@ -413,6 +434,9 @@ class ThreesimSimulationMonitor(
           } else if (!oldCanonical && newCanonical) {
             canonicalBecameValid = canonicalProgressBlocks.addNodeToBlock(e.block, nodeId, e.occurrenceTime)
           }
+        }
+        if (phase == Phase.WARMUP && canonicalBecameValid) {
+          warmupCanonicalBlocksSeen.add(e.block.hash)
         }
 
         if (e.oldBlockType == BlockType.ConfirmedBlock && e.newBlockType != BlockType.ConfirmedBlock) {
@@ -502,7 +526,18 @@ class ThreesimSimulationMonitor(
 
   private fun updateRefinedPhaseAfterCanonicalProgress(occurrenceTime: Long) {
     if (!refinedWindowEnabled) return
-    val canonicalCount = canonicalProgressBlocks.getNumberOfValidBlocks()
+    val canonicalCount = if (phase == Phase.WARMUP) {
+      warmupCanonicalBlocksSeen.size
+    } else {
+      warmupTargetCanonicalBlocks + canonicalMeasurementBlocks.getNumberOfValidBlocks()
+    }
+
+    // Track a high-water mark, not the instantaneous canonical count: a reorg
+    // may legitimately reduce the latter and must not be mistaken for progress.
+    if (canonicalCount > canonicalProgressHighWater) {
+      canonicalProgressHighWater = canonicalCount
+      canonicalProgressLastAdvanceTimeMs = occurrenceTime
+    }
 
     if (
       canonicalProgressEvery > 0 &&
@@ -544,6 +579,8 @@ class ThreesimSimulationMonitor(
   private fun beginMeasurement(occurrenceTime: Long) {
     phase = Phase.MEASUREMENT
     measurementStartTimeMs = occurrenceTime
+    canonicalProgressHighWater = warmupTargetCanonicalBlocks
+    canonicalProgressLastAdvanceTimeMs = occurrenceTime
     numberOfSubmittedTransactions = 0
     blocksProposedPerNode = CounterMap.create(nodes.map { it.id })
     includedBlocks.clear()
@@ -712,7 +749,7 @@ class ThreesimSimulationMonitor(
    * change the requested measurement sample size.
    */
   private fun canonicalBlocksObservedForWindowControl(): Int = when (phase) {
-    Phase.WARMUP -> canonicalProgressBlocks.getNumberOfValidBlocks()
+    Phase.WARMUP -> warmupCanonicalBlocksSeen.size
     Phase.MEASUREMENT, Phase.DRAIN ->
       warmupTargetCanonicalBlocks + canonicalMeasurementBlocks.getNumberOfValidBlocks()
     Phase.LEGACY -> canonicalProgressBlocks.getNumberOfValidBlocks()
@@ -756,6 +793,27 @@ class ThreesimSimulationMonitor(
       return false
     }
 
+    if (
+      canonicalProgressStallMillis > 0L &&
+      (phase == Phase.WARMUP || phase == Phase.MEASUREMENT)
+    ) {
+      val noProgressForMs = simulationClock.currentTime - canonicalProgressLastAdvanceTimeMs
+      if (noProgressForMs >= canonicalProgressStallMillis) {
+        System.err.println(
+          "[3SIM-canonical-stall] phase=${phase.name} " +
+            "canonicalHighWater=$canonicalProgressHighWater " +
+            "canonicalNow=${canonicalBlocksObservedForWindowControl()} " +
+            "noProgressForMs=$noProgressForMs " +
+            "stallThresholdMs=$canonicalProgressStallMillis " +
+            "proposals=$totalBlockProposalsAllPhases " +
+            "longestChain=${maxBlockchainLengthCondition.currentLength} " +
+            "submittedTxAllPhases=$totalTransactionSubmissionsAllPhases " +
+            "timeMs=${simulationClock.currentTime}"
+        )
+        return markTermination("CANONICAL_PROGRESS_STALL", false)
+      }
+    }
+
     if (inactivityThresholdCondition.hasProlongedInactivityExceeded()) {
       return markTermination("INACTIVITY", false)
     }
@@ -773,6 +831,9 @@ class ThreesimSimulationMonitor(
   fun setSimulationClock(simulationClock: SimulationClock) {
     this.simulationClock = simulationClock
     this.inactivityThresholdCondition.simulationClock = simulationClock
+    if (refinedWindowEnabled) {
+      canonicalProgressLastAdvanceTimeMs = simulationClock.currentTime
+    }
   }
 
   private fun monitorThroughputForNewlyConfirmedBlock(confirmedBlock: Block, occurrenceTime: Long) {

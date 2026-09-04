@@ -3,9 +3,12 @@ package org.palladiosimulator.blockchainsystems.threesim.simulation.results
 import kotlinx.serialization.Serializable
 import org.palladiosimulator.blockchainsystems.threesim.creation.RefinedCreationAudit
 import org.palladiosimulator.blockchainsystems.threesim.monitoring.TransactionFollowUpObservation
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 
 /** Raw and derived values needed for refined-study verification/pilot analysis. */
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 data class RefinedExecutionAudit(
   val creation: RefinedCreationAudit? = null,
   val refinedWindowEnabled: Boolean,
@@ -67,10 +70,16 @@ data class RefinedExecutionAudit(
    * when it starts inside the measurement window. Pending rounds at measurement end are
    * reported as ambiguous and excluded from the SPSM denominator.
    */
+  @EncodeDefault
   val selfishMiningAttackRoundsStarted: Int = 0,
+  @EncodeDefault
   val successfulSelfishMiningAttackRounds: Int = 0,
+  @EncodeDefault
   val failedSelfishMiningAttackRounds: Int = 0,
+  @EncodeDefault
   val ambiguousSelfishMiningAttackRounds: Int = 0,
+  @EncodeDefault
   val unambiguousSelfishMiningAttackRounds: Int = 0,
+  @EncodeDefault
   val selfishMiningSuccessProbability: Double? = null
 )
