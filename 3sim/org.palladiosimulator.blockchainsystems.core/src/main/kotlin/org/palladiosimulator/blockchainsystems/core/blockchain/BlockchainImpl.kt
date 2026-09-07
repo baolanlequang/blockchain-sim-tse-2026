@@ -397,6 +397,41 @@ class BlockchainImpl(
     return length.toLong()
   }
 
+  override fun findTransactionIdsOnLongestChains(
+    candidateTxIds: Set<String>,
+    fromPositionInclusive: Long
+  ): Set<String> {
+    if (candidateTxIds.isEmpty()) return emptySet()
+
+    val remaining = candidateTxIds.toMutableSet()
+    val found = HashSet<String>()
+    val minimumPosition = maxOf(INITIAL_BLOCKCHAIN_LENGTH, fromPositionInclusive)
+
+    // longestChainsLastBlocks already identifies the active tips. Walk backwards only
+    // to the caller's lower bound and stop as soon as every candidate has been found.
+    // Unlike getLongestChains(), this does not allocate complete chain copies.
+    for (tip in longestChainsLastBlocks) {
+      var currentElement: BlockchainElement? = tip
+
+      while (
+        currentElement != null &&
+        currentElement.position >= minimumPosition &&
+        remaining.isNotEmpty()
+      ) {
+        for (transaction in currentElement.block.transactions) {
+          if (remaining.remove(transaction.txId)) {
+            found.add(transaction.txId)
+            if (remaining.isEmpty()) return found
+          }
+        }
+
+        currentElement = currentElement.previousBlockchainElement
+      }
+    }
+
+    return found
+  }
+
   override fun getLongestChains(): List<ArrayList<Block>> {
     return longestChainsLastBlocks.map {
       val blocks = ArrayList<Block>()
