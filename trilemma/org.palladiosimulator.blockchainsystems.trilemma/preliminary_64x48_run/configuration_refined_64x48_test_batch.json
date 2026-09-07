@@ -1,0 +1,17 @@
+{
+	"experimentPhase": "pilot",
+	"requireHierarchicalManifest": "true",
+	"declaredSamplePairs": "6",
+	"allowValidatedPartialBatch": "true",
+	"_note_declaredSamplePairs": "6 is the TRUE pair count for the whole test batch (test_batch_manifest_24rows.csv), not per SLURM task. run_trilemma_job.sh passes each task's SLICE_CSV (1 pair's 4 rows under ROWS_PER_TASK=4), so allowValidatedPartialBatch=true skips the per-process pair-count match check (TrilemmaSimulator.java's validateDeclaredSamplePairCount). Keep declaredSamplePairs at the real batch-level count for provenance in result JSONs; do not set it to 1 -- it is not a per-task value and must not be treated as one.",
+	"blockchainSystemModelFilePath": "testmodels/refined-base/Net.blockchainsystem",
+	"warmup_blocks_per_validator": "4",
+	"measured_blocks_per_validator": "4",
+	"transaction_drain_seconds": "14400",
+	"masterSeed": "1024",
+	"baselineBandwidthPerEndpointMbps": "1000",
+	"failureThroughputThreshold": "1.0",
+	"shannonEntropyK": "1.0",
+	"nakamotoCoefficientThreshold": "50.0",
+	"reliabilityObservationTimespan": "24.0"
+}
