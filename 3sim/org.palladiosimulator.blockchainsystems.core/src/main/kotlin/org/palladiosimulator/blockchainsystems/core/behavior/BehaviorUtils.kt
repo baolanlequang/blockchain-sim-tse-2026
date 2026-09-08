@@ -123,21 +123,30 @@ object BehaviorUtils {
       emptyList()
     } else {
       // Restore only transactions absent from every currently longest branch.
-      // Looking only at blocks whose type changed in this append is insufficient:
-      // the same transaction may already exist in an older surviving block.
-      val activeLongestChainTxIds = context.blockchain.getLongestChains()
-        .asSequence()
-        .flatten()
-        .flatMap { it.transactions.asSequence() }
-        .map { it.txId }
-        .toHashSet()
-
-      result.blocksBecameStale
+      // Search only the fork-affected suffix and only for transactions that could
+      // actually be restored; do not reconstruct every longest chain from genesis.
+      val staleTransactions = result.blocksBecameStale
         .asSequence()
         .flatMap { it.transactions.asSequence() }
-        .filter { it.txId !in activeLongestChainTxIds }
         .distinctBy { it.txId }
         .toList()
+
+      val candidateTxIds = staleTransactions.map { it.txId }.toHashSet()
+      val earliestStalePosition = result.blocksBecameStale
+        .asSequence()
+        .map { context.blockchain.getPositionOfBlock(it) }
+        .filter { it > 0L }
+        .minOrNull()
+        ?: 1L
+
+      // Include the fork point conservatively. In the common shallow-reorg case this
+      // bounds the walk to only a handful of recent blocks.
+      val activeLongestChainTxIds = context.blockchain.findTransactionIdsOnLongestChains(
+        candidateTxIds,
+        maxOf(1L, earliestStalePosition - 1L)
+      )
+
+      staleTransactions.filter { it.txId !in activeLongestChainTxIds }
     }
 
     if (toRestore.isNotEmpty()) {
