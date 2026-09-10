@@ -311,19 +311,30 @@ class SelfishMiningNodeBehavior @JvmOverloads constructor(
 
   private fun resetPrivateState(context: BlockchainSystemNodeContext? = null) {
     if (context != null && privateChain.isNotEmpty()) {
-      val activeLongestChainTxIds = context.blockchain.getLongestChains()
-        .asSequence()
-        .flatten()
-        .flatMap { it.transactions.asSequence() }
-        .map { it.txId }
-        .toHashSet()
-
-      val abandonedTransactions = privateChain
+      val privateTransactions = privateChain
         .asSequence()
         .flatMap { it.transactions.asSequence() }
-        .filter { it.txId !in activeLongestChainTxIds }
         .distinctBy { it.txId }
         .toList()
+
+      val candidateTxIds = privateTransactions.map { it.txId }.toHashSet()
+
+      // The first still-private block is anchored either directly to the public
+      // chain or to an attacker block that has already been published. Transactions
+      // mined before that base cannot have originated in this abandoned suffix.
+      val privateBasePosition = privateChain.first().previousHash
+        ?.let { context.blockchain.getBlock(it) }
+        ?.let { context.blockchain.getPositionOfBlock(it) }
+        ?.takeIf { it > 0L }
+        ?: 1L
+
+      val activeLongestChainTxIds = context.blockchain.findTransactionIdsOnLongestChains(
+        candidateTxIds,
+        privateBasePosition
+      )
+
+      val abandonedTransactions = privateTransactions
+        .filter { it.txId !in activeLongestChainTxIds }
 
       if (abandonedTransactions.isNotEmpty()) {
         context.trxMemPool.storeTransactions(abandonedTransactions)
