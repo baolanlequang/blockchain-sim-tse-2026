@@ -30,7 +30,7 @@ object BehaviorUtils {
         val appendedBlockType = blockAppendingResult.blockType
 
         val orphanBlocks = context.orphanBlockPool
-          .getBlocksByPreviousBlockHash(block.hash)
+          .removeBlocksByPreviousBlockHash(block.hash)
 
         // A newly arrived ancestor can unlock one or more previously orphaned
         // descendants. If any recursively appended descendant extends the
@@ -77,7 +77,7 @@ object BehaviorUtils {
       BlockAppendingResultType.Appended -> {
         reconcileMempoolAfterAppend(block, blockAppendingResult, context)
         val orphanBlocks = context.orphanBlockPool
-          .getBlocksByPreviousBlockHash(block.hash)
+          .removeBlocksByPreviousBlockHash(block.hash)
 
         orphanBlocks.forEach { orphanBlock ->
           val orphanOutcome = appendBlockToBlockchainDetailed(orphanBlock, context, visited)

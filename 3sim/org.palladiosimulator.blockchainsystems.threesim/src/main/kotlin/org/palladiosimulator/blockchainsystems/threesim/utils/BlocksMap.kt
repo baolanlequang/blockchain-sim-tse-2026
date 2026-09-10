@@ -21,7 +21,13 @@ class BlocksMap(private val threshold: Int) {
 
   fun removeNodeFromBlock(blockHash: String, nodeId: String): Boolean {
     val wasValid = isBlockValid(blockHash)
-    blocks[blockHash]?.second?.remove(nodeId)
+    val entry = blocks[blockHash]
+    entry?.second?.remove(nodeId)
+    if (entry != null && entry.second.isEmpty()) {
+      // No validator currently classifies this block in this map. Drop the block
+      // reference instead of retaining an empty membership entry for the whole run.
+      blocks.remove(blockHash)
+    }
     val isValid = isBlockValid(blockHash)
     if (!isValid) timestamps.remove(blockHash)
     return wasValid && !isValid
