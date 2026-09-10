@@ -25,11 +25,6 @@ class BlockchainImpl(
   private val blockchainElementsMap: HashMap<String, BlockchainElement> =
     hashMapOf(Pair(genesisBlock.block.hash, genesisBlock))
 
-  // Contains all blocks by their chain position, kept in sync with blockchainElementsMap so
-  // getBlocksAtPosition() doesn't need to scan every block ever appended
-  private val blockchainElementsByPosition: HashMap<Long, HashSet<BlockchainElement>> =
-    hashMapOf(Pair(genesisBlock.position, hashSetOf(genesisBlock)))
-
   private var length: Long = INITIAL_BLOCKCHAIN_LENGTH
 
   override fun dispatchEvent(event: Event) {
@@ -106,7 +101,6 @@ class BlockchainImpl(
 
     // Store new block by hash
     blockchainElementsMap.put(block.hash, newBlockchainElement)
-    blockchainElementsByPosition.getOrPut(blockPosition) { hashSetOf() }.add(newBlockchainElement)
 
     this.length = blockPosition
 
@@ -197,7 +191,6 @@ class BlockchainImpl(
 
     // Store new block by hash
     blockchainElementsMap.put(block.hash, newBlockchainElement)
-    blockchainElementsByPosition.getOrPut(blockPosition) { hashSetOf() }.add(newBlockchainElement)
 
     longestChainsLastBlocks.add(newBlockchainElement)
 
@@ -292,7 +285,6 @@ class BlockchainImpl(
     )
 
     blockchainElementsMap.put(block.hash, newBlockchainElement)
-    blockchainElementsByPosition.getOrPut(blockPosition) { hashSetOf() }.add(newBlockchainElement)
 
     logBlockAppended(block, blockPosition, previousBlockchainElement.block, BlockType.StaleBlock)
   }
@@ -324,10 +316,15 @@ class BlockchainImpl(
       return mutableSetOf<Block>()
     }
 
-    return blockchainElementsByPosition[position]
-      ?.map { it.block }
-      ?.toSet()
-      ?: emptySet()
+    // Position lookup is not on the simulation hot path. Keeping a second
+    // per-position index duplicated every BlockchainElement and created millions
+    // of HashMap/HashSet entries in large runs. Preserve the API and full history
+    // by deriving the result from the canonical hash index only when requested.
+    return blockchainElementsMap.values
+      .asSequence()
+      .filter { it.position == position }
+      .map { it.block }
+      .toSet()
   }
 
   override fun getLength(): Long {
