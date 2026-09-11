@@ -27,12 +27,14 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
    * validation. Blockchain membership alone cannot suppress duplicates during
    * that interval because the block has not yet been appended.
    */
-  private val knownBlockHashes = HashSet<String>()
-  private val announcedBlockHashes = HashSet<String>()
+  // One entry records both protocol states: false = known-only, true = already announced.
+  // This preserves duplicate-suppression semantics while avoiding two HashSet/HashMap
+  // entries for the common case where a block is both known and announced.
+  private val blockKnowledge = HashMap<String, Boolean>()
 
   /*
    * Lifecycle note: BlockchainNodeObject.onInitialize()/onCleanup() are final
-   * protected hooks in this source revision. These per-strategy sets therefore
+   * protected hooks in this source revision. This per-strategy map therefore
    * rely on normal object construction for an empty initial state. Strategy
    * instances are per-node/per-run and are discarded with the simulation, so an
    * explicit lifecycle override is neither legal nor required.
@@ -40,8 +42,7 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
 
 
   override fun shouldAnnounce(element: Block): Boolean {
-    knownBlockHashes.add(element.hash)
-    return announcedBlockHashes.add(element.hash)
+    return blockKnowledge.put(element.hash, true) != true
   }
 
 
@@ -64,7 +65,7 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
   ) {
     context?.blockchain?.let { blockchain ->
       val hash = message.content as String
-      if (knownBlockHashes.contains(hash) || blockchain.hasBlockWithHash(hash)) {
+      if (blockKnowledge.containsKey(hash) || blockchain.hasBlockWithHash(hash)) {
         // Block already exists or is already being handled; no need to request it.
         return
       }
@@ -95,7 +96,7 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
     // Suppress duplicate full-block deliveries before they can trigger duplicate
     // validation and redistribution. The first arrival still follows the original
     // validation/propagation path unchanged.
-    if (!knownBlockHashes.add(block.hash)) {
+    if (blockKnowledge.putIfAbsent(block.hash, false) != null) {
       return
     }
 
