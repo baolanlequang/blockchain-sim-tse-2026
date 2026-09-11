@@ -143,6 +143,18 @@ public class TrilemmaSimulator {
                         + " | event_seed=" + config.get("event_seed"));
                 try {
                     simulator.runSimulation(config, runId);
+
+                    // A refined execution can terminate cleanly at the engine level
+                    // while still being scientifically incomplete (for example the
+                    // canonical-progress watchdog can stop an unbounded run before the
+                    // requested measurement/drain windows finish). Preserve the rich
+                    // result JSON, but propagate that incompleteness to the batch status.
+                    String incompleteReason = refinedIncompleteReason(executionId);
+                    if (incompleteReason != null) {
+                        failedRuns++;
+                        System.err.println("Run incomplete and retained in the audit output: "
+                                + executionId + " | " + incompleteReason);
+                    }
                 } catch (Exception runFailure) {
                     failedRuns++;
                     writeFailedExecution(executionId, runId, config, runFailure);
@@ -165,6 +177,60 @@ public class TrilemmaSimulator {
             e.printStackTrace();
             System.exit(2);
         }
+    }
+
+    /**
+     * Return a concise reason when a serialized refined execution is incomplete,
+     * otherwise null. Engine-level termination is not sufficient for scientific
+     * completeness: refined runs require both the requested measurement window
+     * and transaction follow-up window to complete.
+     */
+    @SuppressWarnings("unchecked")
+    private static String refinedIncompleteReason(String executionId) throws IOException {
+        Path output = Paths.get("result_trilemma")
+                .resolve("result_config_" + sanitize(executionId) + ".json");
+        if (!Files.exists(output)) {
+            throw new IOException("Expected simulation result JSON was not written: " + output.toAbsolutePath());
+        }
+
+        Map<String, Object> root;
+        try (Reader reader = Files.newBufferedReader(output)) {
+            Type mapType = new TypeToken<Map<String, Object>>() { }.getType();
+            root = new Gson().fromJson(reader, mapType);
+        }
+        if (root == null) {
+            throw new IOException("Simulation result JSON is empty: " + output.toAbsolutePath());
+        }
+
+        Object simulationResultRaw = root.get("simulationResult");
+        if (!(simulationResultRaw instanceof Map<?, ?>)) {
+            return null;
+        }
+        Map<String, Object> simulationResult = (Map<String, Object>) simulationResultRaw;
+        Object auditRaw = simulationResult.get("refinedExecutionAudit");
+        if (!(auditRaw instanceof Map<?, ?>)) {
+            return null;
+        }
+        Map<String, Object> audit = (Map<String, Object>) auditRaw;
+
+        if (!Boolean.TRUE.equals(audit.get("refinedWindowEnabled"))) {
+            return null;
+        }
+
+        boolean measurementComplete = Boolean.TRUE.equals(audit.get("measurementWindowCompleted"));
+        boolean followUpComplete = Boolean.TRUE.equals(audit.get("transactionFollowUpCompleted"));
+        if (measurementComplete && followUpComplete) {
+            return null;
+        }
+
+        String terminationReason = String.valueOf(
+                audit.getOrDefault("terminationReason", "UNKNOWN_TERMINATION"));
+        String phase = String.valueOf(
+                audit.getOrDefault("executionPhaseAtTermination", "UNKNOWN_PHASE"));
+        return "terminationReason=" + terminationReason
+                + ", phase=" + phase
+                + ", measurementWindowCompleted=" + measurementComplete
+                + ", transactionFollowUpCompleted=" + followUpComplete;
     }
 
     /**
@@ -218,6 +284,10 @@ public class TrilemmaSimulator {
                 "event_seed",
                 "run_id");
 
+        // Core sampled columns that are always present. Attacker participation is
+        // handled separately because refined manifests may represent it either by
+        // fraction_of_attackers (preferred in some pilot files) or by
+        // number_of_attackers (used by the formal 64x48 catalogue).
         List<String> sampledColumns = List.of(
                 "connection_count",
                 "block_creation_interval",
@@ -226,9 +296,6 @@ public class TrilemmaSimulator {
                 "node_bandwidth_heterogeneity",
                 "link_bandwidth_heterogeneity",
                 "hashing_power_concentration",
-                "fraction_of_attackers",
-                "number_of_attackers",
-                "realized_fraction_of_attackers",
                 "transaction_arrival_rate");
 
         Map<String, String> realizationNetworkSeed = new HashMap<>();
@@ -273,7 +340,8 @@ public class TrilemmaSimulator {
                                 + " is reused for different sampled pairs.");
             }
 
-            String signature = sampledSignature(row, sampledColumns);
+            String signature = sampledSignature(row, sampledColumns)
+                    + attackerParticipationSignature(row);
             String previousSignature = realizationSampleSignature.putIfAbsent(realizationId, signature);
             if (previousSignature != null && !previousSignature.equals(signature)) {
                 throw new IllegalArgumentException(
@@ -395,6 +463,22 @@ public class TrilemmaSimulator {
             requireNonBlank(row, column);
             b.append(column).append('=').append(row.get(column)).append('|');
         }
+        return b.toString();
+    }
+
+    private static String attackerParticipationSignature(Map<String, String> row) {
+        StringBuilder b = new StringBuilder();
+        for (String key : List.of(
+                "fraction_of_attackers",
+                "number_of_attackers",
+                "realized_fraction_of_attackers")) {
+            String value = row.get(key);
+            if (value != null && !value.isBlank()) {
+                b.append(key).append('=').append(value).append('|');
+            }
+        }
+        // validateCsvColumns(row) has already guaranteed that at least one of
+        // fraction_of_attackers or number_of_attackers is available.
         return b.toString();
     }
 

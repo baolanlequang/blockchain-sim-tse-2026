@@ -35,10 +35,7 @@ class HonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
   override fun onBlockValidated(block: Block, isValid: Boolean, context: BlockchainSystemNodeContext) {
     if (!isValid) return
 
-    // Remove transactions included in the block from the mempool
-    context.trxMemPool.removeTransactions(block.transactions)
-
-    // Append the block to the blockchain
+    // Append the block; BehaviorUtils reconciles mempool state, including reorgs.
     val hasNewLongestChain = BehaviorUtils.appendBlockToBlockchain(block, context)
     if (hasNewLongestChain) {
       context.miningProcess.restartMining()
@@ -61,10 +58,8 @@ class HonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
     // Select transactions to include in the block
     val selectedTrxsResult = context.transactionSelectionProcess.selectTransactionsForBlock(context)
 
-    // Remove the selected transactions from the mempool
-    context.trxMemPool.removeTransactions(selectedTrxsResult.transactions)
-
-    // Create a new block with the selected transactions
+    // Transactions leave the mempool only once the mined block is accepted into
+    // a local longest/forking branch; this avoids loss on stale/orphan outcomes.
     return context.blockFactory.createBlock(
       UUID(randomGenerator.nextLong(), randomGenerator.nextLong()).toString(),
       previousBlockHash,

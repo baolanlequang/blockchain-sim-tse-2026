@@ -44,7 +44,6 @@ class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
 
     val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(block, context)
     if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
-      context.trxMemPool.removeTransactions(block.transactions)
       context.miningProcess.restartMining()
       context.blockPropagationStrategy.distribute(block)
     }
@@ -53,7 +52,6 @@ class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
   override fun onBlockMined(block: Block, context: BlockchainSystemNodeContext) {
     val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(block, context)
     if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
-      context.trxMemPool.removeTransactions(block.transactions)
       context.blockPropagationStrategy.distribute(block)
     }
   }

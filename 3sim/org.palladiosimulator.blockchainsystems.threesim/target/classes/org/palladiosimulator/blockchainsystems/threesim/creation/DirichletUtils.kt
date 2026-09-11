@@ -173,7 +173,28 @@ object DirichletUtils {
   fun drawShares(m: Int, h: Double, randomGenerator: RandomGenerator): DoubleArray {
     val alpha = alphaFromNormalizedConcentration(m, h)
     if (alpha == null) return DoubleArray(m) { 1.0 / m.toDouble() }
-    return generateDirichlet(alpha, m, randomGenerator)
+
+    val shares = generateDirichlet(alpha, m, randomGenerator)
+
+    // Very small Gamma draws can underflow to exactly zero in Double arithmetic
+    // when alpha is small. Mathematically, Dirichlet shares remain strictly
+    // positive. Restore only those unrepresentable tails to a negligible positive
+    // value and renormalize; this leaves the sampled concentration unchanged at
+    // any practically observable precision while keeping mining intervals finite.
+    val numericalFloor = 1e-300
+    var adjusted = false
+    for (i in shares.indices) {
+      if (shares[i] <= 0.0) {
+        shares[i] = numericalFloor
+        adjusted = true
+      }
+    }
+    if (adjusted) {
+      val total = shares.sum()
+      for (i in shares.indices) shares[i] /= total
+    }
+
+    return shares
   }
 
   /** Symmetric Dirichlet draw using deterministic Gamma(shape=alpha, scale=1) variates. */

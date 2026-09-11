@@ -26,10 +26,11 @@ object BehaviorUtils {
 
     when (blockAppendingResult.type) {
       BlockAppendingResultType.Appended -> {
+        reconcileMempoolAfterAppend(block, blockAppendingResult, context)
         val appendedBlockType = blockAppendingResult.blockType
 
         val orphanBlocks = context.orphanBlockPool
-          .getBlocksByPreviousBlockHash(block.hash)
+          .removeBlocksByPreviousBlockHash(block.hash)
 
         // A newly arrived ancestor can unlock one or more previously orphaned
         // descendants. If any recursively appended descendant extends the
@@ -74,8 +75,9 @@ object BehaviorUtils {
 
     return when (blockAppendingResult.type) {
       BlockAppendingResultType.Appended -> {
+        reconcileMempoolAfterAppend(block, blockAppendingResult, context)
         val orphanBlocks = context.orphanBlockPool
-          .getBlocksByPreviousBlockHash(block.hash)
+          .removeBlocksByPreviousBlockHash(block.hash)
 
         orphanBlocks.forEach { orphanBlock ->
           val orphanOutcome = appendBlockToBlockchainDetailed(orphanBlock, context, visited)
@@ -100,6 +102,68 @@ object BehaviorUtils {
       BlockAppendingResultType.AlreadyAppended -> AppendOutcome.ALREADY_APPENDED
 
       else -> AppendOutcome.NOT_APPENDED
+    }
+  }
+
+  /**
+   * Keep the node mempool consistent with local longest-chain changes.
+   *
+   * Transactions from a newly accepted longest/forking block are removed. If a
+   * fork is later resolved, transactions unique to blocks that became stale are
+   * restored, while transactions already present anywhere on a surviving
+   * longest branch remain out of the mempool. Re-storing locally does not restart gossip because
+   * TransactionPropagationStrategy keeps persistent transaction IDs.
+   */
+  private fun reconcileMempoolAfterAppend(
+    appendedBlock: Block,
+    result: org.palladiosimulator.blockchainsystems.core.block.abstractions.BlockAppendingResult,
+    context: BlockchainSystemNodeContext
+  ) {
+    val toRestore = if (result.blocksBecameStale.isEmpty()) {
+      emptyList()
+    } else {
+      // Restore only transactions absent from every currently longest branch.
+      // Search only the fork-affected suffix and only for transactions that could
+      // actually be restored; do not reconstruct every longest chain from genesis.
+      val staleTransactions = result.blocksBecameStale
+        .asSequence()
+        .flatMap { it.transactions.asSequence() }
+        .distinctBy { it.txId }
+        .toList()
+
+      val candidateTxIds = staleTransactions.map { it.txId }.toHashSet()
+      val earliestStalePosition = result.blocksBecameStale
+        .asSequence()
+        .map { context.blockchain.getPositionOfBlock(it) }
+        .filter { it > 0L }
+        .minOrNull()
+        ?: 1L
+
+      // Include the fork point conservatively. In the common shallow-reorg case this
+      // bounds the walk to only a handful of recent blocks.
+      val activeLongestChainTxIds = context.blockchain.findTransactionIdsOnLongestChains(
+        candidateTxIds,
+        maxOf(1L, earliestStalePosition - 1L)
+      )
+
+      staleTransactions.filter { it.txId !in activeLongestChainTxIds }
+    }
+
+    if (toRestore.isNotEmpty()) {
+      context.trxMemPool.storeTransactions(toRestore)
+    }
+
+    if (
+      result.blockType == BlockType.IncludedBlock ||
+      result.blockType == BlockType.ForkingBlock
+    ) {
+      context.trxMemPool.removeTransactions(appendedBlock.transactions)
+    }
+
+    if (result.blocksBecameIncluded.isNotEmpty()) {
+      context.trxMemPool.removeTransactions(
+        result.blocksBecameIncluded.flatMap { it.transactions }.distinctBy { it.txId }
+      )
     }
   }
 }

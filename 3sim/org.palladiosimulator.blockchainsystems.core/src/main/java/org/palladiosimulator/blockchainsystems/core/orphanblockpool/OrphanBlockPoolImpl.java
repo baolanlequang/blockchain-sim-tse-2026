@@ -24,6 +24,12 @@ public class OrphanBlockPoolImpl extends BlockchainNodeObject implements OrphanB
     }
 
     @Override
+    public Set<Block> removeBlocksByPreviousBlockHash(String previousBlockHash) {
+        Set<Block> blocks = _orphanBlocks.remove(previousBlockHash);
+        return blocks == null ? Collections.emptySet() : blocks;
+    }
+
+    @Override
     public void storeBlock(Block block) {
         Set<Block> blockSet = _orphanBlocks.getOrDefault(block.getPreviousHash(), null);
         if (blockSet == null) {

@@ -24,7 +24,12 @@ class BlockchainSystem(
   val blockReward: Double,
   private val recipientRandomGenerator: RandomGenerator = RandomGenerator.of("Random")
 ) : BlockchainSimulationObject(id, name) {
+  private var orderedRecipientNodeIds: List<String> = emptyList()
+
   public override fun onInitialize() {
+    if (nodes.isEmpty()) throw IllegalStateException("Blockchain system contains no validating nodes")
+    orderedRecipientNodeIds = nodes.map { it.id }.sorted()
+
     network.initialize(simulationContext)
 
     nodes.forEach {
@@ -51,8 +56,11 @@ class BlockchainSystem(
    * Select a random node to submit the transaction to
    */
   private fun selectRecipientNodeId(): String {
-    if (nodes.isEmpty()) throw IllegalStateException("Blockchain system contains no validating nodes")
-    val orderedNodes = nodes.sortedBy { it.id }
-    return orderedNodes[recipientRandomGenerator.nextInt(orderedNodes.size)].id
+    if (orderedRecipientNodeIds.isEmpty()) {
+      throw IllegalStateException("Blockchain system contains no validating nodes")
+    }
+    return orderedRecipientNodeIds[
+      recipientRandomGenerator.nextInt(orderedRecipientNodeIds.size)
+    ]
   }
 }
