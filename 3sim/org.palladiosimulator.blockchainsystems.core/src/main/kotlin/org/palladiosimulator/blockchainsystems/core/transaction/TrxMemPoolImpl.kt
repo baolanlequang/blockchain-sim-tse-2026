@@ -4,7 +4,6 @@ import org.palladiosimulator.blockchainsystems.core.common.BlockchainNodeObject
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.Event
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Transaction
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.TrxMemPool
-import java.util.TreeSet
 
 /**
  * Implementation of a transaction memory pool (mempool) running on a blockchain node.
@@ -16,18 +15,11 @@ class TrxMemPoolImpl(
 ) : BlockchainNodeObject(), TrxMemPool {
 
   /*
-   * Mempool that stores transactions sorted by their fee rate in descending order.
+   * Flat-array transaction store with deterministic fee-rate priority. This avoids
+   * one TreeSet node object per pending transaction while retaining exact lookup,
+   * duplicate suppression and removal semantics.
    */
-  private val mempool = TreeSet<Transaction> { t1, t2 ->
-    val firstRate = t1.fee / t1.size
-    val secondRate = t2.fee / t2.size
-    val feeRate = secondRate.compareTo(firstRate) // Argument order is reversed to sort in descending order
-    if (feeRate == 0) {
-      t1.txId.compareTo(t2.txId) // If fee rates are equal, sort by transaction ID to avoid equality, else transactions with the same fee rate would be considered equal
-    } else {
-      feeRate
-    }
-  };
+  private val mempool = CompactTransactionPriorityStore()
 
   private fun logTransactionStoredEvent(transaction: Transaction) {
     val event = TransactionStoredInMemPoolTraceEvent(
@@ -65,8 +57,9 @@ class TrxMemPoolImpl(
 
   override fun removeTransaction(transaction: Transaction) {
     // Likewise, record removal only when the transaction was actually present.
-    if (mempool.remove(transaction)) {
-      logTransactionRemovedEvent(transaction)
+    val removed = mempool.remove(transaction.txId)
+    if (removed != null) {
+      logTransactionRemovedEvent(removed)
     }
   }
 
@@ -75,10 +68,14 @@ class TrxMemPoolImpl(
   }
 
   override fun getTransactionById(txId: String): Transaction? {
-    return mempool.find { it.txId == txId }
+    return mempool.get(txId)
   }
 
   override fun getTransactionsSortedByFeeRate(): List<Transaction> {
-    return mempool.toList()
+    return mempool.toSortedList()
+  }
+
+  override fun getTransactionsForBlock(maxTotalSize: Int): List<Transaction> {
+    return mempool.selectPrefixByTotalSize(maxTotalSize)
   }
 }

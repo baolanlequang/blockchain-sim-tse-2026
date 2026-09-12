@@ -6,6 +6,7 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.Message
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetworkEndpoint
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Transaction
 import org.palladiosimulator.blockchainsystems.core.network.MessageDroppedTraceEvent
+import org.palladiosimulator.blockchainsystems.core.utils.CompactStringStateMap
 
 /**
  * Propagation strategy for transactions in a blockchain system.
@@ -36,7 +37,7 @@ class TransactionPropagationStrategy : GossipPropagationStrategy<Transaction>() 
   // One entry records both protocol states: false = known-only, true = already announced.
   // This preserves the existing persistent duplicate-suppression history while avoiding
   // two HashSet/HashMap entries for transactions that have also been announced.
-  private val transactionKnowledge = HashMap<String, Boolean>()
+  private val transactionKnowledge = CompactStringStateMap()
 
   /*
    * Lifecycle note: BlockchainNodeObject.onInitialize()/onCleanup() are final
@@ -54,7 +55,7 @@ class TransactionPropagationStrategy : GossipPropagationStrategy<Transaction>() 
    * later leave the mempool.
    */
   override fun shouldAnnounce(element: Transaction): Boolean {
-    return transactionKnowledge.put(element.txId, true) != true
+    return transactionKnowledge.put(element.txId, STATE_ANNOUNCED) != STATE_ANNOUNCED
   }
 
 
@@ -130,12 +131,18 @@ class TransactionPropagationStrategy : GossipPropagationStrategy<Transaction>() 
     // copy has been processed. Only the first full transaction is admitted to the
     // node behavior; later copies are protocol duplicates and must not trigger a
     // second mempool insertion or another gossip wave.
-    if (transactionKnowledge.putIfAbsent(trx.txId, false) != null) {
+    if (!transactionKnowledge.putIfAbsent(trx.txId, STATE_KNOWN)) {
       return
     }
 
     logTrxReceived(trx, senderNetworkEndpoint)
     notifyTrxReceived(trx)
+  }
+
+
+  private companion object {
+    const val STATE_KNOWN: Byte = 1
+    const val STATE_ANNOUNCED: Byte = 2
   }
 
 
