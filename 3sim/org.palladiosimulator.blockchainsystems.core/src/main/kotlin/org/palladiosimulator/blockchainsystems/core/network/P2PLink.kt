@@ -35,10 +35,7 @@ class P2PLink(
   fun send(messageContent: Message) {
     val msEvent = MessageSentEvent(
       simulationContext.systemClock.currentTime,
-      P2PLinkMessageFrame(
-        messageContent,
-        simulationContext.systemClock.currentTime
-      ),
+      messageContent,
       this,
       toNode,
       fromNode
@@ -61,7 +58,7 @@ class P2PLink(
     event
       .recipientNode
       .onReceive(
-        event.message.content,
+        event.message,
         event.senderNode
       )
   }
@@ -70,7 +67,7 @@ class P2PLink(
     event
       .senderNode
       .onMessageDropped(
-        event.message.content,
+        event.message,
         event.recipientNode
       )
   }
@@ -92,7 +89,7 @@ class P2PLink(
       // Link is operational, send message
 
       val latency = latencyValueProvider.getValue() // in ms
-      val messageSize = event.message.content.size.toLong() // in byte
+      val messageSize = event.message.size.toLong() // in byte
 
       // Refined model: T_ij = S / B_ij^eff + L_ij.  `bandwidth` is in
       // Mbit/s, message size is in bytes, and latency is in milliseconds.

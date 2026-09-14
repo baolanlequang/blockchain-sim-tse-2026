@@ -2,6 +2,7 @@ package org.palladiosimulator.blockchainsystems.core.propagation.block
 
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block
 import org.palladiosimulator.blockchainsystems.core.network.MessageDroppedTraceEvent
+import org.palladiosimulator.blockchainsystems.core.utils.CompactStringStateMap
 import org.palladiosimulator.blockchainsystems.core.propagation.GossipPropagationStrategy
 import org.palladiosimulator.blockchainsystems.core.propagation.MessageImpl
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.Message
@@ -30,7 +31,7 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
   // One entry records both protocol states: false = known-only, true = already announced.
   // This preserves duplicate-suppression semantics while avoiding two HashSet/HashMap
   // entries for the common case where a block is both known and announced.
-  private val blockKnowledge = HashMap<String, Boolean>()
+  private val blockKnowledge = CompactStringStateMap()
 
   /*
    * Lifecycle note: BlockchainNodeObject.onInitialize()/onCleanup() are final
@@ -42,7 +43,7 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
 
 
   override fun shouldAnnounce(element: Block): Boolean {
-    return blockKnowledge.put(element.hash, true) != true
+    return blockKnowledge.put(element.hash, STATE_ANNOUNCED) != STATE_ANNOUNCED
   }
 
 
@@ -96,7 +97,7 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
     // Suppress duplicate full-block deliveries before they can trigger duplicate
     // validation and redistribution. The first arrival still follows the original
     // validation/propagation path unchanged.
-    if (blockKnowledge.putIfAbsent(block.hash, false) != null) {
+    if (!blockKnowledge.putIfAbsent(block.hash, STATE_KNOWN)) {
       return
     }
 
@@ -117,6 +118,12 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
       networkInterface!!
     )
     traceEventLogger.logEvent(event)
+  }
+
+
+  private companion object {
+    const val STATE_KNOWN: Byte = 1
+    const val STATE_ANNOUNCED: Byte = 2
   }
 
 

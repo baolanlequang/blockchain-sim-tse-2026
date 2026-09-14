@@ -46,6 +46,15 @@ interface TrxMemPool : Traceable {
 
   /**
    * Get all transactions in the mempool sorted by their fee rate in descending order.
+   * This compatibility method may materialize the full mempool; block construction
+   * should prefer [getTransactionsForBlock].
    */
   fun getTransactionsSortedByFeeRate(): List<Transaction>
+
+  /**
+   * Return the deterministic fee-priority prefix whose cumulative size does not
+   * exceed [maxTotalSize]. Implementations can do this without copying the full
+   * mempool, which is essential for overloaded experiment rows.
+   */
+  fun getTransactionsForBlock(maxTotalSize: Int): List<Transaction>
 }

@@ -54,6 +54,7 @@ class ThreesimSimulationMonitor(
   private lateinit var geographicalRegions: GeographicalRegions
   private lateinit var transactionSubmissionProcess: TransactionSubmissionProcess
   private lateinit var simulationClock: SimulationClock
+  private lateinit var nodeIndexById: Map<String, Int>
 
   private val refinedWindowEnabled: Boolean get() = measuredBlocksPerValidator > 0
   private var phase: Phase = Phase.LEGACY
@@ -122,31 +123,53 @@ class ThreesimSimulationMonitor(
   private lateinit var staleBlocks: BlocksMap
   private lateinit var forkedBlocks: BlocksMap
 
-  /** txId -> submission time for transactions submitted in the measurement window. */
-  private val measurementTransactions = linkedMapOf<String, Long>()
-  /** txId -> first qualifying canonical confirmation time. */
-  private val measurementTransactionConfirmationTimes = mutableMapOf<String, Long>()
+  /** One entry per transaction submitted in the measurement window. */
+  private data class MeasurementTransactionObservation(
+    val submittedAtMs: Long,
+    var confirmedAtMs: Long? = null
+  )
+
+  private val measurementTransactions = linkedMapOf<String, MeasurementTransactionObservation>()
 
   /**
-   * Follow-up diagnostic for P-B. Only blocks mined while phase==MEASUREMENT
-   * are eligible. For each eligible block, retain only the first full-block
-   * receipt time observed at each non-miner validating node.
+   * Follow-up diagnostic for P-B. Receiver timestamps are kept in a primitive
+   * array only until T90 is known; then the array is released immediately.
    */
-  private data class MeasurementBlockPropagationObservation(
+  private class MeasurementBlockPropagationObservation(
     val minedTimeMs: Long,
     val minerNodeId: String?,
-    val firstReceiptTimeByNode: MutableMap<String, Long> = linkedMapOf(),
+    validatorCount: Int
+  ) {
+    var firstReceiptTimeByNode: LongArray? = LongArray(validatorCount) { UNSEEN_RECEIPT_TIME }
+    var receiverCount: Int = 0
     var t90Ms: Long? = null
-  )
+  }
 
   private val measurementBlockPropagation =
     linkedMapOf<String, MeasurementBlockPropagationObservation>()
 
+  private class RunningAverage {
+    private var count: Long = 0L
+    private var sum: Double = 0.0
+
+    fun add(value: Double) {
+      sum += value
+      count++
+    }
+
+    fun clear() {
+      count = 0L
+      sum = 0.0
+    }
+
+    fun averageOr(defaultValue: Double): Double = if (count == 0L) defaultValue else sum / count.toDouble()
+  }
+
   private val failureLog = BlockchainSystemFailureLog()
-  private val throughputsDuringFailure: MutableList<Double> = mutableListOf()
-  private val confirmationLatenciesDuringFailure: MutableList<Long> = mutableListOf()
-  private val throughputsWithoutFailure: MutableList<Double> = mutableListOf()
-  private val confirmationLatenciesWithoutFailure: MutableList<Long> = mutableListOf()
+  private val throughputsDuringFailure = RunningAverage()
+  private val confirmationLatenciesDuringFailure = RunningAverage()
+  private val throughputsWithoutFailure = RunningAverage()
+  private val confirmationLatenciesWithoutFailure = RunningAverage()
   private var lastThroughputCheckTimestamp: Long = 0
 
   /** Runtime attack-round tracker for the revised paper-defined SPSM. */
@@ -158,6 +181,7 @@ class ThreesimSimulationMonitor(
     require(transactionDrainMillis >= 0L) { "transactionDrainMillis must be >= 0" }
 
     nodes = blockchainSystem.nodes
+    nodeIndexById = nodes.sortedBy { it.id }.mapIndexed { index, node -> node.id to index }.toMap()
     geographicalRegions = blockchainSystem.geographicalRegions
     transactionSubmissionProcess = blockchainSystem.transactionSubmissionProcess
     blockReward = blockchainSystem.blockReward
@@ -171,13 +195,13 @@ class ThreesimSimulationMonitor(
 
     blocksProposedPerNode = CounterMap.create(nodes.map { it.id })
     val majorityThreshold = calculateMajorityThreshold()
-    includedBlocks = BlocksMap(majorityThreshold)
-    confirmedBlocks = BlocksMap(majorityThreshold)
-    staleBlocks = BlocksMap(majorityThreshold)
-    forkedBlocks = BlocksMap(majorityThreshold)
-    canonicalProgressBlocks = BlocksMap(majorityThreshold)
-    confirmationProgressBlocks = BlocksMap(majorityThreshold)
-    canonicalMeasurementBlocks = BlocksMap(majorityThreshold)
+    includedBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    confirmedBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    staleBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    forkedBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    canonicalProgressBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    confirmationProgressBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    canonicalMeasurementBlocks = BlocksMap(majorityThreshold, nodeIndexById)
 
     if (refinedWindowEnabled) {
       warmupCanonicalBlocksSeen.clear()
@@ -315,7 +339,8 @@ class ThreesimSimulationMonitor(
             e.block.hash,
             MeasurementBlockPropagationObservation(
               minedTimeMs = e.block.blockMinedTimestamp,
-              minerNodeId = e.block.originId
+              minerNodeId = e.block.originId,
+              validatorCount = nodes.size
             )
           )
         }
@@ -347,27 +372,27 @@ class ThreesimSimulationMonitor(
         val block = e.sentBlock
         if (block != null) {
           val observation = measurementBlockPropagation[block.hash]
-          if (observation != null && logOrigin.id != observation.minerNodeId) {
-            val previous = observation.firstReceiptTimeByNode.putIfAbsent(
-              logOrigin.id,
-              e.occurrenceTime
-            )
+          if (observation != null && logOrigin.id != observation.minerNodeId && observation.t90Ms == null) {
+            val receiptTimes = observation.firstReceiptTimeByNode
+            val nodeIndex = nodeIndexById[logOrigin.id]
+            if (receiptTimes != null && nodeIndex != null && receiptTimes[nodeIndex] == UNSEEN_RECEIPT_TIME) {
+              receiptTimes[nodeIndex] = e.occurrenceTime
+              observation.receiverCount++
 
-            if (previous == null && observation.t90Ms == null) {
               // T90 is defined over non-miner validating nodes.
-              // For N=20, there are 19 possible receivers and T90 is the
-              // 18th first receipt.
               val nonMinerValidatorCount = (nodes.size - 1).coerceAtLeast(0)
               val requiredReceivers = (9 * nonMinerValidatorCount + 9) / 10
-
-              if (
-                requiredReceivers > 0 &&
-                observation.firstReceiptTimeByNode.size >= requiredReceivers
-              ) {
-                val thresholdReceiveTime =
-                  observation.firstReceiptTimeByNode.values.sorted()[requiredReceivers - 1]
+              if (requiredReceivers > 0 && observation.receiverCount >= requiredReceivers) {
+                val observedTimes = LongArray(observation.receiverCount)
+                var destination = 0
+                for (time in receiptTimes) {
+                  if (time != UNSEEN_RECEIPT_TIME) observedTimes[destination++] = time
+                }
+                observedTimes.sort()
                 observation.t90Ms =
-                  (thresholdReceiveTime - observation.minedTimeMs).coerceAtLeast(0L)
+                  (observedTimes[requiredReceivers - 1] - observation.minedTimeMs).coerceAtLeast(0L)
+                // No later receipt can change T90. Release the O(N_V) array now.
+                observation.firstReceiptTimeByNode = null
               }
             }
           }
@@ -485,7 +510,10 @@ class ThreesimSimulationMonitor(
         if (phase == Phase.LEGACY || phase == Phase.MEASUREMENT) {
           numberOfSubmittedTransactions++
           if (phase == Phase.MEASUREMENT) {
-            measurementTransactions.putIfAbsent(e.transaction.txId, e.transaction.creationTime)
+            measurementTransactions.putIfAbsent(
+              e.transaction.txId,
+              MeasurementTransactionObservation(e.transaction.creationTime)
+            )
           }
         }
       }
@@ -589,7 +617,6 @@ class ThreesimSimulationMonitor(
     staleBlocks.clear()
     forkedBlocks.clear()
     measurementTransactions.clear()
-    measurementTransactionConfirmationTimes.clear()
     selfishMiningAttackRoundTracker.reset()
     throughputsDuringFailure.clear()
     confirmationLatenciesDuringFailure.clear()
@@ -601,10 +628,10 @@ class ThreesimSimulationMonitor(
   private fun recordMeasurementTransactionConfirmations(block: Block, occurrenceTime: Long) {
     if (!refinedWindowEnabled || (phase != Phase.MEASUREMENT && phase != Phase.DRAIN)) return
     for (transaction in block.transactions) {
-      val submittedAt = measurementTransactions[transaction.txId] ?: continue
-      val deadline = submittedAt + transactionDrainMillis
-      if (occurrenceTime <= deadline) {
-        measurementTransactionConfirmationTimes.putIfAbsent(transaction.txId, occurrenceTime)
+      val observation = measurementTransactions[transaction.txId] ?: continue
+      val deadline = observation.submittedAtMs + transactionDrainMillis
+      if (occurrenceTime <= deadline && observation.confirmedAtMs == null) {
+        observation.confirmedAtMs = occurrenceTime
       }
     }
   }
@@ -663,8 +690,9 @@ class ThreesimSimulationMonitor(
 
     var confirmedCount = 0
 
-    measurementTransactions.forEach { (txId, submittedAt) ->
-      val confirmation = measurementTransactionConfirmationTimes[txId]
+    measurementTransactions.forEach { (txId, observation) ->
+      val submittedAt = observation.submittedAtMs
+      val confirmation = observation.confirmedAtMs
       val deadline = submittedAt + transactionDrainMillis
       val confirmed = confirmation != null && confirmation <= deadline
       val followUp = if (confirmed) {
@@ -776,12 +804,12 @@ class ThreesimSimulationMonitor(
         return markTermination("DRAIN_NO_MEASUREMENT_TRANSACTIONS", true)
       }
 
-      val allConfirmed = measurementTransactions.keys.all { it in measurementTransactionConfirmationTimes }
+      val allConfirmed = measurementTransactions.values.all { it.confirmedAtMs != null }
       if (allConfirmed) {
         return markTermination("DRAIN_ALL_CONFIRMED", true)
       }
 
-      val latestDeadline = measurementTransactions.values.maxOrNull()!! + transactionDrainMillis
+      val latestDeadline = measurementTransactions.values.maxOf { it.submittedAtMs } + transactionDrainMillis
       if (simulationClock.currentTime >= latestDeadline) {
         return markTermination("DRAIN_DEADLINE_REACHED", true)
       }
@@ -854,10 +882,10 @@ class ThreesimSimulationMonitor(
 
     if (failureLog.isFailureOngoing()) {
       throughputsDuringFailure.add(throughput)
-      confirmationLatenciesDuringFailure.add(confirmationLatency)
+      confirmationLatenciesDuringFailure.add(confirmationLatency.toDouble())
     } else {
       throughputsWithoutFailure.add(throughput)
-      confirmationLatenciesWithoutFailure.add(confirmationLatency)
+      confirmationLatenciesWithoutFailure.add(confirmationLatency.toDouble())
     }
     lastThroughputCheckTimestamp = occurrenceTime
   }
@@ -901,8 +929,12 @@ class ThreesimSimulationMonitor(
 
   private fun calculateMeanTimeToRepair(): Double = failureLog.calculateMeanFailureDuration()
   private fun calculateNumberOfGeographicalRegions(): Int = geographicalRegions.getNumberOfRegions()
-  private fun calculateAverageThroughputDuringFailure(): Double = if (throughputsDuringFailure.isEmpty()) -1.0 else throughputsDuringFailure.average()
-  private fun calculateAverageConfirmationLatencyDuringFailure(): Double = if (confirmationLatenciesDuringFailure.isEmpty()) -1.0 else confirmationLatenciesDuringFailure.average()
-  private fun calculateAverageThroughputWithoutFailure(): Double = if (throughputsWithoutFailure.isEmpty()) -1.0 else throughputsWithoutFailure.average()
-  private fun calculateAverageConfirmationLatencyWithoutFailure(): Double = if (confirmationLatenciesWithoutFailure.isEmpty()) -1.0 else confirmationLatenciesWithoutFailure.average()
+  private fun calculateAverageThroughputDuringFailure(): Double = throughputsDuringFailure.averageOr(-1.0)
+  private fun calculateAverageConfirmationLatencyDuringFailure(): Double = confirmationLatenciesDuringFailure.averageOr(-1.0)
+  private fun calculateAverageThroughputWithoutFailure(): Double = throughputsWithoutFailure.averageOr(-1.0)
+  private fun calculateAverageConfirmationLatencyWithoutFailure(): Double = confirmationLatenciesWithoutFailure.averageOr(-1.0)
+  private companion object {
+    const val UNSEEN_RECEIPT_TIME: Long = Long.MIN_VALUE
+  }
+
 }
