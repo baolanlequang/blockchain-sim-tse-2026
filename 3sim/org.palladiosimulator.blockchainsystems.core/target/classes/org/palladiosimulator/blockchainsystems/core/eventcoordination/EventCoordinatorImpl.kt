@@ -12,28 +12,13 @@ import java.util.TreeSet
 /**
  * Central simulation-event coordinator.
  *
- * MEMORY/SCALABILITY REVISION
- * ---------------------------
- * The main future-event calendar remains the single PriorityQueue introduced by
- * the pre-experiment simulator revision. That avoids the large per-timestamp
- * TreeMap/EffectsTimeSlice allocation overhead while preserving ordering by
- * (occurrenceTime, insertionSequence).
+ * High-volume regular events live in one array-backed PriorityQueue. Mining
+ * events are the only events cancelled in the current simulator and implement
+ * CancellableEvent, so they live in a small separately indexed TreeSet and are
+ * physically removed on restart/stop. Regular events therefore do not carry an
+ * unused cancellation epoch, saving one long field per queued event.
  *
- * Origin cancellation now has a bounded fast path. Events that implement
- * CancellableEvent (currently BlockMinedEvent) are stored in a small TreeSet and
- * indexed by origin. cancelEventsFor() physically removes those future events
- * instead of leaving them strongly referenced until their timestamps reach the
- * head of the main calendar. High-volume message/validation events remain in the
- * compact PriorityQueue and pay no reverse-index memory cost.
- *
- * The epoch mechanism is retained as a semantic fallback: if a future non-indexed
- * event from a cancelled origin ever exists, it is still invalidated lazily.
- * Events already extracted for the current timestamp are not cancelled, matching
- * the former coordinator semantics.
- *
- * Optional progress diagnostics can be enabled without changing simulation
- * semantics:
- *
+ * Optional diagnostics:
  *   -Dthreesim.progressEveryEvents=1000000
  */
 class EventCoordinatorImpl(
@@ -43,7 +28,6 @@ class EventCoordinatorImpl(
 
   private data class ScheduledEvent(
     val event: Event,
-    val originEpoch: Long,
     val insertionSequence: Long
   )
 
@@ -51,21 +35,10 @@ class EventCoordinatorImpl(
     compareBy<ScheduledEvent> { it.event.occurrenceTime }
       .thenBy { it.insertionSequence }
 
-  // High-volume, normally non-cancelled events. Array-backed for low memory overhead.
   private val scheduledEvents = PriorityQueue<ScheduledEvent>(scheduledEventComparator)
-
-  // Small set of events that are routinely cancelled/replaced (currently mining events).
-  // TreeSet gives O(log n) removal when cancelEventsFor() is called.
   private val cancellableEvents = TreeSet<ScheduledEvent>(scheduledEventComparator)
   private val cancellableEventsByOrigin =
     IdentityHashMap<EventDispatchable, MutableSet<ScheduledEvent>>()
-
-  /*
-   * Identity semantics are intentional. Event origins are simulation component
-   * instances; cancellation concerns that exact component object, not another
-   * object that might happen to compare equal.
-   */
-  private val originEpochs = IdentityHashMap<EventDispatchable, Long>()
 
   private var nextInsertionSequence = 0L
   private var processedEventCount = 0L
@@ -75,13 +48,10 @@ class EventCoordinatorImpl(
 
   fun processEvents() {
     while (hasUnprocessedEvents() && !terminationCondition.shouldTerminate()) {
-      val next = peekNextLiveEvent() ?: break
+      val next = peekNextEvent() ?: break
 
-      /*
-       * Preserve the old termination-check timing. The former coordinator first
-       * advanced the clock to the next timestamp and only processed that timestamp
-       * on the next loop iteration.
-       */
+      // Preserve the old termination-check timing: first move the clock, then
+      // process that timestamp on the next loop iteration.
       if (next.event.occurrenceTime > clock.currentTime) {
         clock.progressClockTo(next.event.occurrenceTime)
         continue
@@ -91,24 +61,18 @@ class EventCoordinatorImpl(
     }
   }
 
-  private fun hasUnprocessedEvents(): Boolean {
-    return peekNextLiveEvent() != null
-  }
+  private fun hasUnprocessedEvents(): Boolean = peekNextEvent() != null
 
-  /**
-   * Extract all still-live events for the current simulation timestamp before
-   * dispatching any of them. This preserves the previous same-timestamp
-   * cancellation semantics.
-   */
+  /** Extract all same-time events before dispatching any of them. */
   private fun processCurrentSlice() {
     val currentTime = clock.currentTime
     val currentBatch = ArrayList<Event>()
 
     while (true) {
-      val next = peekNextLiveEvent() ?: break
+      val next = peekNextEvent() ?: break
       if (next.event.occurrenceTime != currentTime) break
 
-      val scheduledEvent = pollNextLiveEvent() ?: break
+      val scheduledEvent = pollNextEvent() ?: break
       currentBatch.add(scheduledEvent.event)
     }
 
@@ -123,21 +87,17 @@ class EventCoordinatorImpl(
     when {
       event.occurrenceTime > clock.currentTime -> scheduleEvent(event)
       event.occurrenceTime == clock.currentTime -> {
-        // Same-time events were dispatched synchronously by the former coordinator.
         dispatchEvent(event)
         processedEventCount++
         reportProgressIfRequested()
       }
-      else -> {
-        // Preserve the former behavior for events in the past: ignore them.
-      }
+      else -> Unit // preserve legacy behavior for events in the past
     }
   }
 
   private fun scheduleEvent(event: Event) {
     val scheduledEvent = ScheduledEvent(
       event = event,
-      originEpoch = currentEpoch(event.origin),
       insertionSequence = nextInsertionSequence++
     )
 
@@ -152,59 +112,22 @@ class EventCoordinatorImpl(
   }
 
   override fun cancelEventsFor(eventOrigin: EventDispatchable) {
-    /*
-     * Increment first so any non-indexed future event from this origin is also
-     * invalidated. Newly scheduled events capture the incremented epoch.
-     */
-    originEpochs[eventOrigin] = currentEpoch(eventOrigin) + 1L
-
-    // Physically remove the routinely cancellable events without scanning the
-    // high-volume main PriorityQueue.
+    // In this source revision cancelEventsFor is called only by MiningProcessImpl,
+    // whose BlockMinedEvent implements CancellableEvent. Remove those events
+    // physically instead of retaining tombstones in the main queue.
     cancellableEventsByOrigin.remove(eventOrigin)?.forEach { scheduledEvent ->
       cancellableEvents.remove(scheduledEvent)
-    }
-  }
-
-  private fun currentEpoch(origin: EventDispatchable): Long {
-    return originEpochs[origin] ?: 0L
-  }
-
-  private fun isLive(scheduledEvent: ScheduledEvent): Boolean {
-    return scheduledEvent.originEpoch == currentEpoch(scheduledEvent.event.origin)
-  }
-
-  private fun discardCancelledRegularEventsAtHead() {
-    while (scheduledEvents.isNotEmpty()) {
-      val head = scheduledEvents.peek()
-      if (isLive(head)) return
-      scheduledEvents.poll()
-    }
-  }
-
-  private fun discardCancelledCancellableEventsAtHead() {
-    while (cancellableEvents.isNotEmpty()) {
-      val head = cancellableEvents.first()
-      if (isLive(head)) return
-
-      val removed = cancellableEvents.pollFirst()
-      removeFromCancellableIndex(removed)
     }
   }
 
   private fun removeFromCancellableIndex(scheduledEvent: ScheduledEvent) {
     val origin = scheduledEvent.event.origin
     val originEvents = cancellableEventsByOrigin[origin] ?: return
-
     originEvents.remove(scheduledEvent)
-    if (originEvents.isEmpty()) {
-      cancellableEventsByOrigin.remove(origin)
-    }
+    if (originEvents.isEmpty()) cancellableEventsByOrigin.remove(origin)
   }
 
-  private fun peekNextLiveEvent(): ScheduledEvent? {
-    discardCancelledRegularEventsAtHead()
-    discardCancelledCancellableEventsAtHead()
-
+  private fun peekNextEvent(): ScheduledEvent? {
     val regular = scheduledEvents.peek()
     val cancellable = cancellableEvents.firstOrNull()
 
@@ -216,10 +139,7 @@ class EventCoordinatorImpl(
     }
   }
 
-  private fun pollNextLiveEvent(): ScheduledEvent? {
-    discardCancelledRegularEventsAtHead()
-    discardCancelledCancellableEventsAtHead()
-
+  private fun pollNextEvent(): ScheduledEvent? {
     val regular = scheduledEvents.peek()
     val cancellable = cancellableEvents.firstOrNull()
 
