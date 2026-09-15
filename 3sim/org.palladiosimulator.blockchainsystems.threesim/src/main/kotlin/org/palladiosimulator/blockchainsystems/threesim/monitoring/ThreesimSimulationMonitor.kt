@@ -13,6 +13,7 @@ import org.palladiosimulator.blockchainsystems.core.clock.SimulationClock
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEvent
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEventLogOrigin
 import org.palladiosimulator.blockchainsystems.core.eventcoordination.SafetyTerminationListener
+import org.palladiosimulator.blockchainsystems.core.scalability.ScalabilityStateTracker
 import org.palladiosimulator.blockchainsystems.core.geography.GeographicalRegions
 import org.palladiosimulator.blockchainsystems.core.mining.BlockMinedTraceEvent
 import org.palladiosimulator.blockchainsystems.core.monitoring.abstractions.SimulationMonitor
@@ -111,6 +112,7 @@ class ThreesimSimulationMonitor(
   private var maxCanonicalProgressGapMillisObserved: Long = 0L
   private var processedEventsObserved: Long = 0L
   private var maxFutureEventsObserved: Long = 0L
+  private var scalabilityStateTracker: ScalabilityStateTracker? = null
 
   /*
    * MACHINE-INDEPENDENT SAFETY LIMITS. Disabled by default. These limits stop an
@@ -121,6 +123,10 @@ class ThreesimSimulationMonitor(
    *
    *   -Dthreesim.maxTransactionSubmissions=...
    *   -Dthreesim.maxBlockProposals=...
+   *   -Dthreesim.maxTransactionKnowledgeEntries=...
+   *   -Dthreesim.maxBlockKnowledgeEntries=...
+   *   -Dthreesim.maxMempoolEntries=...
+   *   -Dthreesim.maxMeasurementTransactionEntries=...
    */
   private val maxTransactionSubmissions: Long =
     java.lang.Long.getLong("threesim.maxTransactionSubmissions", 0L).coerceAtLeast(0L)
@@ -154,7 +160,12 @@ class ThreesimSimulationMonitor(
    * High-load runs can contain millions of measurement transactions, so keep the
    * same exact txId/submission/confirmation information in flat arrays instead.
    */
-  private class MeasurementTransactionStore(initialCapacity: Int = 16) {
+  private class MeasurementTransactionStore(
+    initialCapacity: Int = 16,
+    private val beforeNewEntry: (() -> Unit)? = null,
+    private val afterNewEntry: (() -> Unit)? = null,
+    private val afterClear: (() -> Unit)? = null
+  ) {
     private var keys: Array<String?> = arrayOfNulls(tableSizeFor(initialCapacity))
     private var submittedAt: LongArray = LongArray(keys.size)
     private var confirmedAt: LongArray = LongArray(keys.size) { UNCONFIRMED }
@@ -178,9 +189,13 @@ class ThreesimSimulationMonitor(
         slot = (slot + 1) and (keys.size - 1)
       }
 
+      beforeNewEntry?.invoke()
       if (size + 1 > resizeAt) {
         resize(keys.size shl 1)
-        return addIfAbsent(txId, submittedAtMs)
+        slot = spread(txId.hashCode()) and (keys.size - 1)
+        while (keys[slot] != null) {
+          slot = (slot + 1) and (keys.size - 1)
+        }
       }
 
       keys[slot] = txId
@@ -188,6 +203,7 @@ class ThreesimSimulationMonitor(
       confirmedAt[slot] = UNCONFIRMED
       size++
       unconfirmedCount++
+      afterNewEntry?.invoke()
       if (submittedAtMs > latestSubmittedAtMs) latestSubmittedAtMs = submittedAtMs
       return true
     }
@@ -217,6 +233,7 @@ class ThreesimSimulationMonitor(
       size = 0
       unconfirmedCount = 0
       latestSubmittedAtMs = 0L
+      afterClear?.invoke()
     }
 
     private fun findSlot(txId: String): Int {
@@ -265,7 +282,11 @@ class ThreesimSimulationMonitor(
     }
   }
 
-  private val measurementTransactions = MeasurementTransactionStore()
+  private val measurementTransactions = MeasurementTransactionStore(
+    beforeNewEntry = { scalabilityStateTracker?.beforeMeasurementTransactionEntryAdded() },
+    afterNewEntry = { scalabilityStateTracker?.onMeasurementTransactionEntryAdded() },
+    afterClear = { scalabilityStateTracker?.resetMeasurementTransactionEntries() }
+  )
 
   /**
    * Follow-up diagnostic for P-B. Receiver timestamps are kept in a primitive
@@ -364,6 +385,7 @@ class ThreesimSimulationMonitor(
     val spsmSummary = selfishMiningAttackRoundTracker.summary()
     val followUpSummary = buildTransactionFollowUpSummary(finalSystemTime)
     val propagationSummary = buildBlockPropagationSummary()
+    val scalability = scalabilityStateTracker?.snapshot()
 
     return ThreesimSimulationMonitorState(
       numberOfNodes = nodes.size,
@@ -410,11 +432,26 @@ class ThreesimSimulationMonitor(
       maxCanonicalProgressGapMillisObserved = maxCanonicalProgressGapMillisObserved,
       processedEventsObserved = processedEventsObserved,
       maxFutureEventsObserved = maxFutureEventsObserved,
+      currentTransactionKnowledgeEntries = scalability?.currentTransactionKnowledgeEntries ?: 0L,
+      maxTransactionKnowledgeEntriesObserved = scalability?.maxTransactionKnowledgeEntriesObserved ?: 0L,
+      maxTransactionKnowledgeEntriesPerNodeObserved = scalability?.maxTransactionKnowledgeEntriesPerNodeObserved ?: 0L,
+      currentBlockKnowledgeEntries = scalability?.currentBlockKnowledgeEntries ?: 0L,
+      maxBlockKnowledgeEntriesObserved = scalability?.maxBlockKnowledgeEntriesObserved ?: 0L,
+      maxBlockKnowledgeEntriesPerNodeObserved = scalability?.maxBlockKnowledgeEntriesPerNodeObserved ?: 0L,
+      currentMempoolEntries = scalability?.currentMempoolEntries ?: 0L,
+      maxMempoolEntriesObserved = scalability?.maxMempoolEntriesObserved ?: 0L,
+      maxMempoolEntriesPerNodeObserved = scalability?.maxMempoolEntriesPerNodeObserved ?: 0L,
+      currentMeasurementTransactionEntries = scalability?.currentMeasurementTransactionEntries ?: 0L,
+      maxMeasurementTransactionEntriesObserved = scalability?.maxMeasurementTransactionEntriesObserved ?: 0L,
       canonicalProgressStallMillis = canonicalProgressStallMillis,
       maxTransactionSubmissions = maxTransactionSubmissions,
       maxBlockProposals = maxBlockProposals,
       maxFutureEvents = maxFutureEvents,
       maxProcessedEvents = maxProcessedEvents,
+      maxTransactionKnowledgeEntries = scalability?.maxTransactionKnowledgeEntries ?: 0L,
+      maxBlockKnowledgeEntries = scalability?.maxBlockKnowledgeEntries ?: 0L,
+      maxMempoolEntries = scalability?.maxMempoolEntries ?: 0L,
+      maxMeasurementTransactionEntries = scalability?.maxMeasurementTransactionEntries ?: 0L,
       blockRateObservationTimeMs = finalSystemTime,
       transactionRateObservationTimeMs = if (measurementEndTimeMs > 0L) measurementEndTimeMs else finalSystemTime,
       measurementBlocksEligibleForPropagationT90 = propagationSummary.eligibleBlocks,
@@ -1060,6 +1097,10 @@ class ThreesimSimulationMonitor(
       transactionFollowUpCompleted = followUpCompleted
     }
     return true
+  }
+
+  fun setScalabilityStateTracker(scalabilityStateTracker: ScalabilityStateTracker) {
+    this.scalabilityStateTracker = scalabilityStateTracker
   }
 
   fun setSimulationClock(simulationClock: SimulationClock) {

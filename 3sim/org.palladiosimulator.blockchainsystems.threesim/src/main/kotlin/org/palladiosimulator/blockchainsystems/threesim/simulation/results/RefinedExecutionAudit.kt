@@ -36,6 +36,28 @@ data class RefinedExecutionAudit(
   /** Largest number of queued future events observed during the execution. */
   @EncodeDefault
   val maxFutureEventsObserved: Long = 0L,
+  @EncodeDefault
+  val currentTransactionKnowledgeEntries: Long = 0L,
+  @EncodeDefault
+  val maxTransactionKnowledgeEntriesObserved: Long = 0L,
+  @EncodeDefault
+  val maxTransactionKnowledgeEntriesPerNodeObserved: Long = 0L,
+  @EncodeDefault
+  val currentBlockKnowledgeEntries: Long = 0L,
+  @EncodeDefault
+  val maxBlockKnowledgeEntriesObserved: Long = 0L,
+  @EncodeDefault
+  val maxBlockKnowledgeEntriesPerNodeObserved: Long = 0L,
+  @EncodeDefault
+  val currentMempoolEntries: Long = 0L,
+  @EncodeDefault
+  val maxMempoolEntriesObserved: Long = 0L,
+  @EncodeDefault
+  val maxMempoolEntriesPerNodeObserved: Long = 0L,
+  @EncodeDefault
+  val currentMeasurementTransactionEntries: Long = 0L,
+  @EncodeDefault
+  val maxMeasurementTransactionEntriesObserved: Long = 0L,
   /** Reproducibility record for the optional canonical-progress safety guard. */
   @EncodeDefault
   val canonicalProgressStallMillis: Long = 0L,
@@ -51,6 +73,14 @@ data class RefinedExecutionAudit(
   /** Reproducibility record for the processed-event safety guard. */
   @EncodeDefault
   val maxProcessedEvents: Long = 0L,
+  @EncodeDefault
+  val maxTransactionKnowledgeEntries: Long = 0L,
+  @EncodeDefault
+  val maxBlockKnowledgeEntries: Long = 0L,
+  @EncodeDefault
+  val maxMempoolEntries: Long = 0L,
+  @EncodeDefault
+  val maxMeasurementTransactionEntries: Long = 0L,
   val blockRateObservationTimeMs: Long,
   val transactionRateObservationTimeMs: Long,
   val measurementSubmittedTransactions: Int,

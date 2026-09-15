@@ -11,7 +11,11 @@ package org.palladiosimulator.blockchainsystems.core.utils
  * State 0 is reserved for "absent". Entries are never removed, matching the
  * lifetime of the gossip duplicate-suppression histories that use this class.
  */
-class CompactStringStateMap(initialCapacity: Int = 16) {
+class CompactStringStateMap(
+  initialCapacity: Int = 16,
+  private val beforeNewEntry: ((Int) -> Unit)? = null,
+  private val afterNewEntry: ((Int) -> Unit)? = null
+) {
   private var keys: Array<String?> = arrayOfNulls(tableSizeFor(initialCapacity))
   private var states: ByteArray = ByteArray(keys.size)
   private var size: Int = 0
@@ -42,17 +46,22 @@ class CompactStringStateMap(initialCapacity: Int = 16) {
       index = (index + 1) and (keys.size - 1)
     }
 
-    // Grow only for a genuinely new key. Previously a duplicate/update at the
-    // threshold could allocate a doubled table even though logical size did not
-    // change, creating avoidable multi-gigabyte transient allocations.
+    // Admission is checked before any resize/allocation for a genuinely new
+    // key. A calibrated state limit can therefore terminate the current event
+    // before this append-only table attempts a larger backing allocation.
+    beforeNewEntry?.invoke(size + 1)
     if (size + 1 > resizeAt) {
       resize(keys.size shl 1)
-      return put(key, state)
+      index = spread(key.hashCode()) and (keys.size - 1)
+      while (keys[index] != null) {
+        index = (index + 1) and (keys.size - 1)
+      }
     }
 
     keys[index] = key
     states[index] = state
     size++
+    afterNewEntry?.invoke(size)
     return ABSENT
   }
 
@@ -68,14 +77,19 @@ class CompactStringStateMap(initialCapacity: Int = 16) {
       index = (index + 1) and (keys.size - 1)
     }
 
+    beforeNewEntry?.invoke(size + 1)
     if (size + 1 > resizeAt) {
       resize(keys.size shl 1)
-      return putIfAbsent(key, state)
+      index = spread(key.hashCode()) and (keys.size - 1)
+      while (keys[index] != null) {
+        index = (index + 1) and (keys.size - 1)
+      }
     }
 
     keys[index] = key
     states[index] = state
     size++
+    afterNewEntry?.invoke(size)
     return true
   }
 

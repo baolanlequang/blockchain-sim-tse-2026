@@ -5,6 +5,7 @@ import org.palladiosimulator.blockchainsystems.core.common.abstractions.Event
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.EventCoordinator
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.EventDispatchable
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.SystemClockControl
+import org.palladiosimulator.blockchainsystems.core.scalability.ScalabilityLimitExceededException
 import java.util.IdentityHashMap
 import java.util.PriorityQueue
 import java.util.TreeSet
@@ -105,10 +106,15 @@ class EventCoordinatorImpl(
 
     for (event in currentBatch) {
       if (safetyTerminationRequested) break
-      dispatchEvent(event)
-      processedEventCount++
-      reportProgressIfRequested()
-      checkProcessedEventLimit()
+      try {
+        dispatchEvent(event)
+        processedEventCount++
+        reportProgressIfRequested()
+        checkProcessedEventLimit()
+      } catch (limit: ScalabilityLimitExceededException) {
+        requestSafetyTermination(limit.terminationReason)
+        break
+      }
     }
   }
 

@@ -6,6 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class CompactTransactionPriorityStoreTest {
   @Test
@@ -95,6 +96,17 @@ class CompactTransactionPriorityStoreTest {
       reference.take(100).map { it.txId },
       store.selectPrefixByTotalSize(maxBytes).map { it.txId }
     )
+  }
+
+  @Test
+  fun `admission callback runs before mempool entry is committed`() {
+    val store = CompactTransactionPriorityStore(
+      beforeNewEntry = { throw IllegalStateException("stop-before-insert") }
+    )
+
+    assertFailsWith<IllegalStateException> { store.add(transaction("blocked", 0)) }
+    assertEquals(0, store.size)
+    assertNull(store.get("blocked"))
   }
 
   private fun transaction(id: String, n: Int) = TransactionImpl(

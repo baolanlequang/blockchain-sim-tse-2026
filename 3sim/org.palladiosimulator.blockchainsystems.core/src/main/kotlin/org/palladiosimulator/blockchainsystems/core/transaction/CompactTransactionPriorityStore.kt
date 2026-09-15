@@ -13,7 +13,12 @@ import java.util.PriorityQueue
  * table, so add/remove/lookup remain logarithmic/constant without per-entry
  * collection-node objects.
  */
-internal class CompactTransactionPriorityStore(initialCapacity: Int = 16) {
+internal class CompactTransactionPriorityStore(
+  initialCapacity: Int = 16,
+  private val beforeNewEntry: ((Int) -> Unit)? = null,
+  private val afterNewEntry: ((Int) -> Unit)? = null,
+  private val afterEntryRemoved: ((Int) -> Unit)? = null
+) {
   private var heap: Array<Transaction?> = arrayOfNulls(maxOf(16, initialCapacity))
   private var heapSize: Int = 0
   private val indexById = StringIntIndex(initialCapacity)
@@ -22,11 +27,13 @@ internal class CompactTransactionPriorityStore(initialCapacity: Int = 16) {
 
   fun add(transaction: Transaction): Boolean {
     if (indexById.get(transaction.txId) >= 0) return false
+    beforeNewEntry?.invoke(heapSize + 1)
     ensureHeapCapacity(heapSize + 1)
     heap[heapSize] = transaction
     indexById.put(transaction.txId, heapSize)
     siftUp(heapSize)
     heapSize++
+    afterNewEntry?.invoke(heapSize)
     return true
   }
 
@@ -52,6 +59,7 @@ internal class CompactTransactionPriorityStore(initialCapacity: Int = 16) {
     } else {
       heap[lastIndex] = null
     }
+    afterEntryRemoved?.invoke(heapSize)
     return removed
   }
 

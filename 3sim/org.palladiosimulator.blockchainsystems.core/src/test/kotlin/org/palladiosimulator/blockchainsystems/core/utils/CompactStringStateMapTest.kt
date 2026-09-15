@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class CompactStringStateMapTest {
   @Test
@@ -19,4 +20,15 @@ class CompactStringStateMapTest {
       assertEquals(2, map.get("key-$i").toInt())
     }
   }
+  @Test
+  fun `admission callback runs before a new entry is committed`() {
+    val map = CompactStringStateMap(
+      initialCapacity = 16,
+      beforeNewEntry = { throw IllegalStateException("stop-before-insert") }
+    )
+
+    assertFailsWith<IllegalStateException> { map.putIfAbsent("blocked", 1) }
+    assertEquals(CompactStringStateMap.ABSENT, map.get("blocked"))
+  }
+
 }
