@@ -27,6 +27,15 @@ data class RefinedExecutionAudit(
   val transactionFollowUpCompleted: Boolean,
   val totalBlockProposalsAllPhases: Long,
   val totalTransactionSubmissionsAllPhases: Long,
+  /** Largest phase-local WARMUP/MEASUREMENT canonical no-progress gap observed. */
+  @EncodeDefault
+  val maxCanonicalProgressGapMillisObserved: Long = 0L,
+  /** Exact number of simulation events processed by the event coordinator. */
+  @EncodeDefault
+  val processedEventsObserved: Long = 0L,
+  /** Largest number of queued future events observed during the execution. */
+  @EncodeDefault
+  val maxFutureEventsObserved: Long = 0L,
   /** Reproducibility record for the optional canonical-progress safety guard. */
   @EncodeDefault
   val canonicalProgressStallMillis: Long = 0L,

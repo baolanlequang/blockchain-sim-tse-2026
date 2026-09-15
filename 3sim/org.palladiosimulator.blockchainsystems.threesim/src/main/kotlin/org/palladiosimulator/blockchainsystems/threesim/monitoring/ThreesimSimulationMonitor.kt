@@ -101,13 +101,16 @@ class ThreesimSimulationMonitor(
    * time during WARMUP or MEASUREMENT. This does not alter consensus, fork
    * choice, mining, transaction processing, or random-number consumption.
    *
-   * Enable, for example, with:
-   *   -Dthreesim.canonicalProgressStallMs=7200000
+   * Configure only after the global simulated-time threshold has been
+   * calibrated and frozen for the production experiment.
    */
   private val canonicalProgressStallMillis: Long =
     java.lang.Long.getLong("threesim.canonicalProgressStallMs", 0L).coerceAtLeast(0L)
   private var canonicalProgressHighWater: Int = 0
   private var canonicalProgressLastAdvanceTimeMs: Long = 0L
+  private var maxCanonicalProgressGapMillisObserved: Long = 0L
+  private var processedEventsObserved: Long = 0L
+  private var maxFutureEventsObserved: Long = 0L
 
   /*
    * MACHINE-INDEPENDENT SAFETY LIMITS. Disabled by default. These limits stop an
@@ -353,6 +356,7 @@ class ThreesimSimulationMonitor(
   }
 
   fun getFinalState(finalSystemTime: Long): ThreesimSimulationMonitorState {
+    observeCanonicalProgressGap(finalSystemTime)
     val effectiveEnd = if (measurementEndTimeMs > 0L) measurementEndTimeMs else finalSystemTime
     val measurementDuration = if (refinedWindowEnabled) {
       (effectiveEnd - measurementStartTimeMs).coerceAtLeast(0L)
@@ -403,6 +407,9 @@ class ThreesimSimulationMonitor(
       transactionFollowUpCompleted = transactionFollowUpCompleted,
       totalBlockProposalsAllPhases = totalBlockProposalsAllPhases,
       totalTransactionSubmissionsAllPhases = totalTransactionSubmissionsAllPhases,
+      maxCanonicalProgressGapMillisObserved = maxCanonicalProgressGapMillisObserved,
+      processedEventsObserved = processedEventsObserved,
+      maxFutureEventsObserved = maxFutureEventsObserved,
       canonicalProgressStallMillis = canonicalProgressStallMillis,
       maxTransactionSubmissions = maxTransactionSubmissions,
       maxBlockProposals = maxBlockProposals,
@@ -710,6 +717,7 @@ class ThreesimSimulationMonitor(
     // Track a high-water mark, not the instantaneous canonical count: a reorg
     // may legitimately reduce the latter and must not be mistaken for progress.
     if (canonicalCount > canonicalProgressHighWater) {
+      observeCanonicalProgressGap(occurrenceTime)
       canonicalProgressHighWater = canonicalCount
       canonicalProgressLastAdvanceTimeMs = occurrenceTime
     }
@@ -937,11 +945,33 @@ class ThreesimSimulationMonitor(
 
   private fun isSpsmObservationPhase(): Boolean = phase == Phase.LEGACY || phase == Phase.MEASUREMENT
 
+  private fun observeCanonicalProgressGap(currentTimeMs: Long) {
+    if (phase != Phase.WARMUP && phase != Phase.MEASUREMENT) return
+
+    val gapMillis =
+      (currentTimeMs - canonicalProgressLastAdvanceTimeMs).coerceAtLeast(0L)
+    if (gapMillis > maxCanonicalProgressGapMillisObserved) {
+      maxCanonicalProgressGapMillisObserved = gapMillis
+    }
+  }
+
   override fun onSafetyTermination(reason: String) {
     markTermination(reason, false)
   }
 
+  override fun onEventCoordinatorTelemetry(
+    processedEvents: Long,
+    maxFutureEventsObserved: Long
+  ) {
+    processedEventsObserved = maxOf(processedEventsObserved, processedEvents)
+    this.maxFutureEventsObserved = maxOf(
+      this.maxFutureEventsObserved,
+      maxFutureEventsObserved
+    )
+  }
+
   override fun shouldTerminate(): Boolean {
+    observeCanonicalProgressGap(simulationClock.currentTime)
     if (maxTransactionSubmissions > 0L && totalTransactionSubmissionsAllPhases >= maxTransactionSubmissions) {
       reportWorkloadLimit("TRANSACTION_SUBMISSIONS", maxTransactionSubmissions)
       return markTermination("WORKLOAD_LIMIT_TRANSACTION_SUBMISSIONS", false)

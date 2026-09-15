@@ -54,6 +54,7 @@ class EventCoordinatorImpl(
 
   private var nextInsertionSequence = 0L
   private var processedEventCount = 0L
+  private var maxFutureEventsObserved = 0L
   private var safetyTerminationRequested = false
 
   private val progressEveryEvents: Long =
@@ -80,6 +81,11 @@ class EventCoordinatorImpl(
 
       processCurrentSlice()
     }
+
+    (terminationCondition as? SafetyTerminationListener)?.onEventCoordinatorTelemetry(
+      processedEventCount,
+      maxFutureEventsObserved
+    )
   }
 
   private fun hasUnprocessedEvents(): Boolean = peekNextEvent() != null
@@ -140,6 +146,11 @@ class EventCoordinatorImpl(
     } else {
       scheduledEvents.add(scheduledEvent)
     }
+
+    maxFutureEventsObserved = maxOf(
+      maxFutureEventsObserved,
+      futureEventCount().toLong()
+    )
   }
 
   override fun cancelEventsFor(eventOrigin: EventDispatchable) {

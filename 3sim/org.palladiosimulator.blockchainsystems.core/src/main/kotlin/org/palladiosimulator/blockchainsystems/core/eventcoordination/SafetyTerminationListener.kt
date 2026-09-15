@@ -1,6 +1,13 @@
 package org.palladiosimulator.blockchainsystems.core.eventcoordination
 
-/** Receives a structured reason when the event engine stops on a configured safety limit. */
+/** Receives structured safety and constant-space event-engine telemetry. */
 interface SafetyTerminationListener {
   fun onSafetyTermination(reason: String)
+
+  fun onEventCoordinatorTelemetry(
+    processedEvents: Long,
+    maxFutureEventsObserved: Long
+  ) {
+    // Optional constant-space diagnostic hook.
+  }
 }

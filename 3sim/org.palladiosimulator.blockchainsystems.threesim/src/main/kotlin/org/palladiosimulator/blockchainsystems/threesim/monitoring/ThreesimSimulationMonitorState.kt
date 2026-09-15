@@ -50,6 +50,12 @@ class ThreesimSimulationMonitorState(
   val transactionFollowUpCompleted: Boolean = false,
   val totalBlockProposalsAllPhases: Long = 0L,
   val totalTransactionSubmissionsAllPhases: Long = 0L,
+  /** Largest phase-local WARMUP/MEASUREMENT canonical no-progress gap observed. */
+  val maxCanonicalProgressGapMillisObserved: Long = 0L,
+  /** Exact number of simulation events processed by the event coordinator. */
+  val processedEventsObserved: Long = 0L,
+  /** Largest number of queued future events observed during the execution. */
+  val maxFutureEventsObserved: Long = 0L,
   /** Configured simulated-time no-progress guard; 0 means disabled. */
   val canonicalProgressStallMillis: Long = 0L,
   /** Configured total transaction-submission work guard; 0 means disabled. */
