@@ -29,17 +29,11 @@ class CompactStringStateMap(initialCapacity: Int = 16) {
   /** Stores [state] and returns the previous state (0 when absent). */
   fun put(key: String, state: Byte): Byte {
     require(state != ABSENT) { "State 0 is reserved for absent entries" }
-    if (size + 1 > resizeAt) resize(keys.size shl 1)
 
     var index = spread(key.hashCode()) and (keys.size - 1)
     while (true) {
       val current = keys[index]
-      if (current == null) {
-        keys[index] = key
-        states[index] = state
-        size++
-        return ABSENT
-      }
+      if (current == null) break
       if (current == key) {
         val previous = states[index]
         states[index] = state
@@ -47,25 +41,42 @@ class CompactStringStateMap(initialCapacity: Int = 16) {
       }
       index = (index + 1) and (keys.size - 1)
     }
+
+    // Grow only for a genuinely new key. Previously a duplicate/update at the
+    // threshold could allocate a doubled table even though logical size did not
+    // change, creating avoidable multi-gigabyte transient allocations.
+    if (size + 1 > resizeAt) {
+      resize(keys.size shl 1)
+      return put(key, state)
+    }
+
+    keys[index] = key
+    states[index] = state
+    size++
+    return ABSENT
   }
 
   /** Inserts [state] only when absent and returns true when insertion happened. */
   fun putIfAbsent(key: String, state: Byte): Boolean {
     require(state != ABSENT) { "State 0 is reserved for absent entries" }
-    if (size + 1 > resizeAt) resize(keys.size shl 1)
 
     var index = spread(key.hashCode()) and (keys.size - 1)
     while (true) {
       val current = keys[index]
-      if (current == null) {
-        keys[index] = key
-        states[index] = state
-        size++
-        return true
-      }
+      if (current == null) break
       if (current == key) return false
       index = (index + 1) and (keys.size - 1)
     }
+
+    if (size + 1 > resizeAt) {
+      resize(keys.size shl 1)
+      return putIfAbsent(key, state)
+    }
+
+    keys[index] = key
+    states[index] = state
+    size++
+    return true
   }
 
   fun containsKey(key: String): Boolean = get(key) != ABSENT

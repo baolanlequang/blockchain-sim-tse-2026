@@ -25,8 +25,23 @@ data class RefinedExecutionAudit(
   val terminationReason: String,
   val measurementWindowCompleted: Boolean,
   val transactionFollowUpCompleted: Boolean,
-  val totalBlockProposalsAllPhases: Int,
-  val totalTransactionSubmissionsAllPhases: Int,
+  val totalBlockProposalsAllPhases: Long,
+  val totalTransactionSubmissionsAllPhases: Long,
+  /** Reproducibility record for the optional canonical-progress safety guard. */
+  @EncodeDefault
+  val canonicalProgressStallMillis: Long = 0L,
+  /** Reproducibility record for the optional transaction-work safety guard. */
+  @EncodeDefault
+  val maxTransactionSubmissions: Long = 0L,
+  /** Reproducibility record for the optional block-work safety guard. */
+  @EncodeDefault
+  val maxBlockProposals: Long = 0L,
+  /** Reproducibility record for the event-queue safety guard. */
+  @EncodeDefault
+  val maxFutureEvents: Long = 0L,
+  /** Reproducibility record for the processed-event safety guard. */
+  @EncodeDefault
+  val maxProcessedEvents: Long = 0L,
   val blockRateObservationTimeMs: Long,
   val transactionRateObservationTimeMs: Long,
   val measurementSubmittedTransactions: Int,

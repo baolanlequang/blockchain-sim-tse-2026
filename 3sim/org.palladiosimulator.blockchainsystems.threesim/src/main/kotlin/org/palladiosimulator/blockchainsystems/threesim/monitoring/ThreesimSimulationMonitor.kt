@@ -12,6 +12,7 @@ import org.palladiosimulator.blockchainsystems.core.blockchain.BlockTypeChangedT
 import org.palladiosimulator.blockchainsystems.core.clock.SimulationClock
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEvent
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEventLogOrigin
+import org.palladiosimulator.blockchainsystems.core.eventcoordination.SafetyTerminationListener
 import org.palladiosimulator.blockchainsystems.core.geography.GeographicalRegions
 import org.palladiosimulator.blockchainsystems.core.mining.BlockMinedTraceEvent
 import org.palladiosimulator.blockchainsystems.core.monitoring.abstractions.SimulationMonitor
@@ -46,7 +47,7 @@ class ThreesimSimulationMonitor(
   private val measuredBlocksPerValidator: Int = 0,
   private val transactionDrainMillis: Long = 0L,
   private val retainTransactionFollowUpObservations: Boolean = false
-) : SimulationMonitor {
+) : SimulationMonitor, SafetyTerminationListener {
 
   private enum class Phase { LEGACY, WARMUP, MEASUREMENT, DRAIN }
 
@@ -61,6 +62,8 @@ class ThreesimSimulationMonitor(
   private var warmupTargetCanonicalBlocks = 0
   /** Unique blocks that have crossed the canonical-majority threshold during warm-up. */
   private val warmupCanonicalBlocksSeen = linkedSetOf<String>()
+  /** Unique blocks that first cross the canonical-majority threshold during measurement. */
+  private val measurementCanonicalBlocksSeen = linkedSetOf<String>()
   private var measurementTargetCanonicalBlocks = 0
   private var measurementStartTimeMs = 0L
   private var measurementEndTimeMs = 0L
@@ -106,6 +109,25 @@ class ThreesimSimulationMonitor(
   private var canonicalProgressHighWater: Int = 0
   private var canonicalProgressLastAdvanceTimeMs: Long = 0L
 
+  /*
+   * MACHINE-INDEPENDENT SAFETY LIMITS. Disabled by default. These limits stop an
+   * execution as scientifically incomplete before model-induced state growth can
+   * exhaust the JVM. They do not drop transactions, cap mempools, change arrival
+   * rates, or alter consensus. Calibrate once, freeze, and record them for the
+   * production experiment.
+   *
+   *   -Dthreesim.maxTransactionSubmissions=...
+   *   -Dthreesim.maxBlockProposals=...
+   */
+  private val maxTransactionSubmissions: Long =
+    java.lang.Long.getLong("threesim.maxTransactionSubmissions", 0L).coerceAtLeast(0L)
+  private val maxBlockProposals: Long =
+    java.lang.Long.getLong("threesim.maxBlockProposals", 0L).coerceAtLeast(0L)
+  private val maxFutureEvents: Long =
+    java.lang.Long.getLong("threesim.maxFutureEvents", 0L).coerceAtLeast(0L)
+  private val maxProcessedEvents: Long =
+    java.lang.Long.getLong("threesim.maxProcessedEvents", 0L).coerceAtLeast(0L)
+
   /** Tracks majority-visible canonical-chain membership (Included or Confirmed) for window control. */
   private lateinit var canonicalProgressBlocks: BlocksMap
   /** Tracks blocks that reach the configured confirmation depth; used for transaction follow-up. */
@@ -114,8 +136,8 @@ class ThreesimSimulationMonitor(
   private lateinit var canonicalMeasurementBlocks: BlocksMap
 
   private var numberOfSubmittedTransactions: Int = 0
-  private var totalBlockProposalsAllPhases: Int = 0
-  private var totalTransactionSubmissionsAllPhases: Int = 0
+  private var totalBlockProposalsAllPhases: Long = 0L
+  private var totalTransactionSubmissionsAllPhases: Long = 0L
   private var blockReward: Double? = null
   private lateinit var blocksProposedPerNode: CounterMap<String>
   private lateinit var includedBlocks: BlocksMap
@@ -123,13 +145,124 @@ class ThreesimSimulationMonitor(
   private lateinit var staleBlocks: BlocksMap
   private lateinit var forkedBlocks: BlocksMap
 
-  /** One entry per transaction submitted in the measurement window. */
-  private data class MeasurementTransactionObservation(
-    val submittedAtMs: Long,
-    var confirmedAtMs: Long? = null
-  )
+  /**
+   * Flat append-only measurement-transaction table. The previous LinkedHashMap
+   * retained one map node plus one observation object per submitted transaction.
+   * High-load runs can contain millions of measurement transactions, so keep the
+   * same exact txId/submission/confirmation information in flat arrays instead.
+   */
+  private class MeasurementTransactionStore(initialCapacity: Int = 16) {
+    private var keys: Array<String?> = arrayOfNulls(tableSizeFor(initialCapacity))
+    private var submittedAt: LongArray = LongArray(keys.size)
+    private var confirmedAt: LongArray = LongArray(keys.size) { UNCONFIRMED }
+    private var resizeAt: Int = maxOf(1, (keys.size * LOAD_FACTOR).toInt())
 
-  private val measurementTransactions = linkedMapOf<String, MeasurementTransactionObservation>()
+    var size: Int = 0
+      private set
+    var unconfirmedCount: Int = 0
+      private set
+    var latestSubmittedAtMs: Long = 0L
+      private set
+
+    fun isEmpty(): Boolean = size == 0
+
+    fun addIfAbsent(txId: String, submittedAtMs: Long): Boolean {
+      var slot = spread(txId.hashCode()) and (keys.size - 1)
+      while (true) {
+        val current = keys[slot]
+        if (current == null) break
+        if (current == txId) return false
+        slot = (slot + 1) and (keys.size - 1)
+      }
+
+      if (size + 1 > resizeAt) {
+        resize(keys.size shl 1)
+        return addIfAbsent(txId, submittedAtMs)
+      }
+
+      keys[slot] = txId
+      submittedAt[slot] = submittedAtMs
+      confirmedAt[slot] = UNCONFIRMED
+      size++
+      unconfirmedCount++
+      if (submittedAtMs > latestSubmittedAtMs) latestSubmittedAtMs = submittedAtMs
+      return true
+    }
+
+    fun confirmIfEligible(txId: String, occurrenceTime: Long, drainMillis: Long) {
+      val slot = findSlot(txId)
+      if (slot < 0 || confirmedAt[slot] != UNCONFIRMED) return
+      val deadline = submittedAt[slot] + drainMillis
+      if (occurrenceTime <= deadline) {
+        confirmedAt[slot] = occurrenceTime
+        unconfirmedCount--
+      }
+    }
+
+    fun forEach(action: (String, Long, Long?) -> Unit) {
+      for (slot in keys.indices) {
+        val txId = keys[slot] ?: continue
+        val confirmation = confirmedAt[slot]
+        action(txId, submittedAt[slot], if (confirmation == UNCONFIRMED) null else confirmation)
+      }
+    }
+
+    fun clear() {
+      keys.fill(null)
+      submittedAt.fill(0L)
+      confirmedAt.fill(UNCONFIRMED)
+      size = 0
+      unconfirmedCount = 0
+      latestSubmittedAtMs = 0L
+    }
+
+    private fun findSlot(txId: String): Int {
+      var slot = spread(txId.hashCode()) and (keys.size - 1)
+      while (true) {
+        val current = keys[slot] ?: return -1
+        if (current == txId) return slot
+        slot = (slot + 1) and (keys.size - 1)
+      }
+    }
+
+    private fun resize(newCapacity: Int) {
+      val oldKeys = keys
+      val oldSubmittedAt = submittedAt
+      val oldConfirmedAt = confirmedAt
+
+      keys = arrayOfNulls(newCapacity)
+      submittedAt = LongArray(newCapacity)
+      confirmedAt = LongArray(newCapacity) { UNCONFIRMED }
+      resizeAt = maxOf(1, (newCapacity * LOAD_FACTOR).toInt())
+
+      for (oldSlot in oldKeys.indices) {
+        val txId = oldKeys[oldSlot] ?: continue
+        var newSlot = spread(txId.hashCode()) and (keys.size - 1)
+        while (keys[newSlot] != null) {
+          newSlot = (newSlot + 1) and (keys.size - 1)
+        }
+        keys[newSlot] = txId
+        submittedAt[newSlot] = oldSubmittedAt[oldSlot]
+        confirmedAt[newSlot] = oldConfirmedAt[oldSlot]
+      }
+    }
+
+    private companion object {
+      const val UNCONFIRMED: Long = Long.MIN_VALUE
+      const val LOAD_FACTOR: Double = 0.65
+
+      fun spread(hashCode: Int): Int = hashCode xor (hashCode ushr 16)
+
+      fun tableSizeFor(requested: Int): Int {
+        var capacity = 16
+        val target = maxOf(1, requested)
+        while (capacity < target / LOAD_FACTOR) capacity = capacity shl 1
+        return capacity
+      }
+    }
+  }
+
+  private val measurementTransactions = MeasurementTransactionStore()
 
   /**
    * Follow-up diagnostic for P-B. Receiver timestamps are kept in a primitive
@@ -146,7 +279,7 @@ class ThreesimSimulationMonitor(
   }
 
   private val measurementBlockPropagation =
-    linkedMapOf<String, MeasurementBlockPropagationObservation>()
+    HashMap<String, MeasurementBlockPropagationObservation>()
 
   private class RunningAverage {
     private var count: Long = 0L
@@ -205,6 +338,7 @@ class ThreesimSimulationMonitor(
 
     if (refinedWindowEnabled) {
       warmupCanonicalBlocksSeen.clear()
+      measurementCanonicalBlocksSeen.clear()
       warmupTargetCanonicalBlocks = warmupBlocksPerValidator * nodes.size
       measurementTargetCanonicalBlocks = warmupTargetCanonicalBlocks + measuredBlocksPerValidator * nodes.size
       if (warmupTargetCanonicalBlocks > 0) {
@@ -269,6 +403,11 @@ class ThreesimSimulationMonitor(
       transactionFollowUpCompleted = transactionFollowUpCompleted,
       totalBlockProposalsAllPhases = totalBlockProposalsAllPhases,
       totalTransactionSubmissionsAllPhases = totalTransactionSubmissionsAllPhases,
+      canonicalProgressStallMillis = canonicalProgressStallMillis,
+      maxTransactionSubmissions = maxTransactionSubmissions,
+      maxBlockProposals = maxBlockProposals,
+      maxFutureEvents = maxFutureEvents,
+      maxProcessedEvents = maxProcessedEvents,
       blockRateObservationTimeMs = finalSystemTime,
       transactionRateObservationTimeMs = if (measurementEndTimeMs > 0L) measurementEndTimeMs else finalSystemTime,
       measurementBlocksEligibleForPropagationT90 = propagationSummary.eligibleBlocks,
@@ -347,7 +486,7 @@ class ThreesimSimulationMonitor(
 
         if (
           blockProgressEvery > 0 &&
-          totalBlockProposalsAllPhases % blockProgressEvery == 0
+          totalBlockProposalsAllPhases % blockProgressEvery.toLong() == 0L
         ) {
           System.err.println(
             "[3SIM-block-progress] phase=${phase.name} " +
@@ -424,8 +563,12 @@ class ThreesimSimulationMonitor(
           val measurementBecameValid = addMeasurementBlock(
             e.appendedBlockType, e.appendedBlock, logOrigin.id, e.occurrenceTime)
           if (phase == Phase.MEASUREMENT && isCanonicalType(e.appendedBlockType)) {
-            measurementCanonicalBecameValid = canonicalMeasurementBlocks.addNodeToBlock(
+            val crossedMajority = canonicalMeasurementBlocks.addNodeToBlock(
               e.appendedBlock, logOrigin.id, e.occurrenceTime)
+            measurementCanonicalBecameValid =
+              crossedMajority &&
+              e.appendedBlock.hash !in warmupCanonicalBlocksSeen &&
+              measurementCanonicalBlocksSeen.add(e.appendedBlock.hash)
           }
           if (measurementBecameValid && e.appendedBlockType == BlockType.ConfirmedBlock) {
             monitorThroughputForNewlyConfirmedBlock(e.appendedBlock, e.occurrenceTime)
@@ -486,8 +629,12 @@ class ThreesimSimulationMonitor(
             if (oldCanonical && !newCanonical) {
               canonicalMeasurementBlocks.removeNodeFromBlock(e.block.hash, nodeId)
             } else if (!oldCanonical && newCanonical) {
-              measurementCanonicalBecameValid = canonicalMeasurementBlocks.addNodeToBlock(
+              val crossedMajority = canonicalMeasurementBlocks.addNodeToBlock(
                 e.block, nodeId, e.occurrenceTime)
+              measurementCanonicalBecameValid =
+                crossedMajority &&
+                e.block.hash !in warmupCanonicalBlocksSeen &&
+                measurementCanonicalBlocksSeen.add(e.block.hash)
             }
           }
 
@@ -510,9 +657,9 @@ class ThreesimSimulationMonitor(
         if (phase == Phase.LEGACY || phase == Phase.MEASUREMENT) {
           numberOfSubmittedTransactions++
           if (phase == Phase.MEASUREMENT) {
-            measurementTransactions.putIfAbsent(
+            measurementTransactions.addIfAbsent(
               e.transaction.txId,
-              MeasurementTransactionObservation(e.transaction.creationTime)
+              e.transaction.creationTime
             )
           }
         }
@@ -557,7 +704,7 @@ class ThreesimSimulationMonitor(
     val canonicalCount = if (phase == Phase.WARMUP) {
       warmupCanonicalBlocksSeen.size
     } else {
-      warmupTargetCanonicalBlocks + canonicalMeasurementBlocks.getNumberOfValidBlocks()
+      warmupTargetCanonicalBlocks + measurementCanonicalBlocksSeen.size
     }
 
     // Track a high-water mark, not the instantaneous canonical count: a reorg
@@ -596,7 +743,7 @@ class ThreesimSimulationMonitor(
     val measurementCanonicalTarget = measuredBlocksPerValidator * nodes.size
     if (
       phase == Phase.MEASUREMENT &&
-      canonicalMeasurementBlocks.getNumberOfValidBlocks() >= measurementCanonicalTarget
+      measurementCanonicalBlocksSeen.size >= measurementCanonicalTarget
     ) {
       measurementEndTimeMs = occurrenceTime
       phase = Phase.DRAIN
@@ -614,6 +761,7 @@ class ThreesimSimulationMonitor(
     includedBlocks.clear()
     confirmedBlocks.clear()
     canonicalMeasurementBlocks.clear()
+    measurementCanonicalBlocksSeen.clear()
     staleBlocks.clear()
     forkedBlocks.clear()
     measurementTransactions.clear()
@@ -628,11 +776,11 @@ class ThreesimSimulationMonitor(
   private fun recordMeasurementTransactionConfirmations(block: Block, occurrenceTime: Long) {
     if (!refinedWindowEnabled || (phase != Phase.MEASUREMENT && phase != Phase.DRAIN)) return
     for (transaction in block.transactions) {
-      val observation = measurementTransactions[transaction.txId] ?: continue
-      val deadline = observation.submittedAtMs + transactionDrainMillis
-      if (occurrenceTime <= deadline && observation.confirmedAtMs == null) {
-        observation.confirmedAtMs = occurrenceTime
-      }
+      measurementTransactions.confirmIfEligible(
+        transaction.txId,
+        occurrenceTime,
+        transactionDrainMillis
+      )
     }
   }
 
@@ -658,11 +806,6 @@ class ThreesimSimulationMonitor(
     val retainedObservations: List<TransactionFollowUpObservation>
   )
 
-  private data class FollowUpAtTime(
-    var events: Int = 0,
-    var censored: Int = 0
-  )
-
   private fun buildTransactionFollowUpSummary(finalSystemTime: Long): TransactionFollowUpSummary {
     if (!refinedWindowEnabled || measurementTransactions.isEmpty()) {
       return TransactionFollowUpSummary(
@@ -676,23 +819,23 @@ class ThreesimSimulationMonitor(
     }
 
     /*
-     * Group event/censor counts by follow-up time for the Kaplan-Meier RMCL.
-     * This is much smaller than materializing one serializable object per
-     * transaction, especially when many transactions share the T_drain censoring
-     * time. The calculation still includes EVERY measurement transaction.
+     * Encode follow-up time and event/censor type in one primitive long and sort
+     * that array for the Kaplan-Meier RMCL. This preserves the exact grouped
+     * calculation without allocating a TreeMap node and group object for every
+     * distinct follow-up timestamp.
      */
-    val grouped = sortedMapOf<Long, FollowUpAtTime>()
+    val total = measurementTransactions.size
+    val encodedFollowUp = LongArray(total)
     val retained = if (retainTransactionFollowUpObservations) {
-      ArrayList<TransactionFollowUpObservation>(measurementTransactions.size)
+      ArrayList<TransactionFollowUpObservation>(total)
     } else {
       null
     }
 
     var confirmedCount = 0
+    var destination = 0
 
-    measurementTransactions.forEach { (txId, observation) ->
-      val submittedAt = observation.submittedAtMs
-      val confirmation = observation.confirmedAtMs
+    measurementTransactions.forEach { txId, submittedAt, confirmation ->
       val deadline = submittedAt + transactionDrainMillis
       val confirmed = confirmation != null && confirmation <= deadline
       val followUp = if (confirmed) {
@@ -704,8 +847,8 @@ class ThreesimSimulationMonitor(
         minOf(transactionDrainMillis, (finalSystemTime - submittedAt).coerceAtLeast(0L))
       }
 
-      val group = grouped.getOrPut(followUp) { FollowUpAtTime() }
-      if (confirmed) group.events++ else group.censored++
+      require(followUp <= (Long.MAX_VALUE ushr 1)) { "Follow-up interval too large to encode" }
+      encodedFollowUp[destination++] = (followUp shl 1) or if (confirmed) 1L else 0L
 
       if (retained != null) {
         retained.add(
@@ -719,10 +862,10 @@ class ThreesimSimulationMonitor(
       }
     }
 
-    val total = measurementTransactions.size
+    encodedFollowUp.sort()
     val censoredCount = total - confirmedCount
     val ratio = confirmedCount.toDouble() / total.toDouble()
-    val rmcl = restrictedMeanFromGroupedFollowUp(grouped, total, transactionDrainMillis)
+    val rmcl = restrictedMeanFromEncodedFollowUp(encodedFollowUp, total, transactionDrainMillis)
 
     return TransactionFollowUpSummary(
       count = total,
@@ -736,11 +879,11 @@ class ThreesimSimulationMonitor(
 
   /**
    * Kaplan-Meier restricted mean survival/confirmation latency through tau.
-   * `grouped` contains the complete follow-up population, so this result is
-   * numerically equivalent to the former per-observation implementation.
+   * The encoded array contains the complete follow-up population, so this result
+   * is numerically equivalent to the former grouped-map implementation.
    */
-  private fun restrictedMeanFromGroupedFollowUp(
-    grouped: Map<Long, FollowUpAtTime>,
+  private fun restrictedMeanFromEncodedFollowUp(
+    encodedFollowUp: LongArray,
     populationSize: Int,
     tau: Long
   ): Double? {
@@ -750,16 +893,25 @@ class ThreesimSimulationMonitor(
     var survival = 1.0
     var previousTime = 0L
     var area = 0.0
+    var index = 0
 
-    for ((timeRaw, group) in grouped) {
-      val time = timeRaw.coerceIn(0L, tau)
+    while (index < encodedFollowUp.size) {
+      val time = (encodedFollowUp[index] ushr 1).coerceIn(0L, tau)
+      var events = 0
+      var censored = 0
+
+      while (index < encodedFollowUp.size && (encodedFollowUp[index] ushr 1).coerceIn(0L, tau) == time) {
+        if ((encodedFollowUp[index] and 1L) == 1L) events++ else censored++
+        index++
+      }
+
       if (time > previousTime) {
         area += survival * (time - previousTime).toDouble()
       }
-      if (atRisk > 0 && group.events > 0) {
-        survival *= 1.0 - group.events.toDouble() / atRisk.toDouble()
+      if (atRisk > 0 && events > 0) {
+        survival *= 1.0 - events.toDouble() / atRisk.toDouble()
       }
-      atRisk -= group.events + group.censored
+      atRisk -= events + censored
       previousTime = time
       if (time >= tau) break
     }
@@ -779,13 +931,27 @@ class ThreesimSimulationMonitor(
   private fun canonicalBlocksObservedForWindowControl(): Int = when (phase) {
     Phase.WARMUP -> warmupCanonicalBlocksSeen.size
     Phase.MEASUREMENT, Phase.DRAIN ->
-      warmupTargetCanonicalBlocks + canonicalMeasurementBlocks.getNumberOfValidBlocks()
+      warmupTargetCanonicalBlocks + measurementCanonicalBlocksSeen.size
     Phase.LEGACY -> canonicalProgressBlocks.getNumberOfValidBlocks()
   }
 
   private fun isSpsmObservationPhase(): Boolean = phase == Phase.LEGACY || phase == Phase.MEASUREMENT
 
+  override fun onSafetyTermination(reason: String) {
+    markTermination(reason, false)
+  }
+
   override fun shouldTerminate(): Boolean {
+    if (maxTransactionSubmissions > 0L && totalTransactionSubmissionsAllPhases >= maxTransactionSubmissions) {
+      reportWorkloadLimit("TRANSACTION_SUBMISSIONS", maxTransactionSubmissions)
+      return markTermination("WORKLOAD_LIMIT_TRANSACTION_SUBMISSIONS", false)
+    }
+
+    if (maxBlockProposals > 0L && totalBlockProposalsAllPhases >= maxBlockProposals) {
+      reportWorkloadLimit("BLOCK_PROPOSALS", maxBlockProposals)
+      return markTermination("WORKLOAD_LIMIT_BLOCK_PROPOSALS", false)
+    }
+
     if (!refinedWindowEnabled) {
       if (inactivityThresholdCondition.hasProlongedInactivityExceeded()) {
         return markTermination("INACTIVITY", false)
@@ -804,12 +970,11 @@ class ThreesimSimulationMonitor(
         return markTermination("DRAIN_NO_MEASUREMENT_TRANSACTIONS", true)
       }
 
-      val allConfirmed = measurementTransactions.values.all { it.confirmedAtMs != null }
-      if (allConfirmed) {
+      if (measurementTransactions.unconfirmedCount == 0) {
         return markTermination("DRAIN_ALL_CONFIRMED", true)
       }
 
-      val latestDeadline = measurementTransactions.values.maxOf { it.submittedAtMs } + transactionDrainMillis
+      val latestDeadline = measurementTransactions.latestSubmittedAtMs + transactionDrainMillis
       if (simulationClock.currentTime >= latestDeadline) {
         return markTermination("DRAIN_DEADLINE_REACHED", true)
       }
@@ -846,6 +1011,17 @@ class ThreesimSimulationMonitor(
       return markTermination("INACTIVITY", false)
     }
     return false
+  }
+
+  private fun reportWorkloadLimit(kind: String, limit: Long) {
+    System.err.println(
+      "[3SIM-workload-limit] kind=$kind limit=$limit phase=${phase.name} " +
+        "canonical=${canonicalBlocksObservedForWindowControl()} " +
+        "proposals=$totalBlockProposalsAllPhases " +
+        "submittedTxAllPhases=$totalTransactionSubmissionsAllPhases " +
+        "longestChain=${maxBlockchainLengthCondition.currentLength} " +
+        "timeMs=${simulationClock.currentTime}"
+    )
   }
 
   private fun markTermination(reason: String, followUpCompleted: Boolean): Boolean {

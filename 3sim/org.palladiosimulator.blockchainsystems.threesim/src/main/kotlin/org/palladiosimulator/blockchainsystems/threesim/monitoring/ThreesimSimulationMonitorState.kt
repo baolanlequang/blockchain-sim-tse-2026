@@ -48,8 +48,18 @@ class ThreesimSimulationMonitorState(
   val executionPhaseAtTermination: String = "LEGACY",
   val terminationReason: String = "NOT_TERMINATED",
   val transactionFollowUpCompleted: Boolean = false,
-  val totalBlockProposalsAllPhases: Int = 0,
-  val totalTransactionSubmissionsAllPhases: Int = 0,
+  val totalBlockProposalsAllPhases: Long = 0L,
+  val totalTransactionSubmissionsAllPhases: Long = 0L,
+  /** Configured simulated-time no-progress guard; 0 means disabled. */
+  val canonicalProgressStallMillis: Long = 0L,
+  /** Configured total transaction-submission work guard; 0 means disabled. */
+  val maxTransactionSubmissions: Long = 0L,
+  /** Configured total block-proposal work guard; 0 means disabled. */
+  val maxBlockProposals: Long = 0L,
+  /** Configured maximum queued future events; 0 means disabled. */
+  val maxFutureEvents: Long = 0L,
+  /** Configured maximum processed events; 0 means disabled. */
+  val maxProcessedEvents: Long = 0L,
   val blockRateObservationTimeMs: Long = 0L,
   val transactionRateObservationTimeMs: Long = 0L,
   /** Blocks mined during the measurement window and therefore eligible for P-B T90. */

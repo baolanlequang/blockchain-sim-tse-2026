@@ -45,16 +45,24 @@ class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
     val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(block, context)
     if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
       context.miningProcess.restartMining()
+    }
+
+    // Forward every previously unknown valid attachable block exactly once.
+    // Whether it becomes this node's active mining branch is a separate choice.
+    if (outcome.isValidAttachableBlock()) {
       context.blockPropagationStrategy.distribute(block)
     }
   }
 
   override fun onBlockMined(block: Block, context: BlockchainSystemNodeContext) {
     val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(block, context)
-    if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
+    if (outcome.isValidAttachableBlock()) {
       context.blockPropagationStrategy.distribute(block)
     }
   }
+
+  private fun AppendOutcome.isValidAttachableBlock(): Boolean =
+    this == AppendOutcome.INCLUDED || this == AppendOutcome.FORKING || this == AppendOutcome.STALE
 
   override fun onCreatingBlock(blockMinedAt: Long, previousBlockHash: String, context: BlockchainSystemNodeContext): Block {
     val selection = context.transactionSelectionProcess.selectTransactionsForBlock(context)
