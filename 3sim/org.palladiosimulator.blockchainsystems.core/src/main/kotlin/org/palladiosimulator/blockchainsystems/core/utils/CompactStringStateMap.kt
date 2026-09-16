@@ -11,7 +11,11 @@ package org.palladiosimulator.blockchainsystems.core.utils
  * State 0 is reserved for "absent". Entries are never removed, matching the
  * lifetime of the gossip duplicate-suppression histories that use this class.
  */
-class CompactStringStateMap(initialCapacity: Int = 16) {
+class CompactStringStateMap(
+  initialCapacity: Int = 16,
+  private val beforeNewEntry: ((Int) -> Unit)? = null,
+  private val afterNewEntry: ((Int) -> Unit)? = null
+) {
   private var keys: Array<String?> = arrayOfNulls(tableSizeFor(initialCapacity))
   private var states: ByteArray = ByteArray(keys.size)
   private var size: Int = 0
@@ -29,17 +33,11 @@ class CompactStringStateMap(initialCapacity: Int = 16) {
   /** Stores [state] and returns the previous state (0 when absent). */
   fun put(key: String, state: Byte): Byte {
     require(state != ABSENT) { "State 0 is reserved for absent entries" }
-    if (size + 1 > resizeAt) resize(keys.size shl 1)
 
     var index = spread(key.hashCode()) and (keys.size - 1)
     while (true) {
       val current = keys[index]
-      if (current == null) {
-        keys[index] = key
-        states[index] = state
-        size++
-        return ABSENT
-      }
+      if (current == null) break
       if (current == key) {
         val previous = states[index]
         states[index] = state
@@ -47,25 +45,52 @@ class CompactStringStateMap(initialCapacity: Int = 16) {
       }
       index = (index + 1) and (keys.size - 1)
     }
+
+    // Admission is checked before any resize/allocation for a genuinely new
+    // key. A calibrated state limit can therefore terminate the current event
+    // before this append-only table attempts a larger backing allocation.
+    beforeNewEntry?.invoke(size + 1)
+    if (size + 1 > resizeAt) {
+      resize(keys.size shl 1)
+      index = spread(key.hashCode()) and (keys.size - 1)
+      while (keys[index] != null) {
+        index = (index + 1) and (keys.size - 1)
+      }
+    }
+
+    keys[index] = key
+    states[index] = state
+    size++
+    afterNewEntry?.invoke(size)
+    return ABSENT
   }
 
   /** Inserts [state] only when absent and returns true when insertion happened. */
   fun putIfAbsent(key: String, state: Byte): Boolean {
     require(state != ABSENT) { "State 0 is reserved for absent entries" }
-    if (size + 1 > resizeAt) resize(keys.size shl 1)
 
     var index = spread(key.hashCode()) and (keys.size - 1)
     while (true) {
       val current = keys[index]
-      if (current == null) {
-        keys[index] = key
-        states[index] = state
-        size++
-        return true
-      }
+      if (current == null) break
       if (current == key) return false
       index = (index + 1) and (keys.size - 1)
     }
+
+    beforeNewEntry?.invoke(size + 1)
+    if (size + 1 > resizeAt) {
+      resize(keys.size shl 1)
+      index = spread(key.hashCode()) and (keys.size - 1)
+      while (keys[index] != null) {
+        index = (index + 1) and (keys.size - 1)
+      }
+    }
+
+    keys[index] = key
+    states[index] = state
+    size++
+    afterNewEntry?.invoke(size)
+    return true
   }
 
   fun containsKey(key: String): Boolean = get(key) != ABSENT

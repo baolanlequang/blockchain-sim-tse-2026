@@ -2,6 +2,7 @@ package org.palladiosimulator.blockchainsystems.core.transaction
 
 import org.palladiosimulator.blockchainsystems.core.common.BlockchainNodeObject
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.Event
+import org.palladiosimulator.blockchainsystems.core.scalability.ScalabilityStateTracker
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Transaction
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.TrxMemPool
 
@@ -11,7 +12,8 @@ import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Trx
  * @author Davis Riedel
  */
 class TrxMemPoolImpl(
-  val nodeId: String
+  val nodeId: String,
+  private val scalabilityStateTracker: ScalabilityStateTracker? = null
 ) : BlockchainNodeObject(), TrxMemPool {
 
   /*
@@ -19,7 +21,11 @@ class TrxMemPoolImpl(
    * one TreeSet node object per pending transaction while retaining exact lookup,
    * duplicate suppression and removal semantics.
    */
-  private val mempool = CompactTransactionPriorityStore()
+  private val mempool = CompactTransactionPriorityStore(
+    beforeNewEntry = { scalabilityStateTracker?.beforeMempoolEntryAdded() },
+    afterNewEntry = { nodeEntries -> scalabilityStateTracker?.onMempoolEntryAdded(nodeEntries) },
+    afterEntryRemoved = { scalabilityStateTracker?.onMempoolEntryRemoved() }
+  )
 
   private fun logTransactionStoredEvent(transaction: Transaction) {
     val event = TransactionStoredInMemPoolTraceEvent(

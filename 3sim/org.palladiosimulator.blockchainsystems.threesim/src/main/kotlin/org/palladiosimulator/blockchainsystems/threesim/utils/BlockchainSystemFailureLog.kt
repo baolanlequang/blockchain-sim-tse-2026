@@ -1,40 +1,37 @@
 package org.palladiosimulator.blockchainsystems.threesim.utils
 
 /**
- * Logs the start and end of blockchain system failures.
+ * Constant-space failure statistics.
  *
- * @author Davis Riedel
+ * The monitor consumes only the number of failures, whether one is currently
+ * active, and the mean duration of completed failures. Retaining one object per
+ * historical failure therefore changed memory use without changing any output.
  */
 class BlockchainSystemFailureLog {
-  private data class BlockchainSystemFailureLogEntry(
-    val occurrenceTime: Long,
-    var duration: Long?,
-  )
-
-  private val log: MutableList<BlockchainSystemFailureLogEntry> = mutableListOf()
+  private var ongoingFailureStartedAt: Long? = null
+  private var numberOfFailures: Int = 0
+  private var completedFailureCount: Int = 0
+  private var completedFailureDurationSum: Long = 0L
 
   fun failureStarted(occurrenceTime: Long) {
     if (isFailureOngoing()) return
-    log.add(BlockchainSystemFailureLogEntry(occurrenceTime, null))
+    ongoingFailureStartedAt = occurrenceTime
+    numberOfFailures++
   }
 
   fun failureEnded(occurrenceTime: Long) {
-    if (!isFailureOngoing()) return
-    val lastEntry = log.last()
-    lastEntry.duration = occurrenceTime - lastEntry.occurrenceTime
+    val startedAt = ongoingFailureStartedAt ?: return
+    completedFailureDurationSum += occurrenceTime - startedAt
+    completedFailureCount++
+    ongoingFailureStartedAt = null
   }
 
-  fun isFailureOngoing(): Boolean {
-    return log.isNotEmpty() && log.last().duration == null
-  }
+  fun isFailureOngoing(): Boolean = ongoingFailureStartedAt != null
 
   fun calculateMeanFailureDuration(): Double {
-    val durations = log.mapNotNull { it.duration }
-    if (durations.isEmpty()) return -1.0 // return -1 if no failures occurred
-    return durations.average()
+    if (completedFailureCount == 0) return -1.0
+    return completedFailureDurationSum.toDouble() / completedFailureCount.toDouble()
   }
 
-  fun getNumberOfFailures(): Int {
-    return log.size
-  }
+  fun getNumberOfFailures(): Int = numberOfFailures
 }

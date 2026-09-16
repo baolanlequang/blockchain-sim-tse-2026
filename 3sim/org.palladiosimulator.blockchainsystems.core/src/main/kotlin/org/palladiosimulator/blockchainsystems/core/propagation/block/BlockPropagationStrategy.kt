@@ -3,6 +3,7 @@ package org.palladiosimulator.blockchainsystems.core.propagation.block
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block
 import org.palladiosimulator.blockchainsystems.core.network.MessageDroppedTraceEvent
 import org.palladiosimulator.blockchainsystems.core.utils.CompactStringStateMap
+import org.palladiosimulator.blockchainsystems.core.scalability.ScalabilityStateTracker
 import org.palladiosimulator.blockchainsystems.core.propagation.GossipPropagationStrategy
 import org.palladiosimulator.blockchainsystems.core.propagation.MessageImpl
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.Message
@@ -14,7 +15,9 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetwo
  *
  * @author Davis Riedel
  */
-class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
+class BlockPropagationStrategy(
+  private val scalabilityStateTracker: ScalabilityStateTracker? = null
+) : GossipPropagationStrategy<Block>() {
   override val INV_MESSAGE_KEY: String = "BLOCK_INV"
   override val GET_DATA_MESSAGE_KEY: String = "BLOCK_GET_DATA"
   override val ELEMENT_MESSAGE_KEY: String = "BLOCK_MSG"
@@ -31,7 +34,10 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
   // One entry records both protocol states: false = known-only, true = already announced.
   // This preserves duplicate-suppression semantics while avoiding two HashSet/HashMap
   // entries for the common case where a block is both known and announced.
-  private val blockKnowledge = CompactStringStateMap()
+  private val blockKnowledge = CompactStringStateMap(
+    beforeNewEntry = { scalabilityStateTracker?.beforeBlockKnowledgeEntryAdded() },
+    afterNewEntry = { nodeEntries -> scalabilityStateTracker?.onBlockKnowledgeEntryAdded(nodeEntries) }
+  )
 
   /*
    * Lifecycle note: BlockchainNodeObject.onInitialize()/onCleanup() are final
