@@ -5,7 +5,8 @@
 #SBATCH --partition=highmem
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=96
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=80G
 #SBATCH --time=01:00:00
 #SBATCH --array=0-99
 #SBATCH --mail-type=BEGIN,END,FAIL

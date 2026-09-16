@@ -40,6 +40,7 @@ class ThreesimSimulationRound(
 
   init {
     monitor.setSimulationClock(this.clock)
+    monitor.setScalabilityStateTracker(blockchainSystemFactory.getLastScalabilityStateTracker())
   }
 
   override fun createSimulationRoundResult(finalSystemTime: Long): ThreesimSimulationRoundResult {

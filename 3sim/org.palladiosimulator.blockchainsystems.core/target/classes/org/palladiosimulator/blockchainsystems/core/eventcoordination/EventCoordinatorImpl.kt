@@ -5,6 +5,7 @@ import org.palladiosimulator.blockchainsystems.core.common.abstractions.Event
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.EventCoordinator
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.EventDispatchable
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.SystemClockControl
+import org.palladiosimulator.blockchainsystems.core.scalability.ScalabilityLimitExceededException
 import java.util.IdentityHashMap
 import java.util.PriorityQueue
 import java.util.TreeSet
@@ -20,6 +21,10 @@ import java.util.TreeSet
  *
  * Optional diagnostics:
  *   -Dthreesim.progressEveryEvents=1000000
+ *
+ * Optional machine-independent safety limits (0 = disabled):
+ *   -Dthreesim.maxFutureEvents=...
+ *   -Dthreesim.maxProcessedEvents=...
  */
 class EventCoordinatorImpl(
   private val clock: SystemClockControl,
@@ -31,9 +36,17 @@ class EventCoordinatorImpl(
     val insertionSequence: Long
   )
 
-  private val scheduledEventComparator =
-    compareBy<ScheduledEvent> { it.event.occurrenceTime }
-      .thenBy { it.insertionSequence }
+  // Avoid Kotlin compareBy/thenBy here: they box primitive Long values on every
+  // priority-queue comparison. This comparator is on one of the hottest paths in
+  // large runs and previously appeared as the allocation site of a heap OOM.
+  private val scheduledEventComparator = Comparator<ScheduledEvent> { left, right ->
+    val occurrenceOrder = java.lang.Long.compare(left.event.occurrenceTime, right.event.occurrenceTime)
+    if (occurrenceOrder != 0) {
+      occurrenceOrder
+    } else {
+      java.lang.Long.compare(left.insertionSequence, right.insertionSequence)
+    }
+  }
 
   private val scheduledEvents = PriorityQueue<ScheduledEvent>(scheduledEventComparator)
   private val cancellableEvents = TreeSet<ScheduledEvent>(scheduledEventComparator)
@@ -42,12 +55,22 @@ class EventCoordinatorImpl(
 
   private var nextInsertionSequence = 0L
   private var processedEventCount = 0L
+  private var maxFutureEventsObserved = 0L
+  private var safetyTerminationRequested = false
 
   private val progressEveryEvents: Long =
     java.lang.Long.getLong("threesim.progressEveryEvents", 0L)
+  private val maxFutureEvents: Long =
+    java.lang.Long.getLong("threesim.maxFutureEvents", 0L).coerceAtLeast(0L)
+  private val maxProcessedEvents: Long =
+    java.lang.Long.getLong("threesim.maxProcessedEvents", 0L).coerceAtLeast(0L)
 
   fun processEvents() {
-    while (hasUnprocessedEvents() && !terminationCondition.shouldTerminate()) {
+    while (
+      !safetyTerminationRequested &&
+      hasUnprocessedEvents() &&
+      !terminationCondition.shouldTerminate()
+    ) {
       val next = peekNextEvent() ?: break
 
       // Preserve the old termination-check timing: first move the clock, then
@@ -59,6 +82,11 @@ class EventCoordinatorImpl(
 
       processCurrentSlice()
     }
+
+    (terminationCondition as? SafetyTerminationListener)?.onEventCoordinatorTelemetry(
+      processedEventCount,
+      maxFutureEventsObserved
+    )
   }
 
   private fun hasUnprocessedEvents(): Boolean = peekNextEvent() != null
@@ -77,25 +105,40 @@ class EventCoordinatorImpl(
     }
 
     for (event in currentBatch) {
-      dispatchEvent(event)
-      processedEventCount++
-      reportProgressIfRequested()
+      if (safetyTerminationRequested) break
+      try {
+        dispatchEvent(event)
+        processedEventCount++
+        reportProgressIfRequested()
+        checkProcessedEventLimit()
+      } catch (limit: ScalabilityLimitExceededException) {
+        requestSafetyTermination(limit.terminationReason)
+        break
+      }
     }
   }
 
   override fun raiseEvent(event: Event) {
+    if (safetyTerminationRequested) return
+
     when {
       event.occurrenceTime > clock.currentTime -> scheduleEvent(event)
       event.occurrenceTime == clock.currentTime -> {
         dispatchEvent(event)
         processedEventCount++
         reportProgressIfRequested()
+        checkProcessedEventLimit()
       }
       else -> Unit // preserve legacy behavior for events in the past
     }
   }
 
   private fun scheduleEvent(event: Event) {
+    if (maxFutureEvents > 0L && futureEventCount().toLong() >= maxFutureEvents) {
+      requestSafetyTermination("WORKLOAD_LIMIT_EVENT_QUEUE")
+      return
+    }
+
     val scheduledEvent = ScheduledEvent(
       event = event,
       insertionSequence = nextInsertionSequence++
@@ -109,6 +152,11 @@ class EventCoordinatorImpl(
     } else {
       scheduledEvents.add(scheduledEvent)
     }
+
+    maxFutureEventsObserved = maxOf(
+      maxFutureEventsObserved,
+      futureEventCount().toLong()
+    )
   }
 
   override fun cancelEventsFor(eventOrigin: EventDispatchable) {
@@ -159,6 +207,28 @@ class EventCoordinatorImpl(
     event.origin.dispatchEvent(event)
   }
 
+  private fun futureEventCount(): Int = scheduledEvents.size + cancellableEvents.size
+
+  private fun checkProcessedEventLimit() {
+    if (
+      !safetyTerminationRequested &&
+      maxProcessedEvents > 0L &&
+      processedEventCount >= maxProcessedEvents
+    ) {
+      requestSafetyTermination("WORKLOAD_LIMIT_PROCESSED_EVENTS")
+    }
+  }
+
+  private fun requestSafetyTermination(reason: String) {
+    if (safetyTerminationRequested) return
+    safetyTerminationRequested = true
+    System.err.println(
+      "[3SIM-engine-safety-limit] reason=$reason processedEvents=$processedEventCount " +
+        "simulationTimeMs=${clock.currentTime} futureQueueSize=${futureEventCount()}"
+    )
+    (terminationCondition as? SafetyTerminationListener)?.onSafetyTermination(reason)
+  }
+
   private fun reportProgressIfRequested() {
     if (progressEveryEvents <= 0L) return
     if (processedEventCount % progressEveryEvents != 0L) return
@@ -166,7 +236,7 @@ class EventCoordinatorImpl(
     System.err.println(
       "[3SIM-progress] processedEvents=$processedEventCount " +
         "simulationTimeMs=${clock.currentTime} " +
-        "futureQueueSize=${scheduledEvents.size + cancellableEvents.size} " +
+        "futureQueueSize=${futureEventCount()} " +
         "cancellableQueueSize=${cancellableEvents.size}"
     )
   }

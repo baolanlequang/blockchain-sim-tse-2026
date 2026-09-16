@@ -33,17 +33,11 @@ class P2PLink(
   }
 
   fun send(messageContent: Message) {
-    val msEvent = MessageSentEvent(
-      simulationContext.systemClock.currentTime,
-      messageContent,
-      this,
-      toNode,
-      fromNode
-    )
-
-    simulationContext
-      .eventCoordinator
-      .raiseEvent(msEvent)
+    // MessageSentEvent used to be raised at the current simulation timestamp,
+    // which EventCoordinator dispatches synchronously before raiseEvent returns.
+    // Execute that zero-delay transition directly and allocate only the future
+    // delivery event that actually needs to live in the event queue.
+    handleMessageSent(messageContent, toNode, fromNode)
   }
 
   override fun dispatchEvent(event: Event) {
@@ -73,40 +67,47 @@ class P2PLink(
   }
 
   private fun handleMessageSentEvent(event: MessageSentEvent) {
+    handleMessageSent(event.message, event.recipientNode, event.senderNode)
+  }
+
+  private fun handleMessageSent(
+    message: Message,
+    recipientNode: P2PNode,
+    senderNode: P2PNode
+  ) {
     val bps = throughputValueProvider.getValue() // in bits per second
-    val bandwidth = if (bandwidthValueProvider.getValue().isNaN()) 0.0 else bandwidthValueProvider.getValue()// in Mega bits per second
-
-    val event = if (bps <= 0 || bandwidth <= 0) {
-      // Link failed, raise message dropped event
-      MessageDroppedEvent(
-        event.message,
-        simulationContext.systemClock.currentTime,
-        this,
-        event.recipientNode,
-        event.senderNode
-      )
+    val firstBandwidthSample = bandwidthValueProvider.getValue()
+    val bandwidth = if (firstBandwidthSample.isNaN()) {
+      0.0
     } else {
-      // Link is operational, send message
+      // Preserve the legacy provider-call count/order exactly. In refined runs
+      // this provider is fixed, but other models may supply a stateful provider.
+      bandwidthValueProvider.getValue()
+    } // in Mbit/s
 
-      val latency = latencyValueProvider.getValue() // in ms
-      val messageSize = event.message.size.toLong() // in byte
-
-      // Refined model: T_ij = S / B_ij^eff + L_ij.  `bandwidth` is in
-      // Mbit/s, message size is in bytes, and latency is in milliseconds.
-      val serializationDelay = ((messageSize * 8.0 * 1000.0) / (bandwidth * 1_000_000.0)).roundToLong()
-      val transmissionDuration = latency + serializationDelay
-
-      MessageReceivedEvent(
-        event.message,
-        simulationContext.systemClock.currentTime + transmissionDuration,
-        this,
-        event.recipientNode,
-        event.senderNode
-      )
+    if (bps <= 0 || bandwidth <= 0) {
+      // A dropped message has zero modeled delay, so notify synchronously just as
+      // the former current-time MessageDroppedEvent did.
+      senderNode.onMessageDropped(message, recipientNode)
+      return
     }
 
-    simulationContext
-      .eventCoordinator
-      .raiseEvent(event)
+    val latency = latencyValueProvider.getValue() // in ms
+    val messageSize = message.size.toLong() // in byte
+
+    // Refined model: T_ij = S / B_ij^eff + L_ij. `bandwidth` is in
+    // Mbit/s, message size is in bytes, and latency is in milliseconds.
+    val serializationDelay = ((messageSize * 8.0 * 1000.0) / (bandwidth * 1_000_000.0)).roundToLong()
+    val transmissionDuration = latency + serializationDelay
+
+    simulationContext.eventCoordinator.raiseEvent(
+      MessageReceivedEvent(
+        message,
+        simulationContext.systemClock.currentTime + transmissionDuration,
+        this,
+        recipientNode,
+        senderNode
+      )
+    )
   }
 }
