@@ -6,6 +6,8 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.Message
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetworkEndpoint
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Transaction
 import org.palladiosimulator.blockchainsystems.core.network.MessageDroppedTraceEvent
+import org.palladiosimulator.blockchainsystems.core.utils.CompactStringStateMap
+import org.palladiosimulator.blockchainsystems.core.scalability.ScalabilityStateTracker
 
 /**
  * Propagation strategy for transactions in a blockchain system.
@@ -13,7 +15,9 @@ import org.palladiosimulator.blockchainsystems.core.network.MessageDroppedTraceE
  *
  * @author Davis Riedel
  */
-class TransactionPropagationStrategy : GossipPropagationStrategy<Transaction>() {
+class TransactionPropagationStrategy(
+  private val scalabilityStateTracker: ScalabilityStateTracker? = null
+) : GossipPropagationStrategy<Transaction>() {
   override val INV_MESSAGE_KEY: String = "TRX_INV"
   override val GET_DATA_MESSAGE_KEY: String = "TRX_GET_DATA"
   override val ELEMENT_MESSAGE_KEY: String = "TRX_MSG"
@@ -29,18 +33,25 @@ class TransactionPropagationStrategy : GossipPropagationStrategy<Transaction>() 
    * processed transactions to be requested and re-gossiped again, which generated
    * tens of millions of MessageReceivedEvents in the P01 pilot.
    *
-   * These sets store only transaction identifiers, not Transaction objects, so they
+   * This map stores only transaction identifiers, not Transaction objects, so they
    * preserve the scientific transaction history needed for duplicate suppression
    * without retaining heavyweight event/message graphs.
    */
-  private val knownTransactionIds = HashSet<String>()
-  private val announcedTransactionIds = HashSet<String>()
+  // One entry records both protocol states: false = known-only, true = already announced.
+  // This preserves the existing persistent duplicate-suppression history while avoiding
+  // two HashSet/HashMap entries for transactions that have also been announced.
+  private val transactionKnowledge = CompactStringStateMap(
+    beforeNewEntry = { scalabilityStateTracker?.beforeTransactionKnowledgeEntryAdded() },
+    afterNewEntry = { nodeEntries ->
+      scalabilityStateTracker?.onTransactionKnowledgeEntryAdded(nodeEntries)
+    }
+  )
 
   /*
    * Lifecycle note: BlockchainNodeObject.onInitialize()/onCleanup() are final
    * protected hooks in this 3SIM revision and cannot be overridden here.
    * Propagation-strategy instances are created fresh for each simulation node/run,
-   * so these sets start empty naturally and become unreachable when that run is
+   * so this map starts empty naturally and become unreachable when that run is
    * cleaned up. We therefore do not override the final lifecycle hooks merely to
    * clear them; doing so would fail Kotlin compilation without changing semantics.
    */
@@ -52,8 +63,7 @@ class TransactionPropagationStrategy : GossipPropagationStrategy<Transaction>() 
    * later leave the mempool.
    */
   override fun shouldAnnounce(element: Transaction): Boolean {
-    knownTransactionIds.add(element.txId)
-    return announcedTransactionIds.add(element.txId)
+    return transactionKnowledge.put(element.txId, STATE_ANNOUNCED) != STATE_ANNOUNCED
   }
 
 
@@ -94,7 +104,7 @@ class TransactionPropagationStrategy : GossipPropagationStrategy<Transaction>() 
       // A transaction remains known even after confirmation removes it from the
       // mempool. This prevents delayed inventory messages from resurrecting an
       // already processed transaction and restarting the gossip cycle.
-      if (knownTransactionIds.contains(txId) || it.getTransactionById(txId) != null) {
+      if (transactionKnowledge.containsKey(txId) || it.getTransactionById(txId) != null) {
         return
       }
 
@@ -129,12 +139,18 @@ class TransactionPropagationStrategy : GossipPropagationStrategy<Transaction>() 
     // copy has been processed. Only the first full transaction is admitted to the
     // node behavior; later copies are protocol duplicates and must not trigger a
     // second mempool insertion or another gossip wave.
-    if (!knownTransactionIds.add(trx.txId)) {
+    if (!transactionKnowledge.putIfAbsent(trx.txId, STATE_KNOWN)) {
       return
     }
 
     logTrxReceived(trx, senderNetworkEndpoint)
     notifyTrxReceived(trx)
+  }
+
+
+  private companion object {
+    const val STATE_KNOWN: Byte = 1
+    const val STATE_ANNOUNCED: Byte = 2
   }
 
 

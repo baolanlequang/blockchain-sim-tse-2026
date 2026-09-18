@@ -12,6 +12,8 @@ import org.palladiosimulator.blockchainsystems.core.blockchain.BlockTypeChangedT
 import org.palladiosimulator.blockchainsystems.core.clock.SimulationClock
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEvent
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.TraceEventLogOrigin
+import org.palladiosimulator.blockchainsystems.core.eventcoordination.SafetyTerminationListener
+import org.palladiosimulator.blockchainsystems.core.scalability.ScalabilityStateTracker
 import org.palladiosimulator.blockchainsystems.core.geography.GeographicalRegions
 import org.palladiosimulator.blockchainsystems.core.mining.BlockMinedTraceEvent
 import org.palladiosimulator.blockchainsystems.core.monitoring.abstractions.SimulationMonitor
@@ -46,7 +48,7 @@ class ThreesimSimulationMonitor(
   private val measuredBlocksPerValidator: Int = 0,
   private val transactionDrainMillis: Long = 0L,
   private val retainTransactionFollowUpObservations: Boolean = false
-) : SimulationMonitor {
+) : SimulationMonitor, SafetyTerminationListener {
 
   private enum class Phase { LEGACY, WARMUP, MEASUREMENT, DRAIN }
 
@@ -54,10 +56,15 @@ class ThreesimSimulationMonitor(
   private lateinit var geographicalRegions: GeographicalRegions
   private lateinit var transactionSubmissionProcess: TransactionSubmissionProcess
   private lateinit var simulationClock: SimulationClock
+  private lateinit var nodeIndexById: Map<String, Int>
 
   private val refinedWindowEnabled: Boolean get() = measuredBlocksPerValidator > 0
   private var phase: Phase = Phase.LEGACY
   private var warmupTargetCanonicalBlocks = 0
+  /** Unique blocks that have crossed the canonical-majority threshold during warm-up. */
+  private val warmupCanonicalBlocksSeen = linkedSetOf<String>()
+  /** Unique blocks that first cross the canonical-majority threshold during measurement. */
+  private val measurementCanonicalBlocksSeen = linkedSetOf<String>()
   private var measurementTargetCanonicalBlocks = 0
   private var measurementStartTimeMs = 0L
   private var measurementEndTimeMs = 0L
@@ -88,6 +95,48 @@ class ThreesimSimulationMonitor(
   private val blockProgressEvery: Int =
     Integer.getInteger("threesim.blockProgressEvery", 0)
 
+  /*
+   * SAFETY WATCHDOG FOR REFINED WINDOWS. Disabled by default. When enabled,
+   * terminate an execution as incomplete if the phase-local canonical-progress
+   * high-water mark has not increased for the configured amount of simulated
+   * time during WARMUP or MEASUREMENT. This does not alter consensus, fork
+   * choice, mining, transaction processing, or random-number consumption.
+   *
+   * Configure only after the global simulated-time threshold has been
+   * calibrated and frozen for the production experiment.
+   */
+  private val canonicalProgressStallMillis: Long =
+    java.lang.Long.getLong("threesim.canonicalProgressStallMs", 0L).coerceAtLeast(0L)
+  private var canonicalProgressHighWater: Int = 0
+  private var canonicalProgressLastAdvanceTimeMs: Long = 0L
+  private var maxCanonicalProgressGapMillisObserved: Long = 0L
+  private var processedEventsObserved: Long = 0L
+  private var maxFutureEventsObserved: Long = 0L
+  private var scalabilityStateTracker: ScalabilityStateTracker? = null
+
+  /*
+   * MACHINE-INDEPENDENT SAFETY LIMITS. Disabled by default. These limits stop an
+   * execution as scientifically incomplete before model-induced state growth can
+   * exhaust the JVM. They do not drop transactions, cap mempools, change arrival
+   * rates, or alter consensus. Calibrate once, freeze, and record them for the
+   * production experiment.
+   *
+   *   -Dthreesim.maxTransactionSubmissions=...
+   *   -Dthreesim.maxBlockProposals=...
+   *   -Dthreesim.maxTransactionKnowledgeEntries=...
+   *   -Dthreesim.maxBlockKnowledgeEntries=...
+   *   -Dthreesim.maxMempoolEntries=...
+   *   -Dthreesim.maxMeasurementTransactionEntries=...
+   */
+  private val maxTransactionSubmissions: Long =
+    java.lang.Long.getLong("threesim.maxTransactionSubmissions", 0L).coerceAtLeast(0L)
+  private val maxBlockProposals: Long =
+    java.lang.Long.getLong("threesim.maxBlockProposals", 0L).coerceAtLeast(0L)
+  private val maxFutureEvents: Long =
+    java.lang.Long.getLong("threesim.maxFutureEvents", 0L).coerceAtLeast(0L)
+  private val maxProcessedEvents: Long =
+    java.lang.Long.getLong("threesim.maxProcessedEvents", 0L).coerceAtLeast(0L)
+
   /** Tracks majority-visible canonical-chain membership (Included or Confirmed) for window control. */
   private lateinit var canonicalProgressBlocks: BlocksMap
   /** Tracks blocks that reach the configured confirmation depth; used for transaction follow-up. */
@@ -96,8 +145,8 @@ class ThreesimSimulationMonitor(
   private lateinit var canonicalMeasurementBlocks: BlocksMap
 
   private var numberOfSubmittedTransactions: Int = 0
-  private var totalBlockProposalsAllPhases: Int = 0
-  private var totalTransactionSubmissionsAllPhases: Int = 0
+  private var totalBlockProposalsAllPhases: Long = 0L
+  private var totalTransactionSubmissionsAllPhases: Long = 0L
   private var blockReward: Double? = null
   private lateinit var blocksProposedPerNode: CounterMap<String>
   private lateinit var includedBlocks: BlocksMap
@@ -105,31 +154,179 @@ class ThreesimSimulationMonitor(
   private lateinit var staleBlocks: BlocksMap
   private lateinit var forkedBlocks: BlocksMap
 
-  /** txId -> submission time for transactions submitted in the measurement window. */
-  private val measurementTransactions = linkedMapOf<String, Long>()
-  /** txId -> first qualifying canonical confirmation time. */
-  private val measurementTransactionConfirmationTimes = mutableMapOf<String, Long>()
-
   /**
-   * Follow-up diagnostic for P-B. Only blocks mined while phase==MEASUREMENT
-   * are eligible. For each eligible block, retain only the first full-block
-   * receipt time observed at each non-miner validating node.
+   * Flat append-only measurement-transaction table. The previous LinkedHashMap
+   * retained one map node plus one observation object per submitted transaction.
+   * High-load runs can contain millions of measurement transactions, so keep the
+   * same exact txId/submission/confirmation information in flat arrays instead.
    */
-  private data class MeasurementBlockPropagationObservation(
-    val minedTimeMs: Long,
-    val minerNodeId: String?,
-    val firstReceiptTimeByNode: MutableMap<String, Long> = linkedMapOf(),
-    var t90Ms: Long? = null
+  private class MeasurementTransactionStore(
+    initialCapacity: Int = 16,
+    private val beforeNewEntry: (() -> Unit)? = null,
+    private val afterNewEntry: (() -> Unit)? = null,
+    private val afterClear: (() -> Unit)? = null
+  ) {
+    private var keys: Array<String?> = arrayOfNulls(tableSizeFor(initialCapacity))
+    private var submittedAt: LongArray = LongArray(keys.size)
+    private var confirmedAt: LongArray = LongArray(keys.size) { UNCONFIRMED }
+    private var resizeAt: Int = maxOf(1, (keys.size * LOAD_FACTOR).toInt())
+
+    var size: Int = 0
+      private set
+    var unconfirmedCount: Int = 0
+      private set
+    var latestSubmittedAtMs: Long = 0L
+      private set
+
+    fun isEmpty(): Boolean = size == 0
+
+    fun addIfAbsent(txId: String, submittedAtMs: Long): Boolean {
+      var slot = spread(txId.hashCode()) and (keys.size - 1)
+      while (true) {
+        val current = keys[slot]
+        if (current == null) break
+        if (current == txId) return false
+        slot = (slot + 1) and (keys.size - 1)
+      }
+
+      beforeNewEntry?.invoke()
+      if (size + 1 > resizeAt) {
+        resize(keys.size shl 1)
+        slot = spread(txId.hashCode()) and (keys.size - 1)
+        while (keys[slot] != null) {
+          slot = (slot + 1) and (keys.size - 1)
+        }
+      }
+
+      keys[slot] = txId
+      submittedAt[slot] = submittedAtMs
+      confirmedAt[slot] = UNCONFIRMED
+      size++
+      unconfirmedCount++
+      afterNewEntry?.invoke()
+      if (submittedAtMs > latestSubmittedAtMs) latestSubmittedAtMs = submittedAtMs
+      return true
+    }
+
+    fun confirmIfEligible(txId: String, occurrenceTime: Long, drainMillis: Long) {
+      val slot = findSlot(txId)
+      if (slot < 0 || confirmedAt[slot] != UNCONFIRMED) return
+      val deadline = submittedAt[slot] + drainMillis
+      if (occurrenceTime <= deadline) {
+        confirmedAt[slot] = occurrenceTime
+        unconfirmedCount--
+      }
+    }
+
+    fun forEach(action: (String, Long, Long?) -> Unit) {
+      for (slot in keys.indices) {
+        val txId = keys[slot] ?: continue
+        val confirmation = confirmedAt[slot]
+        action(txId, submittedAt[slot], if (confirmation == UNCONFIRMED) null else confirmation)
+      }
+    }
+
+    fun clear() {
+      keys.fill(null)
+      submittedAt.fill(0L)
+      confirmedAt.fill(UNCONFIRMED)
+      size = 0
+      unconfirmedCount = 0
+      latestSubmittedAtMs = 0L
+      afterClear?.invoke()
+    }
+
+    private fun findSlot(txId: String): Int {
+      var slot = spread(txId.hashCode()) and (keys.size - 1)
+      while (true) {
+        val current = keys[slot] ?: return -1
+        if (current == txId) return slot
+        slot = (slot + 1) and (keys.size - 1)
+      }
+    }
+
+    private fun resize(newCapacity: Int) {
+      val oldKeys = keys
+      val oldSubmittedAt = submittedAt
+      val oldConfirmedAt = confirmedAt
+
+      keys = arrayOfNulls(newCapacity)
+      submittedAt = LongArray(newCapacity)
+      confirmedAt = LongArray(newCapacity) { UNCONFIRMED }
+      resizeAt = maxOf(1, (newCapacity * LOAD_FACTOR).toInt())
+
+      for (oldSlot in oldKeys.indices) {
+        val txId = oldKeys[oldSlot] ?: continue
+        var newSlot = spread(txId.hashCode()) and (keys.size - 1)
+        while (keys[newSlot] != null) {
+          newSlot = (newSlot + 1) and (keys.size - 1)
+        }
+        keys[newSlot] = txId
+        submittedAt[newSlot] = oldSubmittedAt[oldSlot]
+        confirmedAt[newSlot] = oldConfirmedAt[oldSlot]
+      }
+    }
+
+    private companion object {
+      const val UNCONFIRMED: Long = Long.MIN_VALUE
+      const val LOAD_FACTOR: Double = 0.65
+
+      fun spread(hashCode: Int): Int = hashCode xor (hashCode ushr 16)
+
+      fun tableSizeFor(requested: Int): Int {
+        var capacity = 16
+        val target = maxOf(1, requested)
+        while (capacity < target / LOAD_FACTOR) capacity = capacity shl 1
+        return capacity
+      }
+    }
+  }
+
+  private val measurementTransactions = MeasurementTransactionStore(
+    beforeNewEntry = { scalabilityStateTracker?.beforeMeasurementTransactionEntryAdded() },
+    afterNewEntry = { scalabilityStateTracker?.onMeasurementTransactionEntryAdded() },
+    afterClear = { scalabilityStateTracker?.resetMeasurementTransactionEntries() }
   )
 
+  /**
+   * Follow-up diagnostic for P-B. Receiver timestamps are kept in a primitive
+   * array only until T90 is known; then the array is released immediately.
+   */
+  private class MeasurementBlockPropagationObservation(
+    val minedTimeMs: Long,
+    val minerNodeId: String?,
+    validatorCount: Int
+  ) {
+    var firstReceiptTimeByNode: LongArray? = LongArray(validatorCount) { UNSEEN_RECEIPT_TIME }
+    var receiverCount: Int = 0
+    var t90Ms: Long? = null
+  }
+
   private val measurementBlockPropagation =
-    linkedMapOf<String, MeasurementBlockPropagationObservation>()
+    HashMap<String, MeasurementBlockPropagationObservation>()
+
+  private class RunningAverage {
+    private var count: Long = 0L
+    private var sum: Double = 0.0
+
+    fun add(value: Double) {
+      sum += value
+      count++
+    }
+
+    fun clear() {
+      count = 0L
+      sum = 0.0
+    }
+
+    fun averageOr(defaultValue: Double): Double = if (count == 0L) defaultValue else sum / count.toDouble()
+  }
 
   private val failureLog = BlockchainSystemFailureLog()
-  private val throughputsDuringFailure: MutableList<Double> = mutableListOf()
-  private val confirmationLatenciesDuringFailure: MutableList<Long> = mutableListOf()
-  private val throughputsWithoutFailure: MutableList<Double> = mutableListOf()
-  private val confirmationLatenciesWithoutFailure: MutableList<Long> = mutableListOf()
+  private val throughputsDuringFailure = RunningAverage()
+  private val confirmationLatenciesDuringFailure = RunningAverage()
+  private val throughputsWithoutFailure = RunningAverage()
+  private val confirmationLatenciesWithoutFailure = RunningAverage()
   private var lastThroughputCheckTimestamp: Long = 0
 
   /** Runtime attack-round tracker for the revised paper-defined SPSM. */
@@ -141,6 +338,7 @@ class ThreesimSimulationMonitor(
     require(transactionDrainMillis >= 0L) { "transactionDrainMillis must be >= 0" }
 
     nodes = blockchainSystem.nodes
+    nodeIndexById = nodes.sortedBy { it.id }.mapIndexed { index, node -> node.id to index }.toMap()
     geographicalRegions = blockchainSystem.geographicalRegions
     transactionSubmissionProcess = blockchainSystem.transactionSubmissionProcess
     blockReward = blockchainSystem.blockReward
@@ -154,15 +352,17 @@ class ThreesimSimulationMonitor(
 
     blocksProposedPerNode = CounterMap.create(nodes.map { it.id })
     val majorityThreshold = calculateMajorityThreshold()
-    includedBlocks = BlocksMap(majorityThreshold)
-    confirmedBlocks = BlocksMap(majorityThreshold)
-    staleBlocks = BlocksMap(majorityThreshold)
-    forkedBlocks = BlocksMap(majorityThreshold)
-    canonicalProgressBlocks = BlocksMap(majorityThreshold)
-    confirmationProgressBlocks = BlocksMap(majorityThreshold)
-    canonicalMeasurementBlocks = BlocksMap(majorityThreshold)
+    includedBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    confirmedBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    staleBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    forkedBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    canonicalProgressBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    confirmationProgressBlocks = BlocksMap(majorityThreshold, nodeIndexById)
+    canonicalMeasurementBlocks = BlocksMap(majorityThreshold, nodeIndexById)
 
     if (refinedWindowEnabled) {
+      warmupCanonicalBlocksSeen.clear()
+      measurementCanonicalBlocksSeen.clear()
       warmupTargetCanonicalBlocks = warmupBlocksPerValidator * nodes.size
       measurementTargetCanonicalBlocks = warmupTargetCanonicalBlocks + measuredBlocksPerValidator * nodes.size
       if (warmupTargetCanonicalBlocks > 0) {
@@ -177,6 +377,7 @@ class ThreesimSimulationMonitor(
   }
 
   fun getFinalState(finalSystemTime: Long): ThreesimSimulationMonitorState {
+    observeCanonicalProgressGap(finalSystemTime)
     val effectiveEnd = if (measurementEndTimeMs > 0L) measurementEndTimeMs else finalSystemTime
     val measurementDuration = if (refinedWindowEnabled) {
       (effectiveEnd - measurementStartTimeMs).coerceAtLeast(0L)
@@ -184,6 +385,7 @@ class ThreesimSimulationMonitor(
     val spsmSummary = selfishMiningAttackRoundTracker.summary()
     val followUpSummary = buildTransactionFollowUpSummary(finalSystemTime)
     val propagationSummary = buildBlockPropagationSummary()
+    val scalability = scalabilityStateTracker?.snapshot()
 
     return ThreesimSimulationMonitorState(
       numberOfNodes = nodes.size,
@@ -227,6 +429,29 @@ class ThreesimSimulationMonitor(
       transactionFollowUpCompleted = transactionFollowUpCompleted,
       totalBlockProposalsAllPhases = totalBlockProposalsAllPhases,
       totalTransactionSubmissionsAllPhases = totalTransactionSubmissionsAllPhases,
+      maxCanonicalProgressGapMillisObserved = maxCanonicalProgressGapMillisObserved,
+      processedEventsObserved = processedEventsObserved,
+      maxFutureEventsObserved = maxFutureEventsObserved,
+      currentTransactionKnowledgeEntries = scalability?.currentTransactionKnowledgeEntries ?: 0L,
+      maxTransactionKnowledgeEntriesObserved = scalability?.maxTransactionKnowledgeEntriesObserved ?: 0L,
+      maxTransactionKnowledgeEntriesPerNodeObserved = scalability?.maxTransactionKnowledgeEntriesPerNodeObserved ?: 0L,
+      currentBlockKnowledgeEntries = scalability?.currentBlockKnowledgeEntries ?: 0L,
+      maxBlockKnowledgeEntriesObserved = scalability?.maxBlockKnowledgeEntriesObserved ?: 0L,
+      maxBlockKnowledgeEntriesPerNodeObserved = scalability?.maxBlockKnowledgeEntriesPerNodeObserved ?: 0L,
+      currentMempoolEntries = scalability?.currentMempoolEntries ?: 0L,
+      maxMempoolEntriesObserved = scalability?.maxMempoolEntriesObserved ?: 0L,
+      maxMempoolEntriesPerNodeObserved = scalability?.maxMempoolEntriesPerNodeObserved ?: 0L,
+      currentMeasurementTransactionEntries = scalability?.currentMeasurementTransactionEntries ?: 0L,
+      maxMeasurementTransactionEntriesObserved = scalability?.maxMeasurementTransactionEntriesObserved ?: 0L,
+      canonicalProgressStallMillis = canonicalProgressStallMillis,
+      maxTransactionSubmissions = maxTransactionSubmissions,
+      maxBlockProposals = maxBlockProposals,
+      maxFutureEvents = maxFutureEvents,
+      maxProcessedEvents = maxProcessedEvents,
+      maxTransactionKnowledgeEntries = scalability?.maxTransactionKnowledgeEntries ?: 0L,
+      maxBlockKnowledgeEntries = scalability?.maxBlockKnowledgeEntries ?: 0L,
+      maxMempoolEntries = scalability?.maxMempoolEntries ?: 0L,
+      maxMeasurementTransactionEntries = scalability?.maxMeasurementTransactionEntries ?: 0L,
       blockRateObservationTimeMs = finalSystemTime,
       transactionRateObservationTimeMs = if (measurementEndTimeMs > 0L) measurementEndTimeMs else finalSystemTime,
       measurementBlocksEligibleForPropagationT90 = propagationSummary.eligibleBlocks,
@@ -297,14 +522,15 @@ class ThreesimSimulationMonitor(
             e.block.hash,
             MeasurementBlockPropagationObservation(
               minedTimeMs = e.block.blockMinedTimestamp,
-              minerNodeId = e.block.originId
+              minerNodeId = e.block.originId,
+              validatorCount = nodes.size
             )
           )
         }
 
         if (
           blockProgressEvery > 0 &&
-          totalBlockProposalsAllPhases % blockProgressEvery == 0
+          totalBlockProposalsAllPhases % blockProgressEvery.toLong() == 0L
         ) {
           System.err.println(
             "[3SIM-block-progress] phase=${phase.name} " +
@@ -329,27 +555,27 @@ class ThreesimSimulationMonitor(
         val block = e.sentBlock
         if (block != null) {
           val observation = measurementBlockPropagation[block.hash]
-          if (observation != null && logOrigin.id != observation.minerNodeId) {
-            val previous = observation.firstReceiptTimeByNode.putIfAbsent(
-              logOrigin.id,
-              e.occurrenceTime
-            )
+          if (observation != null && logOrigin.id != observation.minerNodeId && observation.t90Ms == null) {
+            val receiptTimes = observation.firstReceiptTimeByNode
+            val nodeIndex = nodeIndexById[logOrigin.id]
+            if (receiptTimes != null && nodeIndex != null && receiptTimes[nodeIndex] == UNSEEN_RECEIPT_TIME) {
+              receiptTimes[nodeIndex] = e.occurrenceTime
+              observation.receiverCount++
 
-            if (previous == null && observation.t90Ms == null) {
               // T90 is defined over non-miner validating nodes.
-              // For N=20, there are 19 possible receivers and T90 is the
-              // 18th first receipt.
               val nonMinerValidatorCount = (nodes.size - 1).coerceAtLeast(0)
               val requiredReceivers = (9 * nonMinerValidatorCount + 9) / 10
-
-              if (
-                requiredReceivers > 0 &&
-                observation.firstReceiptTimeByNode.size >= requiredReceivers
-              ) {
-                val thresholdReceiveTime =
-                  observation.firstReceiptTimeByNode.values.sorted()[requiredReceivers - 1]
+              if (requiredReceivers > 0 && observation.receiverCount >= requiredReceivers) {
+                val observedTimes = LongArray(observation.receiverCount)
+                var destination = 0
+                for (time in receiptTimes) {
+                  if (time != UNSEEN_RECEIPT_TIME) observedTimes[destination++] = time
+                }
+                observedTimes.sort()
                 observation.t90Ms =
-                  (thresholdReceiveTime - observation.minedTimeMs).coerceAtLeast(0L)
+                  (observedTimes[requiredReceivers - 1] - observation.minedTimeMs).coerceAtLeast(0L)
+                // No later receipt can change T90. Release the O(N_V) array now.
+                observation.firstReceiptTimeByNode = null
               }
             }
           }
@@ -369,6 +595,9 @@ class ThreesimSimulationMonitor(
         val canonicalBecameValid = if (phase != Phase.DRAIN && isCanonicalType(e.appendedBlockType)) {
           canonicalProgressBlocks.addNodeToBlock(e.appendedBlock, logOrigin.id, e.occurrenceTime)
         } else false
+        if (phase == Phase.WARMUP && canonicalBecameValid) {
+          warmupCanonicalBlocksSeen.add(e.appendedBlock.hash)
+        }
         val confirmationBecameValid = if (e.appendedBlockType == BlockType.ConfirmedBlock) {
           confirmationProgressBlocks.addNodeToBlock(e.appendedBlock, logOrigin.id, e.occurrenceTime)
         } else false
@@ -378,8 +607,12 @@ class ThreesimSimulationMonitor(
           val measurementBecameValid = addMeasurementBlock(
             e.appendedBlockType, e.appendedBlock, logOrigin.id, e.occurrenceTime)
           if (phase == Phase.MEASUREMENT && isCanonicalType(e.appendedBlockType)) {
-            measurementCanonicalBecameValid = canonicalMeasurementBlocks.addNodeToBlock(
+            val crossedMajority = canonicalMeasurementBlocks.addNodeToBlock(
               e.appendedBlock, logOrigin.id, e.occurrenceTime)
+            measurementCanonicalBecameValid =
+              crossedMajority &&
+              e.appendedBlock.hash !in warmupCanonicalBlocksSeen &&
+              measurementCanonicalBlocksSeen.add(e.appendedBlock.hash)
           }
           if (measurementBecameValid && e.appendedBlockType == BlockType.ConfirmedBlock) {
             monitorThroughputForNewlyConfirmedBlock(e.appendedBlock, e.occurrenceTime)
@@ -414,6 +647,9 @@ class ThreesimSimulationMonitor(
             canonicalBecameValid = canonicalProgressBlocks.addNodeToBlock(e.block, nodeId, e.occurrenceTime)
           }
         }
+        if (phase == Phase.WARMUP && canonicalBecameValid) {
+          warmupCanonicalBlocksSeen.add(e.block.hash)
+        }
 
         if (e.oldBlockType == BlockType.ConfirmedBlock && e.newBlockType != BlockType.ConfirmedBlock) {
           confirmationProgressBlocks.removeNodeFromBlock(e.block.hash, nodeId)
@@ -437,8 +673,12 @@ class ThreesimSimulationMonitor(
             if (oldCanonical && !newCanonical) {
               canonicalMeasurementBlocks.removeNodeFromBlock(e.block.hash, nodeId)
             } else if (!oldCanonical && newCanonical) {
-              measurementCanonicalBecameValid = canonicalMeasurementBlocks.addNodeToBlock(
+              val crossedMajority = canonicalMeasurementBlocks.addNodeToBlock(
                 e.block, nodeId, e.occurrenceTime)
+              measurementCanonicalBecameValid =
+                crossedMajority &&
+                e.block.hash !in warmupCanonicalBlocksSeen &&
+                measurementCanonicalBlocksSeen.add(e.block.hash)
             }
           }
 
@@ -461,7 +701,10 @@ class ThreesimSimulationMonitor(
         if (phase == Phase.LEGACY || phase == Phase.MEASUREMENT) {
           numberOfSubmittedTransactions++
           if (phase == Phase.MEASUREMENT) {
-            measurementTransactions.putIfAbsent(e.transaction.txId, e.transaction.creationTime)
+            measurementTransactions.addIfAbsent(
+              e.transaction.txId,
+              e.transaction.creationTime
+            )
           }
         }
       }
@@ -502,7 +745,19 @@ class ThreesimSimulationMonitor(
 
   private fun updateRefinedPhaseAfterCanonicalProgress(occurrenceTime: Long) {
     if (!refinedWindowEnabled) return
-    val canonicalCount = canonicalProgressBlocks.getNumberOfValidBlocks()
+    val canonicalCount = if (phase == Phase.WARMUP) {
+      warmupCanonicalBlocksSeen.size
+    } else {
+      warmupTargetCanonicalBlocks + measurementCanonicalBlocksSeen.size
+    }
+
+    // Track a high-water mark, not the instantaneous canonical count: a reorg
+    // may legitimately reduce the latter and must not be mistaken for progress.
+    if (canonicalCount > canonicalProgressHighWater) {
+      observeCanonicalProgressGap(occurrenceTime)
+      canonicalProgressHighWater = canonicalCount
+      canonicalProgressLastAdvanceTimeMs = occurrenceTime
+    }
 
     if (
       canonicalProgressEvery > 0 &&
@@ -533,7 +788,7 @@ class ThreesimSimulationMonitor(
     val measurementCanonicalTarget = measuredBlocksPerValidator * nodes.size
     if (
       phase == Phase.MEASUREMENT &&
-      canonicalMeasurementBlocks.getNumberOfValidBlocks() >= measurementCanonicalTarget
+      measurementCanonicalBlocksSeen.size >= measurementCanonicalTarget
     ) {
       measurementEndTimeMs = occurrenceTime
       phase = Phase.DRAIN
@@ -544,15 +799,17 @@ class ThreesimSimulationMonitor(
   private fun beginMeasurement(occurrenceTime: Long) {
     phase = Phase.MEASUREMENT
     measurementStartTimeMs = occurrenceTime
+    canonicalProgressHighWater = warmupTargetCanonicalBlocks
+    canonicalProgressLastAdvanceTimeMs = occurrenceTime
     numberOfSubmittedTransactions = 0
     blocksProposedPerNode = CounterMap.create(nodes.map { it.id })
     includedBlocks.clear()
     confirmedBlocks.clear()
     canonicalMeasurementBlocks.clear()
+    measurementCanonicalBlocksSeen.clear()
     staleBlocks.clear()
     forkedBlocks.clear()
     measurementTransactions.clear()
-    measurementTransactionConfirmationTimes.clear()
     selfishMiningAttackRoundTracker.reset()
     throughputsDuringFailure.clear()
     confirmationLatenciesDuringFailure.clear()
@@ -564,11 +821,11 @@ class ThreesimSimulationMonitor(
   private fun recordMeasurementTransactionConfirmations(block: Block, occurrenceTime: Long) {
     if (!refinedWindowEnabled || (phase != Phase.MEASUREMENT && phase != Phase.DRAIN)) return
     for (transaction in block.transactions) {
-      val submittedAt = measurementTransactions[transaction.txId] ?: continue
-      val deadline = submittedAt + transactionDrainMillis
-      if (occurrenceTime <= deadline) {
-        measurementTransactionConfirmationTimes.putIfAbsent(transaction.txId, occurrenceTime)
-      }
+      measurementTransactions.confirmIfEligible(
+        transaction.txId,
+        occurrenceTime,
+        transactionDrainMillis
+      )
     }
   }
 
@@ -594,11 +851,6 @@ class ThreesimSimulationMonitor(
     val retainedObservations: List<TransactionFollowUpObservation>
   )
 
-  private data class FollowUpAtTime(
-    var events: Int = 0,
-    var censored: Int = 0
-  )
-
   private fun buildTransactionFollowUpSummary(finalSystemTime: Long): TransactionFollowUpSummary {
     if (!refinedWindowEnabled || measurementTransactions.isEmpty()) {
       return TransactionFollowUpSummary(
@@ -612,22 +864,23 @@ class ThreesimSimulationMonitor(
     }
 
     /*
-     * Group event/censor counts by follow-up time for the Kaplan-Meier RMCL.
-     * This is much smaller than materializing one serializable object per
-     * transaction, especially when many transactions share the T_drain censoring
-     * time. The calculation still includes EVERY measurement transaction.
+     * Encode follow-up time and event/censor type in one primitive long and sort
+     * that array for the Kaplan-Meier RMCL. This preserves the exact grouped
+     * calculation without allocating a TreeMap node and group object for every
+     * distinct follow-up timestamp.
      */
-    val grouped = sortedMapOf<Long, FollowUpAtTime>()
+    val total = measurementTransactions.size
+    val encodedFollowUp = LongArray(total)
     val retained = if (retainTransactionFollowUpObservations) {
-      ArrayList<TransactionFollowUpObservation>(measurementTransactions.size)
+      ArrayList<TransactionFollowUpObservation>(total)
     } else {
       null
     }
 
     var confirmedCount = 0
+    var destination = 0
 
-    measurementTransactions.forEach { (txId, submittedAt) ->
-      val confirmation = measurementTransactionConfirmationTimes[txId]
+    measurementTransactions.forEach { txId, submittedAt, confirmation ->
       val deadline = submittedAt + transactionDrainMillis
       val confirmed = confirmation != null && confirmation <= deadline
       val followUp = if (confirmed) {
@@ -639,8 +892,8 @@ class ThreesimSimulationMonitor(
         minOf(transactionDrainMillis, (finalSystemTime - submittedAt).coerceAtLeast(0L))
       }
 
-      val group = grouped.getOrPut(followUp) { FollowUpAtTime() }
-      if (confirmed) group.events++ else group.censored++
+      require(followUp <= (Long.MAX_VALUE ushr 1)) { "Follow-up interval too large to encode" }
+      encodedFollowUp[destination++] = (followUp shl 1) or if (confirmed) 1L else 0L
 
       if (retained != null) {
         retained.add(
@@ -654,10 +907,10 @@ class ThreesimSimulationMonitor(
       }
     }
 
-    val total = measurementTransactions.size
+    encodedFollowUp.sort()
     val censoredCount = total - confirmedCount
     val ratio = confirmedCount.toDouble() / total.toDouble()
-    val rmcl = restrictedMeanFromGroupedFollowUp(grouped, total, transactionDrainMillis)
+    val rmcl = restrictedMeanFromEncodedFollowUp(encodedFollowUp, total, transactionDrainMillis)
 
     return TransactionFollowUpSummary(
       count = total,
@@ -671,11 +924,11 @@ class ThreesimSimulationMonitor(
 
   /**
    * Kaplan-Meier restricted mean survival/confirmation latency through tau.
-   * `grouped` contains the complete follow-up population, so this result is
-   * numerically equivalent to the former per-observation implementation.
+   * The encoded array contains the complete follow-up population, so this result
+   * is numerically equivalent to the former grouped-map implementation.
    */
-  private fun restrictedMeanFromGroupedFollowUp(
-    grouped: Map<Long, FollowUpAtTime>,
+  private fun restrictedMeanFromEncodedFollowUp(
+    encodedFollowUp: LongArray,
     populationSize: Int,
     tau: Long
   ): Double? {
@@ -685,16 +938,25 @@ class ThreesimSimulationMonitor(
     var survival = 1.0
     var previousTime = 0L
     var area = 0.0
+    var index = 0
 
-    for ((timeRaw, group) in grouped) {
-      val time = timeRaw.coerceIn(0L, tau)
+    while (index < encodedFollowUp.size) {
+      val time = (encodedFollowUp[index] ushr 1).coerceIn(0L, tau)
+      var events = 0
+      var censored = 0
+
+      while (index < encodedFollowUp.size && (encodedFollowUp[index] ushr 1).coerceIn(0L, tau) == time) {
+        if ((encodedFollowUp[index] and 1L) == 1L) events++ else censored++
+        index++
+      }
+
       if (time > previousTime) {
         area += survival * (time - previousTime).toDouble()
       }
-      if (atRisk > 0 && group.events > 0) {
-        survival *= 1.0 - group.events.toDouble() / atRisk.toDouble()
+      if (atRisk > 0 && events > 0) {
+        survival *= 1.0 - events.toDouble() / atRisk.toDouble()
       }
-      atRisk -= group.events + group.censored
+      atRisk -= events + censored
       previousTime = time
       if (time >= tau) break
     }
@@ -712,15 +974,51 @@ class ThreesimSimulationMonitor(
    * change the requested measurement sample size.
    */
   private fun canonicalBlocksObservedForWindowControl(): Int = when (phase) {
-    Phase.WARMUP -> canonicalProgressBlocks.getNumberOfValidBlocks()
+    Phase.WARMUP -> warmupCanonicalBlocksSeen.size
     Phase.MEASUREMENT, Phase.DRAIN ->
-      warmupTargetCanonicalBlocks + canonicalMeasurementBlocks.getNumberOfValidBlocks()
+      warmupTargetCanonicalBlocks + measurementCanonicalBlocksSeen.size
     Phase.LEGACY -> canonicalProgressBlocks.getNumberOfValidBlocks()
   }
 
   private fun isSpsmObservationPhase(): Boolean = phase == Phase.LEGACY || phase == Phase.MEASUREMENT
 
+  private fun observeCanonicalProgressGap(currentTimeMs: Long) {
+    if (phase != Phase.WARMUP && phase != Phase.MEASUREMENT) return
+
+    val gapMillis =
+      (currentTimeMs - canonicalProgressLastAdvanceTimeMs).coerceAtLeast(0L)
+    if (gapMillis > maxCanonicalProgressGapMillisObserved) {
+      maxCanonicalProgressGapMillisObserved = gapMillis
+    }
+  }
+
+  override fun onSafetyTermination(reason: String) {
+    markTermination(reason, false)
+  }
+
+  override fun onEventCoordinatorTelemetry(
+    processedEvents: Long,
+    maxFutureEventsObserved: Long
+  ) {
+    processedEventsObserved = maxOf(processedEventsObserved, processedEvents)
+    this.maxFutureEventsObserved = maxOf(
+      this.maxFutureEventsObserved,
+      maxFutureEventsObserved
+    )
+  }
+
   override fun shouldTerminate(): Boolean {
+    observeCanonicalProgressGap(simulationClock.currentTime)
+    if (maxTransactionSubmissions > 0L && totalTransactionSubmissionsAllPhases >= maxTransactionSubmissions) {
+      reportWorkloadLimit("TRANSACTION_SUBMISSIONS", maxTransactionSubmissions)
+      return markTermination("WORKLOAD_LIMIT_TRANSACTION_SUBMISSIONS", false)
+    }
+
+    if (maxBlockProposals > 0L && totalBlockProposalsAllPhases >= maxBlockProposals) {
+      reportWorkloadLimit("BLOCK_PROPOSALS", maxBlockProposals)
+      return markTermination("WORKLOAD_LIMIT_BLOCK_PROPOSALS", false)
+    }
+
     if (!refinedWindowEnabled) {
       if (inactivityThresholdCondition.hasProlongedInactivityExceeded()) {
         return markTermination("INACTIVITY", false)
@@ -739,12 +1037,11 @@ class ThreesimSimulationMonitor(
         return markTermination("DRAIN_NO_MEASUREMENT_TRANSACTIONS", true)
       }
 
-      val allConfirmed = measurementTransactions.keys.all { it in measurementTransactionConfirmationTimes }
-      if (allConfirmed) {
+      if (measurementTransactions.unconfirmedCount == 0) {
         return markTermination("DRAIN_ALL_CONFIRMED", true)
       }
 
-      val latestDeadline = measurementTransactions.values.maxOrNull()!! + transactionDrainMillis
+      val latestDeadline = measurementTransactions.latestSubmittedAtMs + transactionDrainMillis
       if (simulationClock.currentTime >= latestDeadline) {
         return markTermination("DRAIN_DEADLINE_REACHED", true)
       }
@@ -756,10 +1053,42 @@ class ThreesimSimulationMonitor(
       return false
     }
 
+    if (
+      canonicalProgressStallMillis > 0L &&
+      (phase == Phase.WARMUP || phase == Phase.MEASUREMENT)
+    ) {
+      val noProgressForMs = simulationClock.currentTime - canonicalProgressLastAdvanceTimeMs
+      if (noProgressForMs >= canonicalProgressStallMillis) {
+        System.err.println(
+          "[3SIM-canonical-stall] phase=${phase.name} " +
+            "canonicalHighWater=$canonicalProgressHighWater " +
+            "canonicalNow=${canonicalBlocksObservedForWindowControl()} " +
+            "noProgressForMs=$noProgressForMs " +
+            "stallThresholdMs=$canonicalProgressStallMillis " +
+            "proposals=$totalBlockProposalsAllPhases " +
+            "longestChain=${maxBlockchainLengthCondition.currentLength} " +
+            "submittedTxAllPhases=$totalTransactionSubmissionsAllPhases " +
+            "timeMs=${simulationClock.currentTime}"
+        )
+        return markTermination("CANONICAL_PROGRESS_STALL", false)
+      }
+    }
+
     if (inactivityThresholdCondition.hasProlongedInactivityExceeded()) {
       return markTermination("INACTIVITY", false)
     }
     return false
+  }
+
+  private fun reportWorkloadLimit(kind: String, limit: Long) {
+    System.err.println(
+      "[3SIM-workload-limit] kind=$kind limit=$limit phase=${phase.name} " +
+        "canonical=${canonicalBlocksObservedForWindowControl()} " +
+        "proposals=$totalBlockProposalsAllPhases " +
+        "submittedTxAllPhases=$totalTransactionSubmissionsAllPhases " +
+        "longestChain=${maxBlockchainLengthCondition.currentLength} " +
+        "timeMs=${simulationClock.currentTime}"
+    )
   }
 
   private fun markTermination(reason: String, followUpCompleted: Boolean): Boolean {
@@ -770,9 +1099,16 @@ class ThreesimSimulationMonitor(
     return true
   }
 
+  fun setScalabilityStateTracker(scalabilityStateTracker: ScalabilityStateTracker) {
+    this.scalabilityStateTracker = scalabilityStateTracker
+  }
+
   fun setSimulationClock(simulationClock: SimulationClock) {
     this.simulationClock = simulationClock
     this.inactivityThresholdCondition.simulationClock = simulationClock
+    if (refinedWindowEnabled) {
+      canonicalProgressLastAdvanceTimeMs = simulationClock.currentTime
+    }
   }
 
   private fun monitorThroughputForNewlyConfirmedBlock(confirmedBlock: Block, occurrenceTime: Long) {
@@ -793,10 +1129,10 @@ class ThreesimSimulationMonitor(
 
     if (failureLog.isFailureOngoing()) {
       throughputsDuringFailure.add(throughput)
-      confirmationLatenciesDuringFailure.add(confirmationLatency)
+      confirmationLatenciesDuringFailure.add(confirmationLatency.toDouble())
     } else {
       throughputsWithoutFailure.add(throughput)
-      confirmationLatenciesWithoutFailure.add(confirmationLatency)
+      confirmationLatenciesWithoutFailure.add(confirmationLatency.toDouble())
     }
     lastThroughputCheckTimestamp = occurrenceTime
   }
@@ -840,8 +1176,12 @@ class ThreesimSimulationMonitor(
 
   private fun calculateMeanTimeToRepair(): Double = failureLog.calculateMeanFailureDuration()
   private fun calculateNumberOfGeographicalRegions(): Int = geographicalRegions.getNumberOfRegions()
-  private fun calculateAverageThroughputDuringFailure(): Double = if (throughputsDuringFailure.isEmpty()) -1.0 else throughputsDuringFailure.average()
-  private fun calculateAverageConfirmationLatencyDuringFailure(): Double = if (confirmationLatenciesDuringFailure.isEmpty()) -1.0 else confirmationLatenciesDuringFailure.average()
-  private fun calculateAverageThroughputWithoutFailure(): Double = if (throughputsWithoutFailure.isEmpty()) -1.0 else throughputsWithoutFailure.average()
-  private fun calculateAverageConfirmationLatencyWithoutFailure(): Double = if (confirmationLatenciesWithoutFailure.isEmpty()) -1.0 else confirmationLatenciesWithoutFailure.average()
+  private fun calculateAverageThroughputDuringFailure(): Double = throughputsDuringFailure.averageOr(-1.0)
+  private fun calculateAverageConfirmationLatencyDuringFailure(): Double = confirmationLatenciesDuringFailure.averageOr(-1.0)
+  private fun calculateAverageThroughputWithoutFailure(): Double = throughputsWithoutFailure.averageOr(-1.0)
+  private fun calculateAverageConfirmationLatencyWithoutFailure(): Double = confirmationLatenciesWithoutFailure.averageOr(-1.0)
+  private companion object {
+    const val UNSEEN_RECEIPT_TIME: Long = Long.MIN_VALUE
+  }
+
 }

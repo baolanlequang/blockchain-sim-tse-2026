@@ -66,10 +66,16 @@ class SelfishMiningAttackRoundTracker(
   private val honestMajorityThreshold = if (this.honestNodeIds.isEmpty()) Int.MAX_VALUE else this.honestNodeIds.size / 2 + 1
   private val roundsById = linkedMapOf<String, RoundState>()
   private val roundIdByPrivateBlockHash = mutableMapOf<String, String>()
+  private var startedRoundCount = 0
+  private var successfulRoundCount = 0
+  private var failedRoundCount = 0
 
   fun reset() {
     roundsById.clear()
     roundIdByPrivateBlockHash.clear()
+    startedRoundCount = 0
+    successfulRoundCount = 0
+    failedRoundCount = 0
   }
 
   fun onRoundStarted(event: SelfishMiningAttackRoundStartedTraceEvent) {
@@ -86,6 +92,7 @@ class SelfishMiningAttackRoundTracker(
     state.privateBlockHashes.add(event.firstPrivateBlockHash)
     roundsById[event.roundId] = state
     roundIdByPrivateBlockHash[event.firstPrivateBlockHash] = event.roundId
+    startedRoundCount++
   }
 
   fun onPrivateBlock(event: SelfishMiningAttackRoundPrivateBlockTraceEvent) {
@@ -176,18 +183,15 @@ class SelfishMiningAttackRoundTracker(
   }
 
   fun summary(): Summary {
-    val successful = roundsById.values.count { it.outcome == Outcome.SUCCESS }
-    val failed = roundsById.values.count { it.outcome == Outcome.FAILURE }
-    val started = roundsById.size
-    val unambiguous = successful + failed
-    val ambiguous = started - unambiguous
+    val unambiguous = successfulRoundCount + failedRoundCount
+    val ambiguous = roundsById.size
     return Summary(
-      startedRounds = started,
-      successfulRounds = successful,
-      failedRounds = failed,
+      startedRounds = startedRoundCount,
+      successfulRounds = successfulRoundCount,
+      failedRounds = failedRoundCount,
       ambiguousRounds = ambiguous,
       unambiguousRounds = unambiguous,
-      successProbability = if (unambiguous > 0) successful.toDouble() / unambiguous.toDouble() else null
+      successProbability = if (unambiguous > 0) successfulRoundCount.toDouble() / unambiguous.toDouble() else null
     )
   }
 
@@ -224,9 +228,7 @@ class SelfishMiningAttackRoundTracker(
     state.honestRejectionNodes.remove(nodeId)
     state.honestAdoptionNodes.add(nodeId)
     if (state.honestAdoptionNodes.size >= honestMajorityThreshold) {
-      state.outcome = Outcome.SUCCESS
-      state.resolvedAtMs = occurrenceTime
-      state.resolutionReason = reason
+      completeRound(state, Outcome.SUCCESS, occurrenceTime, reason)
     }
   }
 
@@ -246,8 +248,28 @@ class SelfishMiningAttackRoundTracker(
   }
 
   private fun resolveFailure(state: RoundState, occurrenceTime: Long, reason: String) {
-    state.outcome = Outcome.FAILURE
+    completeRound(state, Outcome.FAILURE, occurrenceTime, reason)
+  }
+
+  private fun completeRound(state: RoundState, outcome: Outcome, occurrenceTime: Long, reason: String) {
+    if (state.outcome != Outcome.PENDING) return
+    state.outcome = outcome
     state.resolvedAtMs = occurrenceTime
     state.resolutionReason = reason
+
+    when (outcome) {
+      Outcome.SUCCESS -> successfulRoundCount++
+      Outcome.FAILURE -> failedRoundCount++
+      Outcome.PENDING -> return
+    }
+
+    // Completed rounds no longer need per-node adoption/rejection sets or hash
+    // reverse indexes. Retain only aggregate counters used by the final metric.
+    state.privateBlockHashes.forEach { blockHash ->
+      if (roundIdByPrivateBlockHash[blockHash] == state.roundId) {
+        roundIdByPrivateBlockHash.remove(blockHash)
+      }
+    }
+    roundsById.remove(state.roundId)
   }
 }

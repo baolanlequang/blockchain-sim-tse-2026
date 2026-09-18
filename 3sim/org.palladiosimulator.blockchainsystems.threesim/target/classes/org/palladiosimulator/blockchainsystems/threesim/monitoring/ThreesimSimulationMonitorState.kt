@@ -48,8 +48,39 @@ class ThreesimSimulationMonitorState(
   val executionPhaseAtTermination: String = "LEGACY",
   val terminationReason: String = "NOT_TERMINATED",
   val transactionFollowUpCompleted: Boolean = false,
-  val totalBlockProposalsAllPhases: Int = 0,
-  val totalTransactionSubmissionsAllPhases: Int = 0,
+  val totalBlockProposalsAllPhases: Long = 0L,
+  val totalTransactionSubmissionsAllPhases: Long = 0L,
+  /** Largest phase-local WARMUP/MEASUREMENT canonical no-progress gap observed. */
+  val maxCanonicalProgressGapMillisObserved: Long = 0L,
+  /** Exact number of simulation events processed by the event coordinator. */
+  val processedEventsObserved: Long = 0L,
+  /** Largest number of queued future events observed during the execution. */
+  val maxFutureEventsObserved: Long = 0L,
+  val currentTransactionKnowledgeEntries: Long = 0L,
+  val maxTransactionKnowledgeEntriesObserved: Long = 0L,
+  val maxTransactionKnowledgeEntriesPerNodeObserved: Long = 0L,
+  val currentBlockKnowledgeEntries: Long = 0L,
+  val maxBlockKnowledgeEntriesObserved: Long = 0L,
+  val maxBlockKnowledgeEntriesPerNodeObserved: Long = 0L,
+  val currentMempoolEntries: Long = 0L,
+  val maxMempoolEntriesObserved: Long = 0L,
+  val maxMempoolEntriesPerNodeObserved: Long = 0L,
+  val currentMeasurementTransactionEntries: Long = 0L,
+  val maxMeasurementTransactionEntriesObserved: Long = 0L,
+  /** Configured simulated-time no-progress guard; 0 means disabled. */
+  val canonicalProgressStallMillis: Long = 0L,
+  /** Configured total transaction-submission work guard; 0 means disabled. */
+  val maxTransactionSubmissions: Long = 0L,
+  /** Configured total block-proposal work guard; 0 means disabled. */
+  val maxBlockProposals: Long = 0L,
+  /** Configured maximum queued future events; 0 means disabled. */
+  val maxFutureEvents: Long = 0L,
+  /** Configured maximum processed events; 0 means disabled. */
+  val maxProcessedEvents: Long = 0L,
+  val maxTransactionKnowledgeEntries: Long = 0L,
+  val maxBlockKnowledgeEntries: Long = 0L,
+  val maxMempoolEntries: Long = 0L,
+  val maxMeasurementTransactionEntries: Long = 0L,
   val blockRateObservationTimeMs: Long = 0L,
   val transactionRateObservationTimeMs: Long = 0L,
   /** Blocks mined during the measurement window and therefore eligible for P-B T90. */

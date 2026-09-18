@@ -23,6 +23,16 @@ public interface OrphanBlockPool extends Traceable {
     Set<Block> getBlocksByPreviousBlockHash(String previousBlockHash);
 
     /**
+     * Removes and returns each stored block whose previous hash matches the specified hash.
+     * This is used when an ancestor has been appended and its orphan descendants are about
+     * to be consumed.
+     *
+     * @param previousBlockHash the hash of the newly available previous block
+     * @return the removed blocks, or an empty set if none are stored
+     */
+    Set<Block> removeBlocksByPreviousBlockHash(String previousBlockHash);
+
+    /**
      * Stores the specified block in the orphan block pool.
      *
      * @param block the block to store in the orphan block pool
