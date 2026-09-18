@@ -2,7 +2,7 @@
 #SBATCH --job-name=run_trilemma_job
 #SBATCH --output=logs/trilemma_%A_%a.out
 #SBATCH --error=logs/trilemma_%A_%a.err
-#SBATCH --partition=highmem
+#SBATCH --partition=cpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
