@@ -296,7 +296,7 @@ public class TrilemmaSimulator {
                 "node_bandwidth_heterogeneity",
                 "link_bandwidth_heterogeneity",
                 "hashing_power_concentration",
-                "transaction_arrival_rate");
+                "relative_transaction_load");
 
         Map<String, String> realizationNetworkSeed = new HashMap<>();
         Map<String, String> realizationPair = new HashMap<>();
@@ -592,7 +592,7 @@ public class TrilemmaSimulator {
                 "node_bandwidth_heterogeneity",
                 "link_bandwidth_heterogeneity",
                 "hashing_power_concentration",
-                "transaction_arrival_rate");
+                "relative_transaction_load");
         for (String key : required) {
             if (!row.containsKey(key) || row.get(key).isBlank()) {
                 throw new IllegalArgumentException("Missing or empty refined CSV column: " + key + " in row: " + row);

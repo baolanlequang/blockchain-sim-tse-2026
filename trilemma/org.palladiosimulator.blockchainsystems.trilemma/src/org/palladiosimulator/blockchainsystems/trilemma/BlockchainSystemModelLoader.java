@@ -137,7 +137,9 @@ public class BlockchainSystemModelLoader {
         final double fA = hasSampledAttackerFraction
                 ? requiredDouble(c, "fraction_of_attackers")
                 : Double.NaN;
-        final double lambdaTx = requiredDouble(c, "transaction_arrival_rate");
+        final double lambdaRef = requiredDouble(c, "lambda_ref");
+        final double relativeTransactionLoad = requiredDouble(c, "relative_transaction_load");
+        final double lambdaTx = relativeTransactionLoad * lambdaRef;
 
         requireRange("connection_count", connectionCount, 1, 8);
         requireRange("block_creation_interval", bciSeconds, 60.0, 1200.0);
@@ -153,7 +155,8 @@ public class BlockchainSystemModelLoader {
                     "Refined input requires fraction_of_attackers; number_of_attackers is accepted only as a pilot-compatibility fallback.");
         }
         if (!(lambdaTx > 0.0) || !Double.isFinite(lambdaTx)) {
-            throw new IllegalArgumentException("transaction_arrival_rate must be finite and > 0; got " + lambdaTx);
+            throw new IllegalArgumentException(
+                    "relative_transaction_load * lambda_ref must be finite and > 0; got " + lambdaTx);
         }
         if (2 * connectionCount > nv - 1) {
             throw new IllegalArgumentException(
