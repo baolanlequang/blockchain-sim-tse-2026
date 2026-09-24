@@ -23,7 +23,7 @@ if [ ! -x "$JAVA_BIN" ]; then
 fi
 
 SUBMIT_DIR="$(pwd)"
-FULL_CSV=${FULL_CSV:-org.palladiosimulator.blockchainsystems.trilemma/preliminary_64x48_run/manifest_64x48_rs2re2_master1024_full.csv}
+FULL_CSV=${FULL_CSV:-org.palladiosimulator.blockchainsystems.trilemma/refined_sampling/manifests/nested_design_operational_pairs_64x48_rs2re2_master1024.csv}
 TESTMODELS=org.palladiosimulator.blockchainsystems.trilemma/testmodels
 BASE_CONFIG=${BASE_CONFIG:-org.palladiosimulator.blockchainsystems.trilemma/preliminary_64x48_run/configuration_refined_64x48_full.json}
 

@@ -1,0 +1,20 @@
+{
+	"experimentPhase": "production",
+	"productionSettingsFrozen": "true",
+	"requireHierarchicalManifest": "true",
+	"declaredSamplePairs": "4096",
+	"allowValidatedPartialBatch": "true",
+	"_note_declaredSamplePairs": "4096 is the TRUE pair count for the whole 128x32 overload manifest (refined_sampling/manifests/overload_105pct_128x32_rs2re2_master1024.csv), not per SLURM task. run_trilemma_job.sh passes each task's SLICE_CSV (1 pair's 4 rows, as long as ROWS_PER_TASK=4), so allowValidatedPartialBatch=true skips the per-process pair-count match check (TrilemmaSimulator.java's validateDeclaredSamplePairCount). Keep declaredSamplePairs at the real batch-level count for provenance in result JSONs; do not set it to 1 -- it is not a per-task value and must not be treated as one.",
+	"_note_lambda_ref": "The overload_105pct_128x32 source CSV has relative_transaction_load fixed at 1.05 for every one of its 4096 rows (verified directly), i.e. rho=1.05 under the same lambda_tx = relative_transaction_load * lambda_ref formula as the primary/nested batches. lambda_ref=100 therefore applies identically here -- there is no separate design-relative-capacity calculation baked into this CSV's rho column that would require a different constant.",
+	"blockchainSystemModelFilePath": "testmodels/refined-base/Net.blockchainsystem",
+	"warmup_blocks_per_validator": "4",
+	"measured_blocks_per_validator": "4",
+	"transaction_drain_seconds": "14400",
+	"masterSeed": "1024",
+	"baselineBandwidthPerEndpointMbps": "1000",
+	"lambda_ref": "100",
+	"failureThroughputThreshold": "1.0",
+	"shannonEntropyK": "1.0",
+	"nakamotoCoefficientThreshold": "50.0",
+	"reliabilityObservationTimespan": "24.0"
+}
