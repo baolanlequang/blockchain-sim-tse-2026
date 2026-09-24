@@ -81,7 +81,11 @@ object BehaviorUtils {
 
         orphanBlocks.forEach { orphanBlock ->
           val orphanOutcome = appendBlockToBlockchainDetailed(orphanBlock, context, visited)
-          if (orphanOutcome == AppendOutcome.INCLUDED || orphanOutcome == AppendOutcome.FORKING) {
+          if (
+            orphanOutcome == AppendOutcome.INCLUDED ||
+            orphanOutcome == AppendOutcome.FORKING ||
+            orphanOutcome == AppendOutcome.STALE
+          ) {
             context.blockPropagationStrategy.distribute(orphanBlock)
           }
         }

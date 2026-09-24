@@ -25,8 +25,62 @@ data class RefinedExecutionAudit(
   val terminationReason: String,
   val measurementWindowCompleted: Boolean,
   val transactionFollowUpCompleted: Boolean,
-  val totalBlockProposalsAllPhases: Int,
-  val totalTransactionSubmissionsAllPhases: Int,
+  val totalBlockProposalsAllPhases: Long,
+  val totalTransactionSubmissionsAllPhases: Long,
+  /** Largest phase-local WARMUP/MEASUREMENT canonical no-progress gap observed. */
+  @EncodeDefault
+  val maxCanonicalProgressGapMillisObserved: Long = 0L,
+  /** Exact number of simulation events processed by the event coordinator. */
+  @EncodeDefault
+  val processedEventsObserved: Long = 0L,
+  /** Largest number of queued future events observed during the execution. */
+  @EncodeDefault
+  val maxFutureEventsObserved: Long = 0L,
+  @EncodeDefault
+  val currentTransactionKnowledgeEntries: Long = 0L,
+  @EncodeDefault
+  val maxTransactionKnowledgeEntriesObserved: Long = 0L,
+  @EncodeDefault
+  val maxTransactionKnowledgeEntriesPerNodeObserved: Long = 0L,
+  @EncodeDefault
+  val currentBlockKnowledgeEntries: Long = 0L,
+  @EncodeDefault
+  val maxBlockKnowledgeEntriesObserved: Long = 0L,
+  @EncodeDefault
+  val maxBlockKnowledgeEntriesPerNodeObserved: Long = 0L,
+  @EncodeDefault
+  val currentMempoolEntries: Long = 0L,
+  @EncodeDefault
+  val maxMempoolEntriesObserved: Long = 0L,
+  @EncodeDefault
+  val maxMempoolEntriesPerNodeObserved: Long = 0L,
+  @EncodeDefault
+  val currentMeasurementTransactionEntries: Long = 0L,
+  @EncodeDefault
+  val maxMeasurementTransactionEntriesObserved: Long = 0L,
+  /** Reproducibility record for the optional canonical-progress safety guard. */
+  @EncodeDefault
+  val canonicalProgressStallMillis: Long = 0L,
+  /** Reproducibility record for the optional transaction-work safety guard. */
+  @EncodeDefault
+  val maxTransactionSubmissions: Long = 0L,
+  /** Reproducibility record for the optional block-work safety guard. */
+  @EncodeDefault
+  val maxBlockProposals: Long = 0L,
+  /** Reproducibility record for the event-queue safety guard. */
+  @EncodeDefault
+  val maxFutureEvents: Long = 0L,
+  /** Reproducibility record for the processed-event safety guard. */
+  @EncodeDefault
+  val maxProcessedEvents: Long = 0L,
+  @EncodeDefault
+  val maxTransactionKnowledgeEntries: Long = 0L,
+  @EncodeDefault
+  val maxBlockKnowledgeEntries: Long = 0L,
+  @EncodeDefault
+  val maxMempoolEntries: Long = 0L,
+  @EncodeDefault
+  val maxMeasurementTransactionEntries: Long = 0L,
   val blockRateObservationTimeMs: Long,
   val transactionRateObservationTimeMs: Long,
   val measurementSubmittedTransactions: Int,

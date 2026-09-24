@@ -7,6 +7,7 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetwo
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.Transaction
 import org.palladiosimulator.blockchainsystems.core.network.MessageDroppedTraceEvent
 import org.palladiosimulator.blockchainsystems.core.utils.CompactStringStateMap
+import org.palladiosimulator.blockchainsystems.core.scalability.ScalabilityStateTracker
 
 /**
  * Propagation strategy for transactions in a blockchain system.
@@ -14,7 +15,9 @@ import org.palladiosimulator.blockchainsystems.core.utils.CompactStringStateMap
  *
  * @author Davis Riedel
  */
-class TransactionPropagationStrategy : GossipPropagationStrategy<Transaction>() {
+class TransactionPropagationStrategy(
+  private val scalabilityStateTracker: ScalabilityStateTracker? = null
+) : GossipPropagationStrategy<Transaction>() {
   override val INV_MESSAGE_KEY: String = "TRX_INV"
   override val GET_DATA_MESSAGE_KEY: String = "TRX_GET_DATA"
   override val ELEMENT_MESSAGE_KEY: String = "TRX_MSG"
@@ -37,7 +40,12 @@ class TransactionPropagationStrategy : GossipPropagationStrategy<Transaction>() 
   // One entry records both protocol states: false = known-only, true = already announced.
   // This preserves the existing persistent duplicate-suppression history while avoiding
   // two HashSet/HashMap entries for transactions that have also been announced.
-  private val transactionKnowledge = CompactStringStateMap()
+  private val transactionKnowledge = CompactStringStateMap(
+    beforeNewEntry = { scalabilityStateTracker?.beforeTransactionKnowledgeEntryAdded() },
+    afterNewEntry = { nodeEntries ->
+      scalabilityStateTracker?.onTransactionKnowledgeEntryAdded(nodeEntries)
+    }
+  )
 
   /*
    * Lifecycle note: BlockchainNodeObject.onInitialize()/onCleanup() are final
