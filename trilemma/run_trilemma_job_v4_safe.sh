@@ -56,6 +56,10 @@ MAX_BLOCK_KNOWLEDGE_ENTRIES=${MAX_BLOCK_KNOWLEDGE_ENTRIES:-5000000}
 MAX_MEMPOOL_ENTRIES=${MAX_MEMPOOL_ENTRIES:-5000000}
 MAX_MEASUREMENT_TRANSACTION_ENTRIES=${MAX_MEASUREMENT_TRANSACTION_ENTRIES:-2000000}
 
+JAVA_XMS=${JAVA_XMS:-8G}
+JAVA_XMX=${JAVA_XMX:-64G}
+PARALLEL_GC_THREADS=${PARALLEL_GC_THREADS:-8}
+
 mkdir -p "${SUBMIT_DIR}/logs"
 
 RESULTS_WORKSPACE="${RESULTS_WORKSPACE:-trilemma_results}"
@@ -87,8 +91,8 @@ cat > "$RUNTIME_FILE" <<EOF
 source_commit=${SOURCE_COMMIT}
 jar_sha256=${JAR_SHA256}
 java=$("$JAVA_BIN" -version 2>&1 | head -1)
-xms=8G
-xmx=64G
+xms=${JAVA_XMS}
+xmx=${JAVA_XMX}
 canonicalProgressStallMs=${CANONICAL_PROGRESS_STALL_MS}
 maxTransactionSubmissions=${MAX_TRANSACTION_SUBMISSIONS}
 maxBlockProposals=${MAX_BLOCK_PROPOSALS}
@@ -138,7 +142,7 @@ for (( global_row=start; global_row<=end; global_row++ )); do
 
     (
         cd "$RUN_WORKDIR" || exit 98
-        "$JAVA_BIN" -Xms8G -Xmx64G             -XX:+UseG1GC             -XX:ParallelGCThreads=8             -XX:+ExitOnOutOfMemoryError             -XX:+HeapDumpOnOutOfMemoryError             -XX:HeapDumpPath="$HEAP_DUMP"             -Dthreesim.canonicalProgressStallMs="$CANONICAL_PROGRESS_STALL_MS"             -Dthreesim.maxTransactionSubmissions="$MAX_TRANSACTION_SUBMISSIONS"             -Dthreesim.maxBlockProposals="$MAX_BLOCK_PROPOSALS"             -Dthreesim.maxProcessedEvents="$MAX_PROCESSED_EVENTS"             -Dthreesim.maxFutureEvents="$MAX_FUTURE_EVENTS"             -Dthreesim.maxTransactionKnowledgeEntries="$MAX_TRANSACTION_KNOWLEDGE_ENTRIES"             -Dthreesim.maxBlockKnowledgeEntries="$MAX_BLOCK_KNOWLEDGE_ENTRIES"             -Dthreesim.maxMempoolEntries="$MAX_MEMPOOL_ENTRIES"             -Dthreesim.maxMeasurementTransactionEntries="$MAX_MEASUREMENT_TRANSACTION_ENTRIES"             -jar trilemma.jar             "$ONE_ROW_CSV"             "$TESTMODELS"             "$BASE_CONFIG"
+        "$JAVA_BIN" -Xms"${JAVA_XMS}" -Xmx"${JAVA_XMX}"             -XX:+UseG1GC             -XX:ParallelGCThreads="${PARALLEL_GC_THREADS}"             -XX:+ExitOnOutOfMemoryError             -XX:+HeapDumpOnOutOfMemoryError             -XX:HeapDumpPath="$HEAP_DUMP"             -Dthreesim.canonicalProgressStallMs="$CANONICAL_PROGRESS_STALL_MS"             -Dthreesim.maxTransactionSubmissions="$MAX_TRANSACTION_SUBMISSIONS"             -Dthreesim.maxBlockProposals="$MAX_BLOCK_PROPOSALS"             -Dthreesim.maxProcessedEvents="$MAX_PROCESSED_EVENTS"             -Dthreesim.maxFutureEvents="$MAX_FUTURE_EVENTS"             -Dthreesim.maxTransactionKnowledgeEntries="$MAX_TRANSACTION_KNOWLEDGE_ENTRIES"             -Dthreesim.maxBlockKnowledgeEntries="$MAX_BLOCK_KNOWLEDGE_ENTRIES"             -Dthreesim.maxMempoolEntries="$MAX_MEMPOOL_ENTRIES"             -Dthreesim.maxMeasurementTransactionEntries="$MAX_MEASUREMENT_TRANSACTION_ENTRIES"             -jar trilemma.jar             "$ONE_ROW_CSV"             "$TESTMODELS"             "$BASE_CONFIG"
     ) >"$STDOUT_LOG" 2>"$STDERR_LOG"
 
     java_exit=$?
