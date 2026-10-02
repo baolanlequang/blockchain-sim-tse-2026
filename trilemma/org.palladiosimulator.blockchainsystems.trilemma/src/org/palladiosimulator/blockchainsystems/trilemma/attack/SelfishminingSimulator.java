@@ -257,13 +257,24 @@ public class SelfishminingSimulator {
                 "validating_node_count",
                 "node_bandwidth_heterogeneity",
                 "link_bandwidth_heterogeneity",
-                "hashing_power_concentration",
-                "relative_transaction_load");
+                "hashing_power_concentration");
         for (String key : required) {
             if (!row.containsKey(key) || row.get(key).isBlank()) {
                 throw new IllegalArgumentException(
                         "Missing or empty refined CSV column: " + key + " in row: " + row);
             }
+        }
+        // Demand: the absolute transaction_arrival_rate (tx/s) is the revised input;
+        // relative_transaction_load is accepted only for legacy manifests.
+        boolean hasAbsoluteRate = row.containsKey("transaction_arrival_rate")
+                && row.get("transaction_arrival_rate") != null
+                && !row.get("transaction_arrival_rate").isBlank();
+        boolean hasRelativeLoad = row.containsKey("relative_transaction_load")
+                && row.get("relative_transaction_load") != null
+                && !row.get("relative_transaction_load").isBlank();
+        if (!hasAbsoluteRate && !hasRelativeLoad) {
+            throw new IllegalArgumentException(
+                    "Refined CSV requires transaction_arrival_rate (tx/s) or relative_transaction_load: " + row);
         }
         boolean hasFraction = row.containsKey("fraction_of_attackers")
                 && row.get("fraction_of_attackers") != null

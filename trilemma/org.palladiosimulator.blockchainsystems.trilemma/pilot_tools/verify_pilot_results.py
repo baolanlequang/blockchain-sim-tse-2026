@@ -44,6 +44,35 @@ def main():
         started=int(audit.get('selfishMiningAttackRoundsStarted',0)); succ=int(audit.get('successfulSelfishMiningAttackRounds',0)); fail=int(audit.get('failedSelfishMiningAttackRounds',0)); amb=int(audit.get('ambiguousSelfishMiningAttackRounds',0))
         if started != succ+fail+amb:
             print(f'[FAIL] {p.name}: SPSM count identity violated'); good=False
+        # Transaction gossip must reach every validator. Knowledge entries are kept for
+        # the whole run, so a working gossip layer gives ~ submissions * N_V entries.
+        # (A single-slot network callback once disabled gossip: ratio = 1/N_V.)
+        submitted=int(audit.get('totalTransactionSubmissionsAllPhases',0) or 0)
+        known=int(audit.get('maxTransactionKnowledgeEntriesObserved',0) or 0)
+        nv=int(creation.get('validatingNodeCount',0) or 0)
+        if submitted>0 and nv>0 and known < 0.99*submitted*nv:
+            print(f'[FAIL] {p.name}: transaction gossip coverage {known/(submitted*nv):.3f} < 0.99'); good=False
+        if not inp.get('lambda_tx_effective'):
+            print(f'[FAIL] {p.name}: lambda_tx_effective missing (simulator predates demand fix)'); good=False
+        elif inp.get('transaction_arrival_rate') in (None, ''):
+            print(f'[FAIL] {p.name}: manifest has no transaction_arrival_rate (old rho-based manifest)'); good=False
+        elif abs(float(inp['lambda_tx_effective']) - float(inp['transaction_arrival_rate'])) > 1e-9 * max(1.0, float(inp['transaction_arrival_rate'])):
+            print(f'[FAIL] {p.name}: simulated rate {inp["lambda_tx_effective"]} != manifest transaction_arrival_rate {inp["transaction_arrival_rate"]}'); good=False
+        # Transaction window (manuscript): submission from kappa_tx_warm blocks before
+        # measurement until K_tx = min(K_tx_max, kappa_measure * N_V) measurement blocks.
+        if not audit.get('transactionWindowEnabled'):
+            print(f'[FAIL] {p.name}: transaction window not enabled (old jar, or transaction_measurement_blocks_max = 0)'); good=False
+        else:
+            kmeas=int(audit.get('measuredBlocksPerValidator',0) or 0)
+            expected_ktx=min(100, kmeas*nv) if nv>0 else None
+            if expected_ktx is not None and int(audit.get('transactionMeasurementTargetBlocks',0)) != expected_ktx:
+                print(f'[WARN] {p.name}: K_tx = {audit.get("transactionMeasurementTargetBlocks")} differs from min(100, kappa_measure*N_V) = {expected_ktx}')
+            if int(audit.get('transactionWarmupBlocks',-1)) != 30:
+                print(f'[WARN] {p.name}: kappa_tx_warm = {audit.get("transactionWarmupBlocks")} (manuscript: 30)')
+            if complete and int(audit.get('transactionWindowEndTimeMs',0) or 0) <= 0:
+                print(f'[FAIL] {p.name}: run complete but transaction window end not recorded'); good=False
+        if audit.get('terminationReason','').startswith('WORKLOAD_LIMIT'):
+            print(f'[WARN] {p.name}: stopped by execution guard {audit["terminationReason"]} in phase {audit.get("executionPhaseAtTermination")}')
         rid=inp.get('network_realization_id')
         if rid: by_real[rid].append((p,inp,creation))
     for rid,rr in by_real.items():

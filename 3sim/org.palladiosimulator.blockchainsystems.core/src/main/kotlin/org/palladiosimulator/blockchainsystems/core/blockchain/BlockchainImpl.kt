@@ -116,7 +116,21 @@ class BlockchainImpl(
     logBlockAppended(block, blockPosition, previousBlockchainElement.block, BlockType.IncludedBlock)
     becameIncluded.add(block)
 
-    // If the blockchain is currently forked, mark blocks in other branches as stale blocks.
+    // Resolve the fork in two passes. First promote the winning branch
+    // (the new block's ancestors that are still Forking) to Included. Only then
+    // demote the losing branches: their traversal stops at the first block that
+    // is no longer Forking, so a Forking ancestor shared with the winning branch
+    // is never marked Stale. (Demoting first mislabelled such canonical blocks as
+    // Stale permanently, which inflated SBR and prevented their transactions from
+    // ever being confirmed.)
+    becameIncluded.addAll(
+      traverseBlockchainAndChangeBlockTypes(
+        previousBlockchainElement,
+        BlockchainElementType.Forking,
+        BlockchainElementType.Included
+      ).map { it.block }
+    )
+
     for (blockchainElement in staleBlockBranches) {
       becameStale.addAll(
         traverseBlockchainAndChangeBlockTypes(
@@ -126,15 +140,6 @@ class BlockchainImpl(
         ).map { it.block }
       )
     }
-
-    // Mark (currently forked) descendants of new (latest) block as included.
-    becameIncluded.addAll(
-      traverseBlockchainAndChangeBlockTypes(
-        previousBlockchainElement,
-        BlockchainElementType.Forking,
-        BlockchainElementType.Included
-      ).map { it.block }
-    )
 
     // Mark included blocks that now have enough confirmations as confirmed.
     markConfirmedBlocks(newBlockchainElement)

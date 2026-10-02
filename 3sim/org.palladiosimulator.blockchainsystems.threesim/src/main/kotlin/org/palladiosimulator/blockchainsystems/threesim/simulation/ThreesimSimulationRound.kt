@@ -34,7 +34,9 @@ class ThreesimSimulationRound(
     threesimSimulationParameters.warmupBlocksPerValidator,
     threesimSimulationParameters.measuredBlocksPerValidator,
     threesimSimulationParameters.transactionDrainMillis,
-    threesimSimulationParameters.retainTransactionFollowUpObservations
+    threesimSimulationParameters.retainTransactionFollowUpObservations,
+    threesimSimulationParameters.transactionWarmupBlocks,
+    threesimSimulationParameters.transactionMeasurementBlocksMax
   )
 ) {
 

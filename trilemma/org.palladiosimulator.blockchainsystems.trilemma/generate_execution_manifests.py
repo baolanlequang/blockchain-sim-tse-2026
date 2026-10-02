@@ -24,8 +24,23 @@ SIMULATOR_COLUMNS = [
     "link_bandwidth_heterogeneity",
     "hashing_power_concentration",
     "number_of_attackers",
-    "relative_transaction_load",
+    # Absolute Poisson rate of transaction submissions (tx/s), written per row by
+    # two_level_nested_lhs_monte_carlo.py (log-uniform 0.5-100 tx/s in the
+    # primary/nested/reference batches; Eq. 7 in the overload batch). The loader
+    # uses it directly; no relative load or lambda_ref is involved.
+    "transaction_arrival_rate",
 ]
+
+# Carried through when present (provenance only).
+OPTIONAL_COLUMNS = [
+    # Sampled f_A. The simulator uses it when present and otherwise falls back
+    # to number_of_attackers (the realized count), so it is optional here.
+    "fraction_of_attackers",
+    "capacity_load_factor",
+    "source_operational_id",
+]
+
+TRANSACTION_SIZE_BYTES = 500
 
 
 def signed_seed(master_seed: int, label: str) -> int:
@@ -78,7 +93,47 @@ def prepare_pair_table(df: pd.DataFrame) -> pd.DataFrame:
             + ", ".join(missing)
         )
 
+    if "fraction_of_attackers" in df.columns:
+        # The simulator rejects rows whose count disagrees with f_A * N_V.
+        expected = (df["fraction_of_attackers"] * df["validating_node_count"]).round()
+        if (expected != df["number_of_attackers"]).any():
+            print(
+                "WARNING: number_of_attackers differs from round(fraction_of_attackers * "
+                "validating_node_count) in "
+                f"{int((expected != df['number_of_attackers']).sum())} rows."
+            )
+
     return df
+
+
+def check_capacity_relative_demand(df: pd.DataFrame, u_cap: float = 1.05) -> None:
+    """
+    Overload batch, Eq. (7): transaction_arrival_rate must equal
+    u_cap * MBS / (BCI * S_tx) for every row (MBS in MB = 10^6 bytes, BCI in s,
+    S_tx in bytes). Raises if the pair CSV was generated with another rule.
+    """
+    capacity_tx_per_s = (
+        df["maximum_block_size"] * 1_000_000.0
+        / (df["block_creation_interval"] * TRANSACTION_SIZE_BYTES)
+    )
+    ratio = df["transaction_arrival_rate"] / capacity_tx_per_s
+    if not ((ratio - u_cap).abs() <= 1e-6 * u_cap).all():  # allows CSV rounding
+        raise AssertionError(
+            "Overload pair CSV: transaction_arrival_rate is not 1.05 x nominal capacity "
+            f"(observed ratio range {ratio.min():.6g}-{ratio.max():.6g})."
+        )
+
+
+def check_demand_columns(df: pd.DataFrame, name: str) -> None:
+    if "relative_transaction_load" in df.columns:
+        raise AssertionError(
+            f"{name}: contains relative_transaction_load. The revised design uses the "
+            "absolute transaction_arrival_rate only; regenerate the samples with the "
+            "revised two_level_nested_lhs_monte_carlo.py."
+        )
+    rate = df["transaction_arrival_rate"].astype(float)
+    if not (rate > 0).all() or rate.isna().any():
+        raise AssertionError(f"{name}: transaction_arrival_rate must be finite and > 0.")
 
 
 def build_manifest(
@@ -86,9 +141,27 @@ def build_manifest(
     rs: int,
     re: int,
     master_seed: int,
+    seed_scope: str = "pair",
 ) -> pd.DataFrame:
+    """
+    seed_scope="pair" (default, as in the manuscript): every design-condition pair
+    receives its own network and event seeds. seed_scope="operational" shares seeds
+    across designs within a condition (common random numbers).
+    """
+
+    if seed_scope not in ("operational", "pair"):
+        raise ValueError("seed_scope must be 'operational' or 'pair'")
 
     pairs = prepare_pair_table(pairs)
+    passthrough = [c for c in OPTIONAL_COLUMNS if c in pairs.columns]
+    # Column order: required columns, with fraction_of_attackers (if present)
+    # right after number_of_attackers, then the remaining optional columns.
+    out_columns = []
+    for c in SIMULATOR_COLUMNS:
+        out_columns.append(c)
+        if c == "number_of_attackers" and "fraction_of_attackers" in passthrough:
+            out_columns.append("fraction_of_attackers")
+    out_columns += [c for c in passthrough if c not in out_columns]
 
     rows = []
     execution_index = 0
@@ -117,10 +190,15 @@ def build_manifest(
             #
             # Therefore E01 and E02 for the same S realization share
             # exactly the same network structure/resource realization.
+            seed_key = (
+                operational_id if seed_scope == "operational"
+                else manifest_pair_id
+            )
+
             network_seed = signed_seed(
                 master_seed,
                 (
-                    f"{manifest_pair_id}"
+                    f"{seed_key}"
                     f"|network|{network_instance}"
                 ),
             )
@@ -132,7 +210,7 @@ def build_manifest(
                 event_seed = signed_seed(
                     master_seed,
                     (
-                        f"{manifest_pair_id}"
+                        f"{seed_key}"
                         f"|network|{network_instance}"
                         f"|event|{event_replication}"
                     ),
@@ -145,7 +223,7 @@ def build_manifest(
 
                 row = {
                     c: pair_dict[c]
-                    for c in SIMULATOR_COLUMNS
+                    for c in out_columns
                 }
 
                 row.update(
@@ -210,9 +288,13 @@ def build_manifest(
             "network seeds."
         )
 
-    if not manifest["event_seed"].is_unique:
+    # Event seeds must differ between the executions of one pair. With
+    # seed_scope="operational" they are intentionally shared across designs.
+    if seed_scope == "pair" and not manifest["event_seed"].is_unique:
+        raise AssertionError("Event seeds are not globally unique.")
+    if manifest.groupby("manifest_pair_id")["event_seed"].nunique().min() != rs * re:
         raise AssertionError(
-            "Event seeds are not unique."
+            "Event seeds are not unique within a design-condition pair."
         )
 
     return manifest
@@ -225,9 +307,14 @@ def generate_one(
     rs: int,
     re: int,
     master_seed: int,
+    seed_scope: str = "pair",
+    capacity_relative_demand: bool = False,
 ):
 
     pairs = pd.read_csv(input_file)
+    check_demand_columns(prepare_pair_table(pairs), input_file.name)
+    if capacity_relative_demand:
+        check_capacity_relative_demand(pairs)
 
     if len(pairs) != expected_pairs:
         raise AssertionError(
@@ -240,6 +327,7 @@ def generate_one(
         rs=rs,
         re=re,
         master_seed=master_seed,
+        seed_scope=seed_scope,
     )
 
     output_file.parent.mkdir(
@@ -296,6 +384,13 @@ def main():
         default=MASTER_SEED_DEFAULT,
     )
 
+    parser.add_argument(
+        "--seed-scope",
+        choices=["pair", "operational"],
+        default="pair",
+        help="Share network/event seeds across designs (operational) or not (pair).",
+    )
+
     args = parser.parse_args()
 
     d = args.samples_dir.expanduser().resolve()
@@ -307,69 +402,41 @@ def main():
             "or pass --samples-dir with the correct path."
         )
 
-    # ---------------------------------------------------------
-    # 64 x 48 preliminary / nested experiment
-    # ---------------------------------------------------------
-
-    generate_one(
-        input_file=
-            d / "nested_design_operational_pairs_64x48.csv",
-
-        output_file=
-            d / (
-                f"nested_design_operational_pairs_64x48_"
-                f"rs{args.rs}re{args.re}_"
-                f"master{args.master_seed}.csv"
+    # Pair CSVs written by the revised two_level_nested_lhs_monte_carlo.py.
+    # Each batch accepts the generator's file name or the older/renamed one.
+    batches = [
+        # (accepted input names, output stem, expected pairs, Eq. 7 check, required)
+        (["simulation_nested_64x48.csv", "nested_design_operational_pairs_64x48.csv"],
+         "nested_64x48", 64 * 48, False, True),
+        (["simulation_primary_128x96.csv", "nested_design_operational_pairs_128x96.csv"],
+         "primary_128x96", 128 * 96, False, True),
+        (["simulation_overload_105pct_128x32.csv", "overload_105pct_128x32.csv"],
+         "overload_105pct_128x32", 128 * 32, True, True),
+        (["homogeneous_reference_128x1.csv"],
+         "reference_homogeneous_128x1", 128, False, False),
+    ]
+    for names, stem, expected, eq7, required in batches:
+        found = [d / n for n in names if (d / n).is_file()]
+        if not found:
+            msg = f"{stem}: none of {', '.join(names)} found in {d}"
+            if required:
+                raise FileNotFoundError(msg)
+            print(f"SKIPPED {msg}\n")
+            continue
+        if len(found) > 1:
+            print(f"NOTE {stem}: several inputs present, using {found[0].name}")
+        generate_one(
+            input_file=found[0],
+            output_file=d / "manifests" / (
+                f"{stem}_rs{args.rs}re{args.re}_master{args.master_seed}.csv"
             ),
-
-        expected_pairs=64 * 48,
-        rs=args.rs,
-        re=args.re,
-        master_seed=args.master_seed,
-    )
-
-    # ---------------------------------------------------------
-    # 128 x 96 primary experiment
-    # ---------------------------------------------------------
-
-    generate_one(
-        input_file=
-            d / "nested_design_operational_pairs_128x96.csv",
-
-        output_file=
-            d / (
-                f"nested_design_operational_pairs_128x96_"
-                f"rs{args.rs}re{args.re}_"
-                f"master{args.master_seed}.csv"
-            ),
-
-        expected_pairs=128 * 96,
-        rs=args.rs,
-        re=args.re,
-        master_seed=args.master_seed,
-    )
-
-    # ---------------------------------------------------------
-    # 128 x 32 design-relative overload sensitivity
-    # ---------------------------------------------------------
-
-    generate_one(
-        input_file=
-            d / "overload_105pct_128x32.csv",
-
-        output_file=
-            d / (
-                f"overload_105pct_128x32_"
-                f"rs{args.rs}re{args.re}_"
-                f"master{args.master_seed}.csv"
-            ),
-
-        expected_pairs=128 * 32,
-        rs=args.rs,
-        re=args.re,
-        master_seed=args.master_seed,
-    )
-
+            expected_pairs=expected,
+            rs=args.rs,
+            re=args.re,
+            master_seed=args.master_seed,
+            seed_scope=args.seed_scope,
+            capacity_relative_demand=eq7,
+        )
 
 if __name__ == "__main__":
     main()

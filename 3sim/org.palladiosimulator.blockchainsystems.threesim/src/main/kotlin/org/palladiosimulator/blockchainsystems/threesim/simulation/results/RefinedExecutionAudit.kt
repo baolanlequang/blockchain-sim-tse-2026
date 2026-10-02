@@ -135,5 +135,26 @@ data class RefinedExecutionAudit(
   @EncodeDefault
   val unambiguousSelfishMiningAttackRounds: Int = 0,
   @EncodeDefault
-  val selfishMiningSuccessProbability: Double? = null
+  val selfishMiningSuccessProbability: Double? = null,
+  /** Transaction window (kappa_tx_warm, K_tx); see ThreesimSimulationMonitor. */
+  @EncodeDefault
+  val transactionWindowEnabled: Boolean = false,
+  /** kappa_tx_warm: canonical blocks before measurement at which submission starts. */
+  @EncodeDefault
+  val transactionWarmupBlocks: Int = 0,
+  /** K_tx = min(K_tx_max, kappa_measure * N_V) canonical measurement blocks with submission. */
+  @EncodeDefault
+  val transactionMeasurementTargetBlocks: Int = 0,
+  /** Simulated time at which transaction submission started (-1 if it never started). */
+  @EncodeDefault
+  val transactionSubmissionStartTimeMs: Long = 0L,
+  /** Simulated time at which the K_tx-th measurement block was reached (0 if not reached). */
+  @EncodeDefault
+  val transactionWindowEndTimeMs: Long = 0L,
+  /** Duration of the transaction window, the TPS denominator when the window is enabled. */
+  @EncodeDefault
+  val transactionWindowDurationMs: Long = 0L,
+  /** Transactions in majority-canonical measurement blocks at the window end (TPS numerator). */
+  @EncodeDefault
+  val transactionWindowCanonicalTransactions: Int = 0
 )

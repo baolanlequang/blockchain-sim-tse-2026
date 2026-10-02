@@ -31,18 +31,21 @@ interface NodeP2PNetworkInterface : P2PNetworkEndpoint {
   fun getNeighbors(): MutableSet<P2PNetworkEndpoint>
 
   /**
-   * Sets the callback that is invoked when a message is received from
-   * one of the current blockchain system neighbors.
+   * Registers a listener for messages received from a neighbor.
    *
-   * @param onMessageReceivedCallback the callback to be set
+   * A node hosts several propagation strategies (blocks and transactions) on the
+   * same interface, so the interface must deliver every message to every
+   * registered listener. Each strategy ignores content types it does not own.
+   * (A single overwritable callback silently disabled transaction gossip.)
    */
-  fun setOnMessageReceivedCallback(onMessageReceivedCallback: ((Message, P2PNetworkEndpoint) -> Unit)?)
+  fun addMessageReceivedListener(listener: (Message, P2PNetworkEndpoint) -> Unit)
 
-  /**
-   * Sets the callback that is invoked when the recipient node
-   * dropped the message that was sent to it.
-   *
-   * @param onMessageDroppedCallback the callback to be set
-   */
-  fun setOnMessageDroppedCallback(onMessageDroppedCallback: ((Message, P2PNetworkEndpoint) -> Unit)?)
+  /** Removes a listener previously registered with [addMessageReceivedListener]. */
+  fun removeMessageReceivedListener(listener: (Message, P2PNetworkEndpoint) -> Unit)
+
+  /** Registers a listener for messages that could not be delivered to a neighbor. */
+  fun addMessageDroppedListener(listener: (Message, P2PNetworkEndpoint) -> Unit)
+
+  /** Removes a listener previously registered with [addMessageDroppedListener]. */
+  fun removeMessageDroppedListener(listener: (Message, P2PNetworkEndpoint) -> Unit)
 }

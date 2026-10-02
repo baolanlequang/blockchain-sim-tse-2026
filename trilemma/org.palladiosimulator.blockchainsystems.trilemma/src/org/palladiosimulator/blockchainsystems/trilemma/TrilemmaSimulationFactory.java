@@ -154,6 +154,19 @@ public class TrilemmaSimulationFactory implements Simulation {
         boolean retainTransactionFollowUpObservations = Boolean.parseBoolean(
                 configuration.getOrDefault("retainTransactionFollowUpObservations", "false"));
 
+        /*
+         * Transaction window (manuscript Sec. V): submission starts kappa_tx_warm
+         * canonical blocks before measurement and stops after
+         * K_tx = min(K_tx_max, kappa_measure * N_V) measurement blocks. The
+         * manuscript values (30, 100) are the defaults; set
+         * transaction_measurement_blocks_max = 0 to restore the legacy behaviour
+         * (submission throughout the run).
+         */
+        int transactionWarmupBlocks = Integer.parseInt(configuration.getOrDefault(
+                "transaction_warmup_blocks", "30"));
+        int transactionMeasurementBlocksMax = Integer.parseInt(configuration.getOrDefault(
+                "transaction_measurement_blocks_max", "100"));
+
         return new ThreesimSimulationParameters(
                 failureThroughputThreshold,
                 shannonEntropyK,
@@ -162,7 +175,9 @@ public class TrilemmaSimulationFactory implements Simulation {
                 warmupBlocksPerValidator,
                 measuredBlocksPerValidator,
                 transactionDrainMillis,
-                retainTransactionFollowUpObservations);
+                retainTransactionFollowUpObservations,
+                transactionWarmupBlocks,
+                transactionMeasurementBlocksMax);
     }
 
     private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(
