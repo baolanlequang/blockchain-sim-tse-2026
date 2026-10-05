@@ -96,5 +96,11 @@ class ThreesimSimulationMonitorState(
   val failedSelfishMiningAttackRounds: Int = 0,
   val ambiguousSelfishMiningAttackRounds: Int = 0,
   val unambiguousSelfishMiningAttackRounds: Int = 0,
-  val selfishMiningSuccessProbability: Double? = null
+  val selfishMiningSuccessProbability: Double? = null,
+  val transactionWindowEnabled: Boolean = false,
+  val transactionWarmupBlocks: Int = 0,
+  val transactionMeasurementTargetBlocks: Int = 0,
+  val transactionSubmissionStartTimeMs: Long = 0L,
+  val transactionWindowEndTimeMs: Long = 0L,
+  val transactionWindowCanonicalTransactions: Int = 0
 )

@@ -26,6 +26,7 @@ import org.palladiosimulator.blockchainsystems.core.transaction.TransactionSubmi
 import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.TransactionSubmissionProcess
 import org.palladiosimulator.blockchainsystems.core.utils.CounterMap
 import org.palladiosimulator.blockchainsystems.threesim.behavior.BlockUtils
+import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransactionSubmissionProcess
 import org.palladiosimulator.blockchainsystems.threesim.metrics.calculators.TransactionThroughputCalculator
 import org.palladiosimulator.blockchainsystems.threesim.utils.BlockchainSystemFailureLog
 import org.palladiosimulator.blockchainsystems.threesim.utils.BlocksMap
@@ -39,6 +40,14 @@ import org.palladiosimulator.blockchainsystems.threesim.utils.BlocksMap
  *   2. measure the next kappa_measure * N_V canonical blocks;
  *   3. stop accepting new transactions and follow measurement-window
  *      transactions for at most T_drain after their own submission time.
+ *
+ * Transaction window (enabled when transactionMeasurementBlocksMax > 0):
+ *   transactions are submitted only from kappa_tx_warm canonical blocks before
+ *   the measurement window until K_tx = min(K_tx_max, kappa_measure * N_V)
+ *   canonical measurement blocks have been observed. TPS is evaluated over these
+ *   K_tx blocks, and TCR/CL over the transactions submitted in them. Block-based
+ *   metrics (SBR, H_prop, HHI_canon, SPSM) still use all kappa_measure * N_V
+ *   measurement blocks.
  */
 class ThreesimSimulationMonitor(
   private val maxBlockchainLengthCondition: LongestChainExceededMaxLengthCondition,
@@ -47,7 +56,9 @@ class ThreesimSimulationMonitor(
   private val warmupBlocksPerValidator: Int = 0,
   private val measuredBlocksPerValidator: Int = 0,
   private val transactionDrainMillis: Long = 0L,
-  private val retainTransactionFollowUpObservations: Boolean = false
+  private val retainTransactionFollowUpObservations: Boolean = false,
+  private val transactionWarmupBlocks: Int = 0,
+  private val transactionMeasurementBlocksMax: Int = 0
 ) : SimulationMonitor, SafetyTerminationListener {
 
   private enum class Phase { LEGACY, WARMUP, MEASUREMENT, DRAIN }
@@ -69,6 +80,20 @@ class ThreesimSimulationMonitor(
   private var measurementStartTimeMs = 0L
   private var measurementEndTimeMs = 0L
   private var terminationReason: String = "NOT_TERMINATED"
+
+  // ---- Transaction window -------------------------------------------------
+  private val transactionWindowEnabled: Boolean
+    get() = refinedWindowEnabled && transactionMeasurementBlocksMax > 0
+  /** Cumulative canonical-block count at which submission starts. */
+  private var transactionStartCanonicalBlocks = 0
+  /** K_tx: measurement canonical blocks during which transactions are submitted. */
+  private var transactionMeasurementTargetBlocks = 0
+  private var transactionSubmissionStarted = false
+  private var transactionSubmissionStartTimeMs = -1L
+  private var transactionWindowClosed = false
+  private var transactionWindowEndTimeMs = 0L
+  /** Transactions in majority-canonical measurement blocks when the K_tx-th block was reached. */
+  private var transactionWindowCanonicalTransactions = 0
   private var transactionFollowUpCompleted: Boolean = false
 
   /*
@@ -365,6 +390,23 @@ class ThreesimSimulationMonitor(
       measurementCanonicalBlocksSeen.clear()
       warmupTargetCanonicalBlocks = warmupBlocksPerValidator * nodes.size
       measurementTargetCanonicalBlocks = warmupTargetCanonicalBlocks + measuredBlocksPerValidator * nodes.size
+      if (transactionWindowEnabled) {
+        require(transactionWarmupBlocks >= 0) { "transactionWarmupBlocks must be >= 0" }
+        transactionMeasurementTargetBlocks =
+          minOf(transactionMeasurementBlocksMax, measuredBlocksPerValidator * nodes.size)
+        transactionStartCanonicalBlocks = (warmupTargetCanonicalBlocks - transactionWarmupBlocks).coerceAtLeast(0)
+        if (transactionStartCanonicalBlocks > 0) {
+          // BlockchainSystem starts submission at t = 0; defer it to the window start.
+          val process = transactionSubmissionProcess as? ThreesimTransactionSubmissionProcess
+            ?: throw IllegalStateException(
+              "Transaction window requires ThreesimTransactionSubmissionProcess, got " +
+                transactionSubmissionProcess::class.java.name)
+          process.deferInitialStart()
+        } else {
+          transactionSubmissionStarted = true
+          transactionSubmissionStartTimeMs = 0L
+        }
+      }
       if (warmupTargetCanonicalBlocks > 0) {
         phase = Phase.WARMUP
       } else {
@@ -463,7 +505,13 @@ class ThreesimSimulationMonitor(
       failedSelfishMiningAttackRounds = spsmSummary.failedRounds,
       ambiguousSelfishMiningAttackRounds = spsmSummary.ambiguousRounds,
       unambiguousSelfishMiningAttackRounds = spsmSummary.unambiguousRounds,
-      selfishMiningSuccessProbability = spsmSummary.successProbability
+      selfishMiningSuccessProbability = spsmSummary.successProbability,
+      transactionWindowEnabled = transactionWindowEnabled,
+      transactionWarmupBlocks = if (transactionWindowEnabled) transactionWarmupBlocks else 0,
+      transactionMeasurementTargetBlocks = transactionMeasurementTargetBlocks,
+      transactionSubmissionStartTimeMs = transactionSubmissionStartTimeMs,
+      transactionWindowEndTimeMs = if (transactionWindowClosed) transactionWindowEndTimeMs else 0L,
+      transactionWindowCanonicalTransactions = transactionWindowCanonicalTransactions
     )
   }
 
@@ -700,7 +748,7 @@ class ThreesimSimulationMonitor(
         totalTransactionSubmissionsAllPhases++
         if (phase == Phase.LEGACY || phase == Phase.MEASUREMENT) {
           numberOfSubmittedTransactions++
-          if (phase == Phase.MEASUREMENT) {
+          if (phase == Phase.MEASUREMENT && !(transactionWindowEnabled && transactionWindowClosed)) {
             measurementTransactions.addIfAbsent(
               e.transaction.txId,
               e.transaction.creationTime
@@ -775,9 +823,23 @@ class ThreesimSimulationMonitor(
       )
     }
 
+    if (phase == Phase.WARMUP && canonicalCount >= transactionStartCanonicalBlocks) {
+      startTransactionWindowIfDue(occurrenceTime)
+    }
+
     if (phase == Phase.WARMUP && canonicalCount >= warmupTargetCanonicalBlocks) {
       beginMeasurement(occurrenceTime)
+      startTransactionWindowIfDue(occurrenceTime)
       return
+    }
+
+    if (
+      phase == Phase.MEASUREMENT &&
+      transactionWindowEnabled &&
+      !transactionWindowClosed &&
+      measurementCanonicalBlocksSeen.size >= transactionMeasurementTargetBlocks
+    ) {
+      closeTransactionWindow(occurrenceTime)
     }
 
     // Warm-up progress is controlled by the cumulative canonical set, while
@@ -794,6 +856,26 @@ class ThreesimSimulationMonitor(
       phase = Phase.DRAIN
       transactionSubmissionProcess.stopTransactionSubmissionProcess()
     }
+  }
+
+  private fun startTransactionWindowIfDue(occurrenceTime: Long) {
+    if (!transactionWindowEnabled || transactionSubmissionStarted) return
+    transactionSubmissionStarted = true
+    transactionSubmissionStartTimeMs = occurrenceTime
+    transactionSubmissionProcess.startTransactionSubmissionProcess()
+  }
+
+  private fun closeTransactionWindow(occurrenceTime: Long) {
+    transactionWindowClosed = true
+    transactionWindowEndTimeMs = occurrenceTime
+    // Count distinct transactions: during a reorganization a transaction can sit
+    // in two blocks that both still hold a majority, and must be counted once.
+    val distinctTransactionIds = HashSet<String>()
+    canonicalMeasurementBlocks.getValidBlocks().forEach { (block, _) ->
+      block.transactions.forEach { distinctTransactionIds.add(it.txId) }
+    }
+    transactionWindowCanonicalTransactions = distinctTransactionIds.size
+    transactionSubmissionProcess.stopTransactionSubmissionProcess()
   }
 
   private fun beginMeasurement(occurrenceTime: Long) {

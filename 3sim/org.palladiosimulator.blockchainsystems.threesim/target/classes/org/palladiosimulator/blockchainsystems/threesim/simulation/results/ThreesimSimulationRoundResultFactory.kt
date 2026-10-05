@@ -84,6 +84,10 @@ class ThreesimSimulationRoundResultFactory(
      * population. The optional raw list may intentionally be empty in production.
      * Never recompute TCR/censoring from the retained list.
      */
+    val transactionWindowDurationMs =
+      if (state.transactionWindowEnabled && state.transactionWindowEndTimeMs > 0L) {
+        (state.transactionWindowEndTimeMs - state.measurementStartTimeMs).coerceAtLeast(0L)
+      } else 0L
     return RefinedExecutionAudit(
       creation = creationAudit,
       refinedWindowEnabled = state.refinedWindowEnabled,
@@ -139,7 +143,15 @@ class ThreesimSimulationRoundResultFactory(
       transactionFollowUpObservations = state.transactionFollowUpObservations,
       proposalEntropyNormalized = normalizedEntropy(state.blocksProposedPerNode),
       canonicalBlockHhiNormalized = normalizedHhi(state.canonicalBlocksPerNode),
-      transactionsPerSecond = if (state.measurementDurationMs > 0L) {
+      // With the transaction window, TPS is evaluated over the K_tx transaction
+      // blocks only: transactions in majority-canonical measurement blocks when
+      // the K_tx-th block is reached, divided by the time since measurement start.
+      // A run that never reaches K_tx reports 0 (window incomplete).
+      transactionsPerSecond = if (state.transactionWindowEnabled) {
+        if (transactionWindowDurationMs > 0L) {
+          state.transactionWindowCanonicalTransactions.toDouble() / (transactionWindowDurationMs.toDouble() / 1000.0)
+        } else 0.0
+      } else if (state.measurementDurationMs > 0L) {
         state.numberOfConfirmedTransactions.toDouble() / (state.measurementDurationMs.toDouble() / 1000.0)
       } else 0.0,
       transactionConfirmationRatio = state.transactionConfirmationRatio,
@@ -167,7 +179,14 @@ class ThreesimSimulationRoundResultFactory(
       failedSelfishMiningAttackRounds = state.failedSelfishMiningAttackRounds,
       ambiguousSelfishMiningAttackRounds = state.ambiguousSelfishMiningAttackRounds,
       unambiguousSelfishMiningAttackRounds = state.unambiguousSelfishMiningAttackRounds,
-      selfishMiningSuccessProbability = state.selfishMiningSuccessProbability
+      selfishMiningSuccessProbability = state.selfishMiningSuccessProbability,
+      transactionWindowEnabled = state.transactionWindowEnabled,
+      transactionWarmupBlocks = state.transactionWarmupBlocks,
+      transactionMeasurementTargetBlocks = state.transactionMeasurementTargetBlocks,
+      transactionSubmissionStartTimeMs = state.transactionSubmissionStartTimeMs,
+      transactionWindowEndTimeMs = state.transactionWindowEndTimeMs,
+      transactionWindowDurationMs = transactionWindowDurationMs,
+      transactionWindowCanonicalTransactions = state.transactionWindowCanonicalTransactions
     )
   }
 
