@@ -2,10 +2,11 @@ package org.palladiosimulator.blockchainsystems.core.network;
 
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.Event;
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.EventDispatchable;
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.Message;
 
 public record MessageSentEvent(
         long occurrenceTime,
-        P2PLinkMessageFrame message,
+        Message message,
         EventDispatchable target,
         P2PNode recipientNode,
         P2PNode senderNode
@@ -23,7 +24,7 @@ public record MessageSentEvent(
         return EVENT_TYPE;
     }
 
-    public P2PLinkMessageFrame getMessage() {
+    public Message getMessage() {
         return this.message();
     }
 
@@ -31,7 +32,6 @@ public record MessageSentEvent(
     public EventDispatchable getOrigin() {
         return this.target();
     }
-
 
     public P2PNode getRecipientNode() {
         return this.recipientNode();

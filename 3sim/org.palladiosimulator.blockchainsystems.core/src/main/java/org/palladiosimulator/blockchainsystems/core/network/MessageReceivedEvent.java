@@ -2,19 +2,18 @@ package org.palladiosimulator.blockchainsystems.core.network;
 
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.Event;
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.EventDispatchable;
+import org.palladiosimulator.blockchainsystems.core.system.abstractions.Message;
 
 /**
  * Represents an event that occurs when a message is received in the P2P network.
  *
- * @param message        the message that was received
- * @param occurrenceTime the time when the event occurred
- * @param target         the target of the event, typically the component that handles the message
- * @param recipientNode  the node that is the intended recipient of the message
- * @param senderNode     the node that sent the message
- * @author Yannik Sproll
+ * The message is carried directly. The former P2PLinkMessageFrame only wrapped
+ * the same Message reference plus an unused issued-at timestamp, so eliminating
+ * it removes one heap object per in-flight network event without changing the
+ * modeled message size, latency, bandwidth or delivery ordering.
  */
 public record MessageReceivedEvent(
-        P2PLinkMessageFrame message,
+        Message message,
         long occurrenceTime,
         EventDispatchable target,
         P2PNode recipientNode,
@@ -28,7 +27,7 @@ public record MessageReceivedEvent(
         return this.occurrenceTime();
     }
 
-    public P2PLinkMessageFrame getMessage() {
+    public Message getMessage() {
         return this.message();
     }
 

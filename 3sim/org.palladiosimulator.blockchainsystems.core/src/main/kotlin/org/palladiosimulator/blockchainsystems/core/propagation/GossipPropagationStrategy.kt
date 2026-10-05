@@ -87,24 +87,22 @@ abstract class GossipPropagationStrategy<E : Propagatable> : BlockchainNodeObjec
     setNewNetworkInterface(networkInterface)
   }
 
+  // Keep the exact listener instances so they can be unregistered again.
+  private val receivedListener: (Message, P2PNetworkEndpoint) -> Unit =
+    { message, sender -> onMessageReceivedFromNetworkInterface(message, sender) }
+  private val droppedListener: (Message, P2PNetworkEndpoint) -> Unit =
+    { message, recipient -> failedToSendMessageToNetworkInterface(message, recipient) }
+
   private fun removeCurrentNetworkInterface() {
-    networkInterface?.setOnMessageReceivedCallback(null)
-    networkInterface?.setOnMessageDroppedCallback(null)
+    networkInterface?.removeMessageReceivedListener(receivedListener)
+    networkInterface?.removeMessageDroppedListener(droppedListener)
     networkInterface = null
   }
 
   private fun setNewNetworkInterface(networkInterface: NodeP2PNetworkInterface) {
     this.networkInterface = networkInterface
-    this.networkInterface?.setOnMessageReceivedCallback { message, senderNetworkEndpoint ->
-      this.onMessageReceivedFromNetworkInterface(
-        message, senderNetworkEndpoint
-      )
-    }
-    this.networkInterface?.setOnMessageDroppedCallback { message, recipientNetworkEndpoint ->
-      this.failedToSendMessageToNetworkInterface(
-        message, recipientNetworkEndpoint
-      )
-    }
+    networkInterface.addMessageReceivedListener(receivedListener)
+    networkInterface.addMessageDroppedListener(droppedListener)
   }
 
   override fun setOnReceivedCallback(onReceivedCallback: ((E) -> Unit)) {

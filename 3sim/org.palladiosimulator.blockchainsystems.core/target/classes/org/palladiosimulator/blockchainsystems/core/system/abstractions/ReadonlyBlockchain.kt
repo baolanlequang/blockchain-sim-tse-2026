@@ -93,6 +93,22 @@ interface ReadonlyBlockchain {
   fun getLongestSuccessorChainLength(hash: String): Long
 
   /**
+   * Finds the candidate transaction IDs that occur on at least one current longest
+   * branch at or after [fromPositionInclusive].
+   *
+   * This query is intended for fork/private-branch reconciliation. Implementations
+   * should inspect only the requested suffix and must not materialize complete chains.
+   *
+   * @param candidateTxIds transaction IDs for which membership is required
+   * @param fromPositionInclusive earliest chain position that needs to be inspected
+   * @return the subset of [candidateTxIds] present on a current longest branch
+   */
+  fun findTransactionIdsOnLongestChains(
+    candidateTxIds: Set<String>,
+    fromPositionInclusive: Long
+  ): Set<String>
+
+  /**
    * Returns the longest chain of blocks in the blockchain as an ArrayList.
    *
    * @return list of blocks in the longest chain

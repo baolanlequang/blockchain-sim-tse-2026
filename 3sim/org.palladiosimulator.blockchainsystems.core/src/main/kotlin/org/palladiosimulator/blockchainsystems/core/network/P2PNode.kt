@@ -14,19 +14,23 @@ class P2PNode(
   override val endpointId: String
 ) : P2PNetworkObject(), NodeP2PNetworkInterface, P2PNetworkEndpoint {
   private lateinit var network: P2PNetwork
-  private var onMessageReceivedCallback: ((Message, P2PNetworkEndpoint) -> Unit)? = null
-  private var onMessageDroppedCallback: ((Message, P2PNetworkEndpoint) -> Unit)? = null
+  // One listener per propagation strategy (blocks and transactions). Kept as
+  // ordered lists so dispatch order is deterministic across runs.
+  @kotlinx.serialization.Transient
+  private val messageReceivedListeners = ArrayList<(Message, P2PNetworkEndpoint) -> Unit>(2)
+  @kotlinx.serialization.Transient
+  private val messageDroppedListeners = ArrayList<(Message, P2PNetworkEndpoint) -> Unit>(2)
 
   fun initNetwork(network: P2PNetwork) {
     this.network = network
   }
 
   fun onReceive(messageContent: Message, sender: P2PNetworkEndpoint) {
-    onMessageReceivedCallback?.invoke(messageContent, sender)
+    for (i in messageReceivedListeners.indices) messageReceivedListeners[i](messageContent, sender)
   }
 
   fun onMessageDropped(messageContent: Message, recipient: P2PNetworkEndpoint) {
-    onMessageDroppedCallback?.invoke(messageContent, recipient)
+    for (i in messageDroppedListeners.indices) messageDroppedListeners[i](messageContent, recipient)
   }
 
   override fun dispatchEvent(event: Event) {
@@ -37,12 +41,20 @@ class P2PNode(
       .multicast(this, message)
   }
 
-  override fun setOnMessageReceivedCallback(onMessageReceivedCallback: ((Message, P2PNetworkEndpoint) -> Unit)?) {
-    this.onMessageReceivedCallback = onMessageReceivedCallback
+  override fun addMessageReceivedListener(listener: (Message, P2PNetworkEndpoint) -> Unit) {
+    if (messageReceivedListeners.none { it === listener }) messageReceivedListeners.add(listener)
   }
 
-  override fun setOnMessageDroppedCallback(onMessageDroppedCallback: ((Message, P2PNetworkEndpoint) -> Unit)?) {
-    this.onMessageDroppedCallback = onMessageDroppedCallback
+  override fun removeMessageReceivedListener(listener: (Message, P2PNetworkEndpoint) -> Unit) {
+    messageReceivedListeners.removeAll { it === listener }
+  }
+
+  override fun addMessageDroppedListener(listener: (Message, P2PNetworkEndpoint) -> Unit) {
+    if (messageDroppedListeners.none { it === listener }) messageDroppedListeners.add(listener)
+  }
+
+  override fun removeMessageDroppedListener(listener: (Message, P2PNetworkEndpoint) -> Unit) {
+    messageDroppedListeners.removeAll { it === listener }
   }
 
   override fun send(message: Message, recipient: P2PNetworkEndpoint) {

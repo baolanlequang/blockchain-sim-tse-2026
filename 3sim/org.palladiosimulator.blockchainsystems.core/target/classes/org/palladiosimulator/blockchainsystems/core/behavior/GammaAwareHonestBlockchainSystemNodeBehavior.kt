@@ -10,21 +10,31 @@ import java.util.UUID
 import java.util.random.RandomGenerator
 
 /**
- * Honest-node behavior that models the network-propagation-advantage parameter gamma (γ) from
- * Eyal & Sirer's selfish-mining analysis: the fraction of the honest hash power that ends up
- * mining on the attacker's block rather than another honest block when the chain tips are tied.
+ * Honest validating-node behavior used in EVERY execution, with or without
+ * adversarial nodes, so that the honest protocol rules do not change with f_A.
  *
- * Without this, honest nodes would resolve ties uniformly at random between all tips (including
- * the attacker's), which corresponds to gamma == (number of attacker tips / number of tied tips)
- * instead of a configurable, paper-accurate gamma.
- *
- * @author Yannik Sproll (ported)
+ * Rules
+ * - Every valid block that attaches to the local block tree is relayed exactly once.
+ *   Orphans are relayed only after their parent arrives (a node cannot serve a block
+ *   that is not in its chain, so announcing it earlier would stall propagation).
+ * - Longest chain wins. Mining restarts whenever the block currently being extended
+ *   is no longer a tip of a longest chain (also after recursive orphan unlocking).
+ * - Ties between honest tips: first seen (keep mining on the current tip).
+ * - Ties between an attacker tip and an honest tip (Eyal & Sirer's gamma): whenever
+ *   such a tie arises or changes, the node mines on the attacker tip with
+ *   probability [gamma]. With no adversarial nodes this rule never applies.
  */
 class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
   private val attackerNodeIds: Set<String>,
   private val gamma: Double,
   private val randomGenerator: RandomGenerator = RandomGenerator.of("Random")
 ) : BlockchainNodeObject(), BlockchainSystemNodeBehavior {
+
+  /** Block the mining process is currently extending. */
+  private var miningTipHash: String? = null
+
+  /** Set when a new attacker/honest tie must be resolved with a gamma draw. */
+  private var gammaDrawPending: Boolean = false
 
   override fun onNodeInitialized(context: BlockchainSystemNodeContext) {
     context.miningProcess.startMining()
@@ -43,24 +53,41 @@ class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
     if (!isValid) return
 
     val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(block, context)
-    if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
-      context.trxMemPool.removeTransactions(block.transactions)
-      context.miningProcess.restartMining()
+    if (outcome.isValidAttachableBlock()) {
       context.blockPropagationStrategy.distribute(block)
+    }
+
+    val tips = context.blockchain.getLastBlocksOfLongestChains()
+    val currentTip = miningTipHash
+    when {
+      currentTip == null || tips.none { it.hash == currentTip } -> {
+        gammaDrawPending = isMixedTie(tips)
+        context.miningProcess.restartMining()
+      }
+      outcome == AppendOutcome.FORKING && isMixedTie(tips) -> {
+        gammaDrawPending = true
+        context.miningProcess.restartMining()
+      }
     }
   }
 
   override fun onBlockMined(block: Block, context: BlockchainSystemNodeContext) {
     val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(block, context)
-    if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
-      context.trxMemPool.removeTransactions(block.transactions)
+    if (outcome.isValidAttachableBlock()) {
       context.blockPropagationStrategy.distribute(block)
     }
   }
 
+  private fun AppendOutcome.isValidAttachableBlock(): Boolean =
+    this == AppendOutcome.INCLUDED || this == AppendOutcome.FORKING || this == AppendOutcome.STALE
+
+  private fun isMixedTie(tips: Collection<Block>): Boolean =
+    tips.size > 1 &&
+      tips.any { it.originId in attackerNodeIds } &&
+      tips.any { it.originId !in attackerNodeIds }
+
   override fun onCreatingBlock(blockMinedAt: Long, previousBlockHash: String, context: BlockchainSystemNodeContext): Block {
     val selection = context.transactionSelectionProcess.selectTransactionsForBlock(context)
-
     return context.blockFactory.createBlock(
       UUID(randomGenerator.nextLong(), randomGenerator.nextLong()).toString(),
       previousBlockHash,
@@ -72,27 +99,21 @@ class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
   }
 
   override fun onPreviousBlockSelection(context: BlockchainSystemNodeContext): String {
-    val tips = context.blockchain.getLastBlocksOfLongestChains()
+    val tips = context.blockchain.getLastBlocksOfLongestChains().sortedBy { it.hash }
+    val current = miningTipHash
 
-    if (tips.size <= 1) {
-      return tips.sortedBy { it.hash }.first().hash
-    }
-
-    val attackerTips = tips.filter { attackerNodeIds.contains(it.originId) }
-    val honestTips = tips.filter { !attackerNodeIds.contains(it.originId) }
-
-    if (attackerTips.isEmpty() || honestTips.isEmpty()) {
-      return tips.sortedBy { it.hash }.first().hash
-    }
-
-    val chosen = if (randomGenerator.nextDouble() < gamma) {
-      val ordered = attackerTips.sortedBy { it.hash }
-      ordered[randomGenerator.nextInt(ordered.size)]
+    val chosen = if (gammaDrawPending && isMixedTie(tips)) {
+      val attackerTips = tips.filter { it.originId in attackerNodeIds }
+      val honestTips = tips.filter { it.originId !in attackerNodeIds }
+      val pool = if (randomGenerator.nextDouble() < gamma) attackerTips else honestTips
+      pool[randomGenerator.nextInt(pool.size)]
     } else {
-      val ordered = honestTips.sortedBy { it.hash }
-      ordered[randomGenerator.nextInt(ordered.size)]
+      // First seen: stay on the current tip while it is still a longest tip.
+      tips.firstOrNull { it.hash == current } ?: tips.first()
     }
 
+    gammaDrawPending = false
+    miningTipHash = chosen.hash
     return chosen.hash
   }
 

@@ -1,13 +1,13 @@
 package org.palladiosimulator.blockchainsystems.core.mining;
 
-import org.palladiosimulator.blockchainsystems.core.common.abstractions.Event;
+import org.palladiosimulator.blockchainsystems.core.common.abstractions.CancellableEvent;
 import org.palladiosimulator.blockchainsystems.core.common.abstractions.EventDispatchable;
 
 public record BlockMinedEvent(
         long occurrenceTime,
         String previousBlockHash,
         EventDispatchable target
-) implements Event {
+) implements CancellableEvent {
 
     public static final String EVENT_TYPE = "BlockMinedEvent";
 

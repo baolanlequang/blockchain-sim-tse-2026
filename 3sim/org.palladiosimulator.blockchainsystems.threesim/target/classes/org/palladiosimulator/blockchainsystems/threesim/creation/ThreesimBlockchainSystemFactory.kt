@@ -16,6 +16,7 @@ import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystem
 import org.palladiosimulator.blockchainsystems.core.system.BlockchainSystemNodeFactory
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.*
 import org.palladiosimulator.blockchainsystems.core.transaction.TrxMemPoolFactoryImpl
+import org.palladiosimulator.blockchainsystems.core.scalability.ScalabilityStateTracker
 import org.palladiosimulator.blockchainsystems.threesim.behavior.MaliciousNodesIdProviderImpl
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimBlockchainSystemNodeBehaviorFactory
 import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimBlockchainSystemNodeTagProvider
@@ -44,11 +45,17 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
   @Volatile
   private var lastCreationAudit: RefinedCreationAudit? = null
 
+  @Volatile
+  private var lastScalabilityStateTracker: ScalabilityStateTracker? = null
+
   protected abstract fun createP2PNetworkFactory(): P2PNetworkFactory
   protected abstract fun getNodeAllocationResolver(networkCreationResult: P2PNetworkCreationResult): NodeAllocationResolver
   protected abstract fun getResourcePowerCalculator(networkCreationResult: P2PNetworkCreationResult): ResourcePowerCalculator
 
   fun createBlockchainSystem(): BlockchainSystem {
+    val scalabilityStateTracker = ScalabilityStateTracker()
+    lastScalabilityStateTracker = scalabilityStateTracker
+
     val networkCreationResult = createP2PNetworkFactory().createP2PNetwork()
     val nodeAllocationResolver = getNodeAllocationResolver(networkCreationResult)
     val resourcePowerCalculator = getResourcePowerCalculator(networkCreationResult)
@@ -72,7 +79,8 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
       resourcePowerCalculator,
       blockFactory,
       geographicalRegionsResolver,
-      maliciousNodesIdProvider
+      maliciousNodesIdProvider,
+      scalabilityStateTracker
     )
 
     val blockchainSystem = createBlockchainSystemInstance(
@@ -94,6 +102,10 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
 
   /** Structural realization associated with the most recently created single run. */
   fun getLastCreationAudit(): RefinedCreationAudit? = lastCreationAudit
+
+  /** Constant-space live-state tracker associated with the most recently created run. */
+  fun getLastScalabilityStateTracker(): ScalabilityStateTracker =
+    checkNotNull(lastScalabilityStateTracker) { "Blockchain system has not been created yet" }
 
   private fun sampleAdversarialNodeIds(nodeIds: Collection<String>, requested: Int): Set<String> {
     require(requested >= 0) { "Number of attackers must be >= 0." }
@@ -279,15 +291,16 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
     resourcePowerCalculator: ResourcePowerCalculator,
     blockFactory: BlockFactory,
     geographicalRegionsResolver: ThreesimGeographicalRegionsResolver,
-    maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider
+    maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider,
+    scalabilityStateTracker: ScalabilityStateTracker
   ): BlockchainSystemNodeFactory {
     val blockchainFactory = BlockchainFactoryImpl(
       designBlockchainSystem.specification.numOfRequiredSecurityConfirmations
     )
-    val blockPropagationStrategyFactory = BlockPropagationStrategyFactoryImpl()
-    val transactionPropagationStrategyFactory = TransactionPropagationStrategyFactoryImpl()
+    val blockPropagationStrategyFactory = BlockPropagationStrategyFactoryImpl(scalabilityStateTracker)
+    val transactionPropagationStrategyFactory = TransactionPropagationStrategyFactoryImpl(scalabilityStateTracker)
     val orphanBlockPoolFactory = OrphanBlockPoolFactoryImpl()
-    val trxMemPoolFactory = TrxMemPoolFactoryImpl()
+    val trxMemPoolFactory = TrxMemPoolFactoryImpl(scalabilityStateTracker)
     val miningProcessFactory = ThreesimMiningProcessFactory(
       designBlockchainSystem.specification.meanBlockTime,
       resourcePowerCalculator,

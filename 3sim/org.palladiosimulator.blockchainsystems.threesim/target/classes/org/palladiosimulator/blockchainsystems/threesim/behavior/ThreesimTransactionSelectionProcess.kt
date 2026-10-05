@@ -18,17 +18,10 @@ class ThreesimTransactionSelectionProcess(
   override fun selectTransactionsForBlock(
     context: BlockchainSystemNodeContext
   ): TransactionSelectionResult {
-    var currentBlockSize = 0
-    val transactions = context.trxMemPool.getTransactionsSortedByFeeRate()
-      .takeWhile {
-        val newBlockSize = currentBlockSize + it.size
-        val canBeAdded = newBlockSize <= maxBlockSize
-        if (canBeAdded) currentBlockSize = newBlockSize
-        canBeAdded
-      }
+    val transactions = context.trxMemPool.getTransactionsForBlock(maxBlockSize)
     return TransactionSelectionResult(
       transactions = transactions.toSet(),
-      totalSize = currentBlockSize
+      totalSize = transactions.sumOf { it.size }
     )
   }
 

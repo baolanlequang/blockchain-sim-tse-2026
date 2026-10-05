@@ -27,7 +27,19 @@ class ThreesimSimulationParameters @JvmOverloads constructor(
    * This flag changes output volume only. It does not alter transaction
    * generation, confirmation, censoring, TCR, RMCL, or simulation timing.
    */
-  val retainTransactionFollowUpObservations: Boolean = false
+  val retainTransactionFollowUpObservations: Boolean = false,
+  /**
+   * kappa_tx_warm: transaction submission starts this many canonical blocks
+   * before the measurement window begins (0 with a transaction window = start
+   * at the beginning of measurement).
+   */
+  val transactionWarmupBlocks: Int = 0,
+  /**
+   * K_tx_max: transactions are submitted during the first
+   * K_tx = min(K_tx_max, kappa_measure * N_V) canonical measurement blocks only.
+   * 0 disables the transaction window (legacy: submit throughout).
+   */
+  val transactionMeasurementBlocksMax: Int = 0
 ) {
   val refinedWindowEnabled: Boolean
     get() = measuredBlocksPerValidator > 0

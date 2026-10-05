@@ -25,11 +25,6 @@ class BlockchainImpl(
   private val blockchainElementsMap: HashMap<String, BlockchainElement> =
     hashMapOf(Pair(genesisBlock.block.hash, genesisBlock))
 
-  // Contains all blocks by their chain position, kept in sync with blockchainElementsMap so
-  // getBlocksAtPosition() doesn't need to scan every block ever appended
-  private val blockchainElementsByPosition: HashMap<Long, HashSet<BlockchainElement>> =
-    hashMapOf(Pair(genesisBlock.position, hashSetOf(genesisBlock)))
-
   private var length: Long = INITIAL_BLOCKCHAIN_LENGTH
 
   override fun dispatchEvent(event: Event) {
@@ -61,9 +56,15 @@ class BlockchainImpl(
       val newBlockchainElementPosition = previousBlockchainElement.position + 1
 
       if (this.length < newBlockchainElementPosition) {
-        // Appended to one of the longest branches -> branch is now the single longest branch
-        appendIncludedBlock(block, previousBlockchainElement, newBlockchainElementPosition)
-        return BlockAppendingResult.createBlockAppendedResult(BlockType.IncludedBlock)
+        // Appended to one of the longest branches -> branch is now the single longest branch.
+        // Preserve the exact fork-resolution transitions so node behavior can
+        // reconcile transactions from the losing branch back into its mempool.
+        val transitions = appendIncludedBlock(block, previousBlockchainElement, newBlockchainElementPosition)
+        return BlockAppendingResult.createBlockAppendedResult(
+          BlockType.IncludedBlock,
+          transitions.becameStale,
+          transitions.becameIncluded
+        )
       } else if (this.length == newBlockchainElementPosition) {
         // Part of a branch that is now equally long as longest branch -> Potential fork
         appendForkingBlock(block, previousBlockchainElement, newBlockchainElementPosition)
@@ -79,7 +80,18 @@ class BlockchainImpl(
   }
 
 
-  private fun appendIncludedBlock(block: Block, previousBlockchainElement: BlockchainElement, blockPosition: Long) {
+  private data class ForkResolutionTransitions(
+    val becameStale: Set<Block>,
+    val becameIncluded: Set<Block>
+  )
+
+  private fun appendIncludedBlock(
+    block: Block,
+    previousBlockchainElement: BlockchainElement,
+    blockPosition: Long
+  ): ForkResolutionTransitions {
+    val becameStale = linkedSetOf<Block>()
+    val becameIncluded = linkedSetOf<Block>()
     val newBlockchainElement = BlockchainElement(
       block,
       previousBlockchainElement,
@@ -89,7 +101,6 @@ class BlockchainImpl(
 
     // Store new block by hash
     blockchainElementsMap.put(block.hash, newBlockchainElement)
-    blockchainElementsByPosition.getOrPut(blockPosition) { hashSetOf() }.add(newBlockchainElement)
 
     this.length = blockPosition
 
@@ -103,25 +114,37 @@ class BlockchainImpl(
     longestChainsLastBlocks.add(newBlockchainElement)
 
     logBlockAppended(block, blockPosition, previousBlockchainElement.block, BlockType.IncludedBlock)
+    becameIncluded.add(block)
 
-    // If the blockchain is currently forked, mark blocks in other branches as stale blocks
-    for (blockchainElement in staleBlockBranches) {
+    // Resolve the fork in two passes. First promote the winning branch
+    // (the new block's ancestors that are still Forking) to Included. Only then
+    // demote the losing branches: their traversal stops at the first block that
+    // is no longer Forking, so a Forking ancestor shared with the winning branch
+    // is never marked Stale. (Demoting first mislabelled such canonical blocks as
+    // Stale permanently, which inflated SBR and prevented their transactions from
+    // ever being confirmed.)
+    becameIncluded.addAll(
       traverseBlockchainAndChangeBlockTypes(
-        blockchainElement,
+        previousBlockchainElement,
         BlockchainElementType.Forking,
-        BlockchainElementType.Stale
+        BlockchainElementType.Included
+      ).map { it.block }
+    )
+
+    for (blockchainElement in staleBlockBranches) {
+      becameStale.addAll(
+        traverseBlockchainAndChangeBlockTypes(
+          blockchainElement,
+          BlockchainElementType.Forking,
+          BlockchainElementType.Stale
+        ).map { it.block }
       )
     }
 
-    // Mark (currently forked) descendants of new (latest) block as included
-    traverseBlockchainAndChangeBlockTypes(
-      previousBlockchainElement,
-      BlockchainElementType.Forking,
-      BlockchainElementType.Included
-    )
-
-    // Mark included blocks that now have enough confirmations as confirmed
+    // Mark included blocks that now have enough confirmations as confirmed.
     markConfirmedBlocks(newBlockchainElement)
+
+    return ForkResolutionTransitions(becameStale, becameIncluded)
   }
 
 
@@ -173,7 +196,6 @@ class BlockchainImpl(
 
     // Store new block by hash
     blockchainElementsMap.put(block.hash, newBlockchainElement)
-    blockchainElementsByPosition.getOrPut(blockPosition) { hashSetOf() }.add(newBlockchainElement)
 
     longestChainsLastBlocks.add(newBlockchainElement)
 
@@ -216,12 +238,15 @@ class BlockchainImpl(
     startingElement: BlockchainElement,
     whileType: BlockchainElementType,
     newType: BlockchainElementType
-  ) {
+  ): List<BlockchainElement> {
+    val changed = mutableListOf<BlockchainElement>()
     var currentElement: BlockchainElement? = startingElement
     while (currentElement?.type == whileType) {
+      changed.add(currentElement)
       changeBlockType(currentElement, newType)
       currentElement = currentElement.previousBlockchainElement
     }
+    return changed
   }
 
   private fun changeBlockType(blockchainElement: BlockchainElement, newBlockType: BlockchainElementType) {
@@ -265,7 +290,6 @@ class BlockchainImpl(
     )
 
     blockchainElementsMap.put(block.hash, newBlockchainElement)
-    blockchainElementsByPosition.getOrPut(blockPosition) { hashSetOf() }.add(newBlockchainElement)
 
     logBlockAppended(block, blockPosition, previousBlockchainElement.block, BlockType.StaleBlock)
   }
@@ -297,10 +321,15 @@ class BlockchainImpl(
       return mutableSetOf<Block>()
     }
 
-    return blockchainElementsByPosition[position]
-      ?.map { it.block }
-      ?.toSet()
-      ?: emptySet()
+    // Position lookup is not on the simulation hot path. Keeping a second
+    // per-position index duplicated every BlockchainElement and created millions
+    // of HashMap/HashSet entries in large runs. Preserve the API and full history
+    // by deriving the result from the canonical hash index only when requested.
+    return blockchainElementsMap.values
+      .asSequence()
+      .filter { it.position == position }
+      .map { it.block }
+      .toSet()
   }
 
   override fun getLength(): Long {
@@ -368,6 +397,41 @@ class BlockchainImpl(
     }
 
     return length.toLong()
+  }
+
+  override fun findTransactionIdsOnLongestChains(
+    candidateTxIds: Set<String>,
+    fromPositionInclusive: Long
+  ): Set<String> {
+    if (candidateTxIds.isEmpty()) return emptySet()
+
+    val remaining = candidateTxIds.toMutableSet()
+    val found = HashSet<String>()
+    val minimumPosition = maxOf(INITIAL_BLOCKCHAIN_LENGTH, fromPositionInclusive)
+
+    // longestChainsLastBlocks already identifies the active tips. Walk backwards only
+    // to the caller's lower bound and stop as soon as every candidate has been found.
+    // Unlike getLongestChains(), this does not allocate complete chain copies.
+    for (tip in longestChainsLastBlocks) {
+      var currentElement: BlockchainElement? = tip
+
+      while (
+        currentElement != null &&
+        currentElement.position >= minimumPosition &&
+        remaining.isNotEmpty()
+      ) {
+        for (transaction in currentElement.block.transactions) {
+          if (remaining.remove(transaction.txId)) {
+            found.add(transaction.txId)
+            if (remaining.isEmpty()) return found
+          }
+        }
+
+        currentElement = currentElement.previousBlockchainElement
+      }
+    }
+
+    return found
   }
 
   override fun getLongestChains(): List<ArrayList<Block>> {

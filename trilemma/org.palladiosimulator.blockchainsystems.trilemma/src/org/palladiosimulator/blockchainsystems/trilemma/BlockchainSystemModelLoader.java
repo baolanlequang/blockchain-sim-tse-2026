@@ -137,7 +137,23 @@ public class BlockchainSystemModelLoader {
         final double fA = hasSampledAttackerFraction
                 ? requiredDouble(c, "fraction_of_attackers")
                 : Double.NaN;
-        final double lambdaTx = requiredDouble(c, "transaction_arrival_rate");
+        // Transaction demand. An explicit absolute arrival rate (tx/s) takes
+        // precedence; the manifest generator writes it for design-relative demand
+        // (Eq. 7, overload sensitivity) and for absolute-demand designs. Otherwise
+        // fall back to lambda_tx = rho * lambda_ref (Eq. 6).
+        final boolean hasAbsoluteRate = c.containsKey("transaction_arrival_rate")
+                && c.get("transaction_arrival_rate") != null
+                && !c.get("transaction_arrival_rate").isBlank();
+        final double lambdaTx = hasAbsoluteRate
+                ? requiredDouble(c, "transaction_arrival_rate")
+                : requiredDouble(c, "relative_transaction_load") * requiredDouble(c, "lambda_ref");
+        // Record the rate actually simulated in the serialized input parameters.
+        try {
+            c.put("lambda_tx_effective", Double.toString(lambdaTx));
+            c.put("lambda_tx_source", hasAbsoluteRate ? "transaction_arrival_rate" : "relative_transaction_load*lambda_ref");
+        } catch (UnsupportedOperationException ignored) {
+            // Read-only configuration maps are allowed; the rate is still applied.
+        }
 
         requireRange("connection_count", connectionCount, 1, 8);
         requireRange("block_creation_interval", bciSeconds, 60.0, 1200.0);
@@ -153,7 +169,8 @@ public class BlockchainSystemModelLoader {
                     "Refined input requires fraction_of_attackers; number_of_attackers is accepted only as a pilot-compatibility fallback.");
         }
         if (!(lambdaTx > 0.0) || !Double.isFinite(lambdaTx)) {
-            throw new IllegalArgumentException("transaction_arrival_rate must be finite and > 0; got " + lambdaTx);
+            throw new IllegalArgumentException(
+                    "transaction_arrival_rate (or relative_transaction_load * lambda_ref) must be finite and > 0; got " + lambdaTx);
         }
         if (2 * connectionCount > nv - 1) {
             throw new IllegalArgumentException(

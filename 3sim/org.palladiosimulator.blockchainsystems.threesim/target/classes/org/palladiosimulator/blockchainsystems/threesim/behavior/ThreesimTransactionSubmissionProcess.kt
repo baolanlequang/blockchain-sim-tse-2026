@@ -28,6 +28,17 @@ class ThreesimTransactionSubmissionProcess(
   private var onSelectRecipientNodeIdCallback: (() -> String)? = null
   private val onTransactionSubmittedCallbackSubscribers = HashSet<TransactionSubmittedCallbackSubscriber>()
   private var isSubmittingTransactions = false
+  /** When true, the next start request (issued by BlockchainSystem at t = 0) is ignored. */
+  private var ignoreNextStart = false
+
+  /**
+   * Transaction window: the monitor defers the system's initial start so that
+   * submission begins kappa_tx_warm canonical blocks before measurement. The
+   * monitor later calls startTransactionSubmissionProcess() itself.
+   */
+  fun deferInitialStart() {
+    if (!isSubmittingTransactions) ignoreNextStart = true
+  }
 
   override fun addOnTransactionSubmittedCallbackSubscriber(subscriber: TransactionSubmittedCallbackSubscriber) {
     onTransactionSubmittedCallbackSubscribers.add(subscriber)
@@ -38,6 +49,10 @@ class ThreesimTransactionSubmissionProcess(
   }
 
   override fun startTransactionSubmissionProcess() {
+    if (ignoreNextStart) {
+      ignoreNextStart = false
+      return
+    }
     if (isSubmittingTransactions) return
     isSubmittingTransactions = true
     scheduleNewTrxSubmittedEvent()

@@ -2,6 +2,8 @@ package org.palladiosimulator.blockchainsystems.core.propagation.block
 
 import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block
 import org.palladiosimulator.blockchainsystems.core.network.MessageDroppedTraceEvent
+import org.palladiosimulator.blockchainsystems.core.utils.CompactStringStateMap
+import org.palladiosimulator.blockchainsystems.core.scalability.ScalabilityStateTracker
 import org.palladiosimulator.blockchainsystems.core.propagation.GossipPropagationStrategy
 import org.palladiosimulator.blockchainsystems.core.propagation.MessageImpl
 import org.palladiosimulator.blockchainsystems.core.system.abstractions.Message
@@ -13,7 +15,9 @@ import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetwo
  *
  * @author Davis Riedel
  */
-class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
+class BlockPropagationStrategy(
+  private val scalabilityStateTracker: ScalabilityStateTracker? = null
+) : GossipPropagationStrategy<Block>() {
   override val INV_MESSAGE_KEY: String = "BLOCK_INV"
   override val GET_DATA_MESSAGE_KEY: String = "BLOCK_GET_DATA"
   override val ELEMENT_MESSAGE_KEY: String = "BLOCK_MSG"
@@ -27,12 +31,17 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
    * validation. Blockchain membership alone cannot suppress duplicates during
    * that interval because the block has not yet been appended.
    */
-  private val knownBlockHashes = HashSet<String>()
-  private val announcedBlockHashes = HashSet<String>()
+  // One entry records both protocol states: false = known-only, true = already announced.
+  // This preserves duplicate-suppression semantics while avoiding two HashSet/HashMap
+  // entries for the common case where a block is both known and announced.
+  private val blockKnowledge = CompactStringStateMap(
+    beforeNewEntry = { scalabilityStateTracker?.beforeBlockKnowledgeEntryAdded() },
+    afterNewEntry = { nodeEntries -> scalabilityStateTracker?.onBlockKnowledgeEntryAdded(nodeEntries) }
+  )
 
   /*
    * Lifecycle note: BlockchainNodeObject.onInitialize()/onCleanup() are final
-   * protected hooks in this source revision. These per-strategy sets therefore
+   * protected hooks in this source revision. This per-strategy map therefore
    * rely on normal object construction for an empty initial state. Strategy
    * instances are per-node/per-run and are discarded with the simulation, so an
    * explicit lifecycle override is neither legal nor required.
@@ -40,8 +49,7 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
 
 
   override fun shouldAnnounce(element: Block): Boolean {
-    knownBlockHashes.add(element.hash)
-    return announcedBlockHashes.add(element.hash)
+    return blockKnowledge.put(element.hash, STATE_ANNOUNCED) != STATE_ANNOUNCED
   }
 
 
@@ -64,7 +72,7 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
   ) {
     context?.blockchain?.let { blockchain ->
       val hash = message.content as String
-      if (knownBlockHashes.contains(hash) || blockchain.hasBlockWithHash(hash)) {
+      if (blockKnowledge.containsKey(hash) || blockchain.hasBlockWithHash(hash)) {
         // Block already exists or is already being handled; no need to request it.
         return
       }
@@ -95,7 +103,7 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
     // Suppress duplicate full-block deliveries before they can trigger duplicate
     // validation and redistribution. The first arrival still follows the original
     // validation/propagation path unchanged.
-    if (!knownBlockHashes.add(block.hash)) {
+    if (!blockKnowledge.putIfAbsent(block.hash, STATE_KNOWN)) {
       return
     }
 
@@ -116,6 +124,12 @@ class BlockPropagationStrategy : GossipPropagationStrategy<Block>() {
       networkInterface!!
     )
     traceEventLogger.logEvent(event)
+  }
+
+
+  private companion object {
+    const val STATE_KNOWN: Byte = 1
+    const val STATE_ANNOUNCED: Byte = 2
   }
 
 

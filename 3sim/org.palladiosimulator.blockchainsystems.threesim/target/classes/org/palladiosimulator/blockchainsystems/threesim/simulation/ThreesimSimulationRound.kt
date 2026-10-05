@@ -34,12 +34,15 @@ class ThreesimSimulationRound(
     threesimSimulationParameters.warmupBlocksPerValidator,
     threesimSimulationParameters.measuredBlocksPerValidator,
     threesimSimulationParameters.transactionDrainMillis,
-    threesimSimulationParameters.retainTransactionFollowUpObservations
+    threesimSimulationParameters.retainTransactionFollowUpObservations,
+    threesimSimulationParameters.transactionWarmupBlocks,
+    threesimSimulationParameters.transactionMeasurementBlocksMax
   )
 ) {
 
   init {
     monitor.setSimulationClock(this.clock)
+    monitor.setScalabilityStateTracker(blockchainSystemFactory.getLastScalabilityStateTracker())
   }
 
   override fun createSimulationRoundResult(finalSystemTime: Long): ThreesimSimulationRoundResult {
