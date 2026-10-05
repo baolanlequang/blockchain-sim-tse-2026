@@ -24,18 +24,22 @@ SIMULATOR_COLUMNS = [
     "link_bandwidth_heterogeneity",
     "hashing_power_concentration",
     "number_of_attackers",
+    # Single selfish-mining attacker: its share of total hashing power (alpha).
+    # number_of_attackers is 1 if this share is > 0, else 0.
+    "adversarial_hashing_power_share",
     # Absolute Poisson rate of transaction submissions (tx/s), written per row by
     # two_level_nested_lhs_monte_carlo.py (log-uniform 0.5-100 tx/s in the
     # primary/nested/reference batches; Eq. 7 in the overload batch). The loader
     # uses it directly; no relative load or lambda_ref is involved.
     "transaction_arrival_rate",
+    # One simulated transaction stands for this many transactions (computational
+    # feasibility; b = 1 for most rows). The simulator submits b-sized messages at
+    # rate lambda_tx / b and multiplies TPS by b.
+    "transaction_batch_size",
 ]
 
 # Carried through when present (provenance only).
 OPTIONAL_COLUMNS = [
-    # Sampled f_A. The simulator uses it when present and otherwise falls back
-    # to number_of_attackers (the realized count), so it is optional here.
-    "fraction_of_attackers",
     "capacity_load_factor",
     "source_operational_id",
 ]
@@ -93,15 +97,14 @@ def prepare_pair_table(df: pd.DataFrame) -> pd.DataFrame:
             + ", ".join(missing)
         )
 
-    if "fraction_of_attackers" in df.columns:
-        # The simulator rejects rows whose count disagrees with f_A * N_V.
-        expected = (df["fraction_of_attackers"] * df["validating_node_count"]).round()
-        if (expected != df["number_of_attackers"]).any():
-            print(
-                "WARNING: number_of_attackers differs from round(fraction_of_attackers * "
-                "validating_node_count) in "
-                f"{int((expected != df['number_of_attackers']).sum())} rows."
-            )
+    alpha = df["adversarial_hashing_power_share"].astype(float)
+    if not alpha.between(0.0, 0.25).all():
+        raise AssertionError("adversarial_hashing_power_share must lie in [0, 0.25].")
+    if ((alpha > 0).astype(int) != df["number_of_attackers"].astype(int)).any():
+        raise AssertionError("number_of_attackers must be 1 when adversarial_hashing_power_share > 0, else 0.")
+    b = df["transaction_batch_size"]
+    if not ((b >= 1) & (b == b.round())).all():
+        raise AssertionError("transaction_batch_size must be a positive integer.")
 
     return df
 
@@ -154,14 +157,7 @@ def build_manifest(
 
     pairs = prepare_pair_table(pairs)
     passthrough = [c for c in OPTIONAL_COLUMNS if c in pairs.columns]
-    # Column order: required columns, with fraction_of_attackers (if present)
-    # right after number_of_attackers, then the remaining optional columns.
-    out_columns = []
-    for c in SIMULATOR_COLUMNS:
-        out_columns.append(c)
-        if c == "number_of_attackers" and "fraction_of_attackers" in passthrough:
-            out_columns.append("fraction_of_attackers")
-    out_columns += [c for c in passthrough if c not in out_columns]
+    out_columns = list(SIMULATOR_COLUMNS) + passthrough
 
     rows = []
     execution_index = 0

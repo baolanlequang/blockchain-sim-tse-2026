@@ -177,7 +177,8 @@ public class TrilemmaSimulationFactory implements Simulation {
                 transactionDrainMillis,
                 retainTransactionFollowUpObservations,
                 transactionWarmupBlocks,
-                transactionMeasurementBlocksMax);
+                transactionMeasurementBlocksMax,
+                Integer.parseInt(configuration.getOrDefault("transaction_batch_size", "1").trim().replaceAll("\\.0+$", "")));
     }
 
     private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(
@@ -202,7 +203,7 @@ public class TrilemmaSimulationFactory implements Simulation {
             double gamma = Double.parseDouble(configuration.getOrDefault("selfishMiningGamma", "0.5"));
             boolean hasAttackers = designBlockchainSystem.getSpecification().getNumberOfAttacker() > 0;
 
-            return new ConnectedSubgraphNetworkBlockchainSystemFactory(
+            ConnectedSubgraphNetworkBlockchainSystemFactory factory = new ConnectedSubgraphNetworkBlockchainSystemFactory(
                     designBlockchainSystem,
                     (ConnectedSubgraphsNetworkTopology) networkTopology,
                     hasAttackers,
@@ -210,6 +211,12 @@ public class TrilemmaSimulationFactory implements Simulation {
                     gamma,
                     networkSeed,
                     eventSeed);
+            // Single-attacker design: the adversarial node holds the sampled share.
+            String alpha = configuration.get("adversarial_hashing_power_share");
+            if (alpha != null && !alpha.isBlank()) {
+                factory.setAdversarialHashingPowerShare(Double.parseDouble(alpha));
+            }
+            return factory;
         }
 
         if (networkTopology instanceof ExplicitNetworkTopology) {

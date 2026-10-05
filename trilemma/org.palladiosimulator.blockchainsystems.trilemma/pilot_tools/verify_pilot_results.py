@@ -26,10 +26,11 @@ def find_dict(root, keys):
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--results',type=Path,default=Path('result_trilemma'))
+    ap.add_argument('--allow-incomplete',action='store_true',help='do not fail the audit because some runs are incomplete')
     a=ap.parse_args(); files=sorted(a.results.glob('result_config_*.json'))
     if not files:
         print('[FAIL] no result_config_*.json files found'); return 2
-    good=True; by_real=defaultdict(list); incomplete=0; undefined_spsm=0
+    good=True; by_real=defaultdict(list); incomplete=0; undefined_spsm=0; reasons=defaultdict(int)
     for p in files:
         try: root=json.loads(p.read_text(encoding='utf-8'))
         except Exception as e: print('[FAIL]',p.name,e); good=False; continue
@@ -78,6 +79,33 @@ def main():
             print(f'[FAIL] {p.name}: INACTIVITY stop with the transaction window (jar predates the inactivity fix)'); good=False
         if audit.get('terminationReason','').startswith('WORKLOAD_LIMIT'):
             print(f'[WARN] {p.name}: stopped by execution guard {audit["terminationReason"]} in phase {audit.get("executionPhaseAtTermination")}')
+        reasons[audit.get('terminationReason','?')]+=1
+        if not complete:
+            print(f'[INCOMPLETE] {p.name}: {audit.get("terminationReason")} in phase {audit.get("executionPhaseAtTermination")}')
+        # A complete run must have produced a usable transaction window.
+        if complete and audit.get('transactionWindowEnabled'):
+            if float(audit.get('transactionsPerSecond',0) or 0) <= 0:
+                print(f'[FAIL] {p.name}: complete run with zero TPS'); good=False
+            if int(audit.get('transactionFollowUpObservationCount',0) or 0) == 0:
+                print(f'[FAIL] {p.name}: complete run without measurement-window transactions'); good=False
+        # Reorganizations: blocks counted for window control but no longer canonical at the end.
+        target=int(audit.get('measurementTargetCanonicalBlocks',0) or 0)-int(audit.get('warmupTargetCanonicalBlocks',0) or 0)
+        final=int(audit.get('measurementCanonicalBlocks',0) or 0)
+        if complete and target>0 and final < 0.8*target:
+            print(f'[WARN] {p.name}: only {final} of {target} measurement blocks are canonical at the end (reorganizations)')
+        if complete and float(audit.get('staleBlockRatio',0) or 0) > 0.5:
+            print(f'[WARN] {p.name}: stale-block ratio {float(audit["staleBlockRatio"]):.2f} > 0.5')
+        # Single-attacker design: the attacker must hold exactly the manifest share.
+        alpha=inp.get('adversarial_hashing_power_share')
+        if alpha not in (None,''):
+            n_att=int(creation.get('numberOfAttackers',0) or 0)
+            if n_att != (1 if float(alpha)>0 else 0):
+                print(f'[FAIL] {p.name}: {n_att} attackers for adversarial share {alpha} (expected a single attacker)'); good=False
+            elif q_a is not None and abs(float(q_a)-float(alpha))>1e-9:
+                print(f'[FAIL] {p.name}: realized adversarial share {float(q_a):.6f} != manifest {float(alpha):.6f} (jar predates the single-attacker change)'); good=False
+        b_manifest=inp.get('transaction_batch_size')
+        if b_manifest not in (None,'') and int(float(b_manifest)) != int(audit.get('transactionBatchSize',1) or 1):
+            print(f'[FAIL] {p.name}: transaction batch size {audit.get("transactionBatchSize",1)} != manifest {b_manifest}'); good=False
         rid=inp.get('network_realization_id')
         if rid: by_real[rid].append((p,inp,creation))
     for rid,rr in by_real.items():
@@ -93,6 +121,9 @@ def main():
         if len(eseed)!=len(set(eseed)):
             print(f'[FAIL] {rid}: event_seed is not unique across R_E'); good=False
     print(f'Checked {len(files)} result files; network realizations={len(by_real)}; incomplete={incomplete}; undefined SPSM={undefined_spsm}')
+    print('Termination reasons:', dict(reasons))
+    if incomplete and not a.allow_incomplete:
+        print(f'[FAIL] {incomplete} run(s) incomplete (use --allow-incomplete to audit them anyway)'); good=False
     print('RESULT AUDIT:', 'PASS' if good else 'FAIL')
     return 0 if good else 2
 if __name__=='__main__': raise SystemExit(main())

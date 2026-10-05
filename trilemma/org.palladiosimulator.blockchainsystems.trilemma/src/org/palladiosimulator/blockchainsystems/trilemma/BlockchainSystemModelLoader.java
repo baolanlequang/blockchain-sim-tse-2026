@@ -162,7 +162,19 @@ public class BlockchainSystemModelLoader {
         requireRange("node_bandwidth_heterogeneity", hNode, 0.0, 0.50);
         requireRange("link_bandwidth_heterogeneity", hLink, 0.0, 0.40);
         requireRange("hashing_power_concentration", hHash, 0.0, 0.50);
-        if (hasSampledAttackerFraction) {
+        // Single-attacker design (Eyal & Sirer): one adversarial node holds the
+        // sampled share alpha of the total hashing power.
+        final boolean hasAdversarialShare = c.containsKey("adversarial_hashing_power_share")
+                && c.get("adversarial_hashing_power_share") != null
+                && !c.get("adversarial_hashing_power_share").isBlank();
+        final double alpha = hasAdversarialShare ? requiredDouble(c, "adversarial_hashing_power_share") : Double.NaN;
+        if (hasAdversarialShare) {
+            if (hasSampledAttackerFraction) {
+                throw new IllegalArgumentException(
+                        "Use either adversarial_hashing_power_share (single attacker) or fraction_of_attackers, not both.");
+            }
+            requireRange("adversarial_hashing_power_share", alpha, 0.0, 0.25);
+        } else if (hasSampledAttackerFraction) {
             requireRange("fraction_of_attackers", fA, 0.0, 0.25);
         } else if (!c.containsKey("number_of_attackers") || c.get("number_of_attackers").isBlank()) {
             throw new IllegalArgumentException(
@@ -184,7 +196,14 @@ public class BlockchainSystemModelLoader {
         system.getSpecification().setHashRateConcentration(hHash);
 
         int derivedAttackers;
-        if (hasSampledAttackerFraction) {
+        if (hasAdversarialShare) {
+            derivedAttackers = alpha > 0.0 ? 1 : 0;
+            if (c.containsKey("number_of_attackers") && !c.get("number_of_attackers").isBlank()
+                    && requiredInt(c, "number_of_attackers") != derivedAttackers) {
+                throw new IllegalArgumentException(
+                        "number_of_attackers must be " + derivedAttackers + " for adversarial_hashing_power_share=" + alpha);
+            }
+        } else if (hasSampledAttackerFraction) {
             derivedAttackers = deriveAttackerCount(nv, fA);
             if (c.containsKey("number_of_attackers") && !c.get("number_of_attackers").isBlank()) {
                 int provided = requiredInt(c, "number_of_attackers");
@@ -272,7 +291,21 @@ public class BlockchainSystemModelLoader {
 
         // lambda_tx is in transactions/second; the current metamodel stores the
         // mean interarrival time in milliseconds.
-        system.getTransactionsSpecification().setMeanTransactionCreationInterval(1000.0 / lambdaTx);
+        // Transaction batching (computational feasibility): one simulated
+        // transaction stands for b transactions, i.e. a message of b * S_tx bytes
+        // submitted at rate lambda_tx / b. Block filling and bandwidth use are
+        // unchanged; TPS is multiplied by b in the result. b = 1 reproduces the
+        // unbatched model exactly.
+        final int batchSize = Integer.parseInt(c.getOrDefault("transaction_batch_size", "1").trim().replaceAll("\\.0+$", ""));
+        if (batchSize < 1) {
+            throw new IllegalArgumentException("transaction_batch_size must be >= 1; got " + batchSize);
+        }
+        try {
+            c.put("transaction_batch_size_effective", Integer.toString(batchSize));
+        } catch (UnsupportedOperationException ignored) {
+            // Read-only configuration maps are allowed.
+        }
+        system.getTransactionsSpecification().setMeanTransactionCreationInterval(1000.0 * batchSize / lambdaTx);
 
         // Current study setting: fixed 500-byte transactions.  Preserve the
         // existing fee and amount values/distribution while normalizing size.
@@ -283,7 +316,7 @@ public class BlockchainSystemModelLoader {
         system.getTransactionsSpecification()
                 .getTransactionPropertiesSpecification()
                 .getValues()
-                .forEach(v -> v.setSize(transactionSizeBytes));
+                .forEach(v -> v.setSize(transactionSizeBytes * batchSize));
 
         int confirmationDepth = Integer.parseInt(c.getOrDefault("confirmationDepthBlocks", "6"));
         if (confirmationDepth < 1) {

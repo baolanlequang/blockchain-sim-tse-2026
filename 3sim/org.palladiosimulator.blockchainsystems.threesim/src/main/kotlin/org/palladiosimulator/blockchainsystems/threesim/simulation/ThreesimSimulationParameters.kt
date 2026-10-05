@@ -39,7 +39,9 @@ class ThreesimSimulationParameters @JvmOverloads constructor(
    * K_tx = min(K_tx_max, kappa_measure * N_V) canonical measurement blocks only.
    * 0 disables the transaction window (legacy: submit throughout).
    */
-  val transactionMeasurementBlocksMax: Int = 0
+  val transactionMeasurementBlocksMax: Int = 0,
+  /** b: transactions represented by one simulated transaction; TPS is multiplied by b. */
+  val transactionBatchSize: Int = 1
 ) {
   val refinedWindowEnabled: Boolean
     get() = measuredBlocksPerValidator > 0

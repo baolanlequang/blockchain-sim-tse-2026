@@ -472,7 +472,9 @@ public class TrilemmaSimulator {
         for (String key : List.of(
                 "fraction_of_attackers",
                 "number_of_attackers",
-                "realized_fraction_of_attackers")) {
+                "realized_fraction_of_attackers",
+                "adversarial_hashing_power_share",
+                "transaction_batch_size")) {
             String value = row.get(key);
             if (value != null && !value.isBlank()) {
                 b.append(key).append('=').append(value).append('|');
@@ -617,6 +619,25 @@ public class TrilemmaSimulator {
         if (!hasFraction && !hasCount) {
             throw new IllegalArgumentException(
                     "Refined CSV requires fraction_of_attackers (preferred) or number_of_attackers for pilot compatibility: " + row);
+        }
+        String alphaRaw = row.get("adversarial_hashing_power_share");
+        if (alphaRaw != null && !alphaRaw.isBlank()) {
+            // Single-attacker design: one adversarial node holds share alpha.
+            if (hasFraction) {
+                throw new IllegalArgumentException(
+                        "Use either adversarial_hashing_power_share (single attacker) or fraction_of_attackers, not both: " + row);
+            }
+            double alpha = Double.parseDouble(alphaRaw);
+            if (!Double.isFinite(alpha) || alpha < 0.0 || alpha > 0.25) {
+                throw new IllegalArgumentException("adversarial_hashing_power_share outside [0,0.25]: " + alpha);
+            }
+            int supplied = hasCount ? (int) Math.rint(Double.parseDouble(row.get("number_of_attackers"))) : -1;
+            int expected = alpha > 0.0 ? 1 : 0;
+            if (hasCount && supplied != expected) {
+                throw new IllegalArgumentException(
+                        "number_of_attackers=" + supplied + " must be " + expected
+                                + " for adversarial_hashing_power_share=" + alpha);
+            }
         }
         if (hasFraction) {
             final double fA;
