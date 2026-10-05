@@ -1,0 +1,68 @@
+From 656cea0e03f1e6708f829c80953a7f2095988869 Mon Sep 17 00:00:00 2001
+From: Mansur Aliyu <mansurmasama@gmail.com>
+Date: Mon, 5 Oct 2026 12:26:04 +0200
+Subject: [PATCH] Disable the generic inactivity stop while the transaction
+ window is active
+
+Prepared with Claude (Anthropic's AI assistant) and tested on Lan's pilot rows.
+
+With the transaction window, warm-up and the measurement blocks after the
+window contain only block events. The generic inactivity stop (no event for
+BCI + 30 min) then fires on ordinary gaps between blocks: at BCI = 1200 s a gap
+above 3000 s has probability ~8% per block, so long warm-ups almost always
+stopped. Before the window, continuous transaction events hid this.
+
+With the window enabled, stalls are now detected only by the canonical-progress
+guard (-Dthreesim.canonicalProgressStallMs) and the workload guards. Without
+the window the behaviour is unchanged.
+
+verify_pilot_results.py additionally flags INACTIVITY stops under the window
+and realizations where the attackers hold the majority of hashing power.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01VW4BVs5G9Z88DX5W1xG1Ma
+---
+ .../threesim/monitoring/ThreesimSimulationMonitor.kt   | 10 +++++++++-
+ .../pilot_tools/verify_pilot_results.py                |  5 +++++
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitor.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitor.kt
+index d7bd1242..3bf0dba6 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitor.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitor.kt
+@@ -1156,7 +1156,15 @@ class ThreesimSimulationMonitor(
+       }
+     }
+ 
+-    if (inactivityThresholdCondition.hasProlongedInactivityExceeded()) {
++    // With the transaction window, warm-up and the part of measurement after the
++    // window contain only block events. The generic inactivity limit (BCI + 30 min
++    // without any event) is then routinely exceeded by ordinary gaps between
++    // blocks: at BCI = 1200 s, a gap longer than 3000 s occurs with probability
++    // e^-2.5 ~ 8% per block, so long warm-ups almost always stopped. Before the
++    // window, continuous transaction events masked this. A stalled run is instead
++    // detected by the canonical-progress guard (-Dthreesim.canonicalProgressStallMs)
++    // and the workload guards. Without the window the old behaviour is unchanged.
++    if (!transactionWindowEnabled && inactivityThresholdCondition.hasProlongedInactivityExceeded()) {
+       return markTermination("INACTIVITY", false)
+     }
+     return false
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py
+index 73c0930f..cf1ee360 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py
+@@ -71,6 +71,11 @@ def main():
+                 print(f'[WARN] {p.name}: kappa_tx_warm = {audit.get("transactionWarmupBlocks")} (manuscript: 30)')
+             if complete and int(audit.get('transactionWindowEndTimeMs',0) or 0) <= 0:
+                 print(f'[FAIL] {p.name}: run complete but transaction window end not recorded'); good=False
++        q_a=creation.get('realizedAdversarialHashingPowerShare')
++        if q_a is not None and float(q_a) >= 0.5:
++            print(f'[WARN] {p.name}: attackers hold {float(q_a):.2f} of hashing power (majority); selfish mining becomes a majority takeover')
++        if audit.get('terminationReason') == 'INACTIVITY' and audit.get('transactionWindowEnabled'):
++            print(f'[FAIL] {p.name}: INACTIVITY stop with the transaction window (jar predates the inactivity fix)'); good=False
+         if audit.get('terminationReason','').startswith('WORKLOAD_LIMIT'):
+             print(f'[WARN] {p.name}: stopped by execution guard {audit["terminationReason"]} in phase {audit.get("executionPhaseAtTermination")}')
+         rid=inp.get('network_realization_id')
+-- 
+2.43.0
+
