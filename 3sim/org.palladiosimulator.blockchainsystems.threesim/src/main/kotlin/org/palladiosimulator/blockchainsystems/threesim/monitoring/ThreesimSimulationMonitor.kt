@@ -1156,7 +1156,15 @@ class ThreesimSimulationMonitor(
       }
     }
 
-    if (inactivityThresholdCondition.hasProlongedInactivityExceeded()) {
+    // With the transaction window, warm-up and the part of measurement after the
+    // window contain only block events. The generic inactivity limit (BCI + 30 min
+    // without any event) is then routinely exceeded by ordinary gaps between
+    // blocks: at BCI = 1200 s, a gap longer than 3000 s occurs with probability
+    // e^-2.5 ~ 8% per block, so long warm-ups almost always stopped. Before the
+    // window, continuous transaction events masked this. A stalled run is instead
+    // detected by the canonical-progress guard (-Dthreesim.canonicalProgressStallMs)
+    // and the workload guards. Without the window the old behaviour is unchanged.
+    if (!transactionWindowEnabled && inactivityThresholdCondition.hasProlongedInactivityExceeded()) {
       return markTermination("INACTIVITY", false)
     }
     return false

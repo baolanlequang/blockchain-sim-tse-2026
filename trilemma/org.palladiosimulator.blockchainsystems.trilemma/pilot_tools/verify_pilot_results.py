@@ -71,6 +71,11 @@ def main():
                 print(f'[WARN] {p.name}: kappa_tx_warm = {audit.get("transactionWarmupBlocks")} (manuscript: 30)')
             if complete and int(audit.get('transactionWindowEndTimeMs',0) or 0) <= 0:
                 print(f'[FAIL] {p.name}: run complete but transaction window end not recorded'); good=False
+        q_a=creation.get('realizedAdversarialHashingPowerShare')
+        if q_a is not None and float(q_a) >= 0.5:
+            print(f'[WARN] {p.name}: attackers hold {float(q_a):.2f} of hashing power (majority); selfish mining becomes a majority takeover')
+        if audit.get('terminationReason') == 'INACTIVITY' and audit.get('transactionWindowEnabled'):
+            print(f'[FAIL] {p.name}: INACTIVITY stop with the transaction window (jar predates the inactivity fix)'); good=False
         if audit.get('terminationReason','').startswith('WORKLOAD_LIMIT'):
             print(f'[WARN] {p.name}: stopped by execution guard {audit["terminationReason"]} in phase {audit.get("executionPhaseAtTermination")}')
         rid=inp.get('network_realization_id')
