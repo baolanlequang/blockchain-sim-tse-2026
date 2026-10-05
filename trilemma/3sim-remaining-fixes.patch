@@ -1,0 +1,1853 @@
+From 34517acef891e2fb3fb389ff7c997ed0b8d40a65 Mon Sep 17 00:00:00 2001
+From: Mansur Aliyu <mansurmasama@gmail.com>
+Date: Fri, 2 Oct 2026 15:43:54 +0200
+Subject: [PATCH] Fix transaction gossip, fork resolution and selfish miner;
+ add transaction window
+
+Prepared with Claude (Anthropic's AI assistant) and checked by test runs of the
+simulator before and after the changes.
+
+Simulator fixes (3sim core):
+- Transaction gossip: a node kept only one receive callback, so received
+  transactions were never forwarded (they reached ~1-5% of nodes).
+- Fork resolution: the common ancestor of the old and new chain was computed
+  from stale state, so canonical blocks could be typed stale.
+- Selfish miner: the attacker detached from the network and stopped seeing
+  honest blocks, so SPSM was ~0.
+
+Transaction window (manuscript Section V):
+- Submission starts kappa_tx_warm = 30 canonical blocks before measurement and
+  stops after K_tx = min(100, kappa_measure * N_V) measurement blocks.
+- TPS is evaluated over those K_tx blocks (distinct transactions in
+  majority-canonical measurement blocks / window duration); TCR and CL over the
+  transactions submitted in them. Block metrics use all kappa_measure * N_V
+  blocks.
+- Config keys transaction_warmup_blocks (default 30) and
+  transaction_measurement_blocks_max (default 100; 0 = legacy behaviour).
+- New audit fields transactionWindow* in the result JSON.
+
+Inputs and checks:
+- Loader records lambda_tx_effective; accepts number_of_attackers when
+  fraction_of_attackers is absent.
+- verify_pilot_results.py checks gossip coverage, lambda_tx_effective and the
+  transaction window.
+- generate_execution_manifests.py: revised generator (absolute rate, Eq. 7,
+  renamed inputs accepted).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01VW4BVs5G9Z88DX5W1xG1Ma
+---
+ ...AwareHonestBlockchainSystemNodeBehavior.kt |  81 ++--
+ .../behavior/SelfishMiningNodeBehavior.kt     | 362 ++++++++----------
+ .../core/blockchain/BlockchainImpl.kt         |  25 +-
+ .../blockchainsystems/core/network/P2PNode.kt |  28 +-
+ .../propagation/GossipPropagationStrategy.kt  |  22 +-
+ .../abstractions/NodeP2PNetworkInterface.kt   |  27 +-
+ .../BlockchainForkResolutionTest.kt           |  75 ++++
+ .../core/network/P2PNodeListenerTest.kt       |  36 ++
+ ...esimBlockchainSystemNodeBehaviorFactory.kt |  14 +-
+ .../ThreesimTransactionSubmissionProcess.kt   |  15 +
+ .../monitoring/ThreesimSimulationMonitor.kt   |  88 ++++-
+ .../ThreesimSimulationMonitorState.kt         |   8 +-
+ .../ThreesimSimulationParameters.kt           |  14 +-
+ .../simulation/ThreesimSimulationRound.kt     |   4 +-
+ .../results/RefinedExecutionAudit.kt          |  23 +-
+ .../ThreesimSimulationRoundResultFactory.kt   |  23 +-
+ .../generate_execution_manifests.py           | 203 ++++++----
+ .../pilot_tools/verify_pilot_results.py       |  29 ++
+ .../trilemma/BlockchainSystemModelLoader.java |  21 +-
+ .../trilemma/TrilemmaSimulationFactory.java   |  17 +-
+ .../trilemma/TrilemmaSimulator.java           |  18 +-
+ .../attack/SelfishminingSimulator.java        |  15 +-
+ 22 files changed, 787 insertions(+), 361 deletions(-)
+ create mode 100644 3sim/org.palladiosimulator.blockchainsystems.core/src/test/kotlin/org/palladiosimulator/blockchainsystems/core/blockchain/BlockchainForkResolutionTest.kt
+ create mode 100644 3sim/org.palladiosimulator.blockchainsystems.core/src/test/kotlin/org/palladiosimulator/blockchainsystems/core/network/P2PNodeListenerTest.kt
+
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/behavior/GammaAwareHonestBlockchainSystemNodeBehavior.kt b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/behavior/GammaAwareHonestBlockchainSystemNodeBehavior.kt
+index c880225d..07a5b8f9 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/behavior/GammaAwareHonestBlockchainSystemNodeBehavior.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/behavior/GammaAwareHonestBlockchainSystemNodeBehavior.kt
+@@ -10,15 +10,19 @@ import java.util.UUID
+ import java.util.random.RandomGenerator
+ 
+ /**
+- * Honest-node behavior that models the network-propagation-advantage parameter gamma (γ) from
+- * Eyal & Sirer's selfish-mining analysis: the fraction of the honest hash power that ends up
+- * mining on the attacker's block rather than another honest block when the chain tips are tied.
++ * Honest validating-node behavior used in EVERY execution, with or without
++ * adversarial nodes, so that the honest protocol rules do not change with f_A.
+  *
+- * Without this, honest nodes would resolve ties uniformly at random between all tips (including
+- * the attacker's), which corresponds to gamma == (number of attacker tips / number of tied tips)
+- * instead of a configurable, paper-accurate gamma.
+- *
+- * @author Yannik Sproll (ported)
++ * Rules
++ * - Every valid block that attaches to the local block tree is relayed exactly once.
++ *   Orphans are relayed only after their parent arrives (a node cannot serve a block
++ *   that is not in its chain, so announcing it earlier would stall propagation).
++ * - Longest chain wins. Mining restarts whenever the block currently being extended
++ *   is no longer a tip of a longest chain (also after recursive orphan unlocking).
++ * - Ties between honest tips: first seen (keep mining on the current tip).
++ * - Ties between an attacker tip and an honest tip (Eyal & Sirer's gamma): whenever
++ *   such a tie arises or changes, the node mines on the attacker tip with
++ *   probability [gamma]. With no adversarial nodes this rule never applies.
+  */
+ class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
+   private val attackerNodeIds: Set<String>,
+@@ -26,6 +30,12 @@ class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
+   private val randomGenerator: RandomGenerator = RandomGenerator.of("Random")
+ ) : BlockchainNodeObject(), BlockchainSystemNodeBehavior {
+ 
++  /** Block the mining process is currently extending. */
++  private var miningTipHash: String? = null
++
++  /** Set when a new attacker/honest tie must be resolved with a gamma draw. */
++  private var gammaDrawPending: Boolean = false
++
+   override fun onNodeInitialized(context: BlockchainSystemNodeContext) {
+     context.miningProcess.startMining()
+   }
+@@ -43,15 +53,22 @@ class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
+     if (!isValid) return
+ 
+     val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(block, context)
+-    if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
+-      context.miningProcess.restartMining()
+-    }
+-
+-    // Forward every previously unknown valid attachable block exactly once.
+-    // Whether it becomes this node's active mining branch is a separate choice.
+     if (outcome.isValidAttachableBlock()) {
+       context.blockPropagationStrategy.distribute(block)
+     }
++
++    val tips = context.blockchain.getLastBlocksOfLongestChains()
++    val currentTip = miningTipHash
++    when {
++      currentTip == null || tips.none { it.hash == currentTip } -> {
++        gammaDrawPending = isMixedTie(tips)
++        context.miningProcess.restartMining()
++      }
++      outcome == AppendOutcome.FORKING && isMixedTie(tips) -> {
++        gammaDrawPending = true
++        context.miningProcess.restartMining()
++      }
++    }
+   }
+ 
+   override fun onBlockMined(block: Block, context: BlockchainSystemNodeContext) {
+@@ -64,9 +81,13 @@ class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
+   private fun AppendOutcome.isValidAttachableBlock(): Boolean =
+     this == AppendOutcome.INCLUDED || this == AppendOutcome.FORKING || this == AppendOutcome.STALE
+ 
++  private fun isMixedTie(tips: Collection<Block>): Boolean =
++    tips.size > 1 &&
++      tips.any { it.originId in attackerNodeIds } &&
++      tips.any { it.originId !in attackerNodeIds }
++
+   override fun onCreatingBlock(blockMinedAt: Long, previousBlockHash: String, context: BlockchainSystemNodeContext): Block {
+     val selection = context.transactionSelectionProcess.selectTransactionsForBlock(context)
+-
+     return context.blockFactory.createBlock(
+       UUID(randomGenerator.nextLong(), randomGenerator.nextLong()).toString(),
+       previousBlockHash,
+@@ -78,27 +99,21 @@ class GammaAwareHonestBlockchainSystemNodeBehavior @JvmOverloads constructor(
+   }
+ 
+   override fun onPreviousBlockSelection(context: BlockchainSystemNodeContext): String {
+-    val tips = context.blockchain.getLastBlocksOfLongestChains()
+-
+-    if (tips.size <= 1) {
+-      return tips.sortedBy { it.hash }.first().hash
+-    }
+-
+-    val attackerTips = tips.filter { attackerNodeIds.contains(it.originId) }
+-    val honestTips = tips.filter { !attackerNodeIds.contains(it.originId) }
+-
+-    if (attackerTips.isEmpty() || honestTips.isEmpty()) {
+-      return tips.sortedBy { it.hash }.first().hash
+-    }
+-
+-    val chosen = if (randomGenerator.nextDouble() < gamma) {
+-      val ordered = attackerTips.sortedBy { it.hash }
+-      ordered[randomGenerator.nextInt(ordered.size)]
++    val tips = context.blockchain.getLastBlocksOfLongestChains().sortedBy { it.hash }
++    val current = miningTipHash
++
++    val chosen = if (gammaDrawPending && isMixedTie(tips)) {
++      val attackerTips = tips.filter { it.originId in attackerNodeIds }
++      val honestTips = tips.filter { it.originId !in attackerNodeIds }
++      val pool = if (randomGenerator.nextDouble() < gamma) attackerTips else honestTips
++      pool[randomGenerator.nextInt(pool.size)]
+     } else {
+-      val ordered = honestTips.sortedBy { it.hash }
+-      ordered[randomGenerator.nextInt(ordered.size)]
++      // First seen: stay on the current tip while it is still a longest tip.
++      tips.firstOrNull { it.hash == current } ?: tips.first()
+     }
+ 
++    gammaDrawPending = false
++    miningTipHash = chosen.hash
+     return chosen.hash
+   }
+ 
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/behavior/SelfishMiningNodeBehavior.kt b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/behavior/SelfishMiningNodeBehavior.kt
+index 5017789c..2ced1901 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/behavior/SelfishMiningNodeBehavior.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/behavior/SelfishMiningNodeBehavior.kt
+@@ -10,51 +10,59 @@ import java.util.UUID
+ import java.util.random.RandomGenerator
+ 
+ /**
+- * Selfish-mining behavior implementing Eyal & Sirer's Algorithm 1 ("Majority is not Enough:
+- * Bitcoin Mining is Vulnerable", 2014): the attacker keeps newly mined blocks private and only
+- * reveals them in response to honest-network progress, tracking its hidden lead over the public
+- * chain plus whether it is currently contesting a public tie.
++ * Selfish mining after Eyal & Sirer (FC 2014), Algorithm 1.
+  *
+- * The refined TSE runtime additionally emits explicit attack-round trace events. A round starts
+- * with the first block withheld from state 0 and remains the same round while the attacker retains
+- * a hidden lead or contests the resulting fork. Publishing material does not itself declare
+- * success: the simulation monitor determines the outcome from honest validators' fork-resolution
+- * events. An explicit branch abandonment is emitted as an unambiguous failed round.
++ * Representation
++ * - The node's local blockchain is its PUBLIC view: every valid block it receives is
++ *   appended (and relayed), plus the attacker's own blocks once published.
++ *   Withheld blocks live only in [hidden] until they are published.
++ * - The private lead is computed from heights, not from the number of hidden blocks:
++ *     lead = height(last hidden block) - height(public longest chain).
++ *   Only an increase of the public height counts as "the others found a block";
++ *   stale, orphan and equal-height fork blocks do not change the lead.
++ * - [racing] is Eyal & Sirer's state 0': the attacker has published its only
++ *   hidden block to match an honest block and waits for the race to resolve.
+  *
+- * State:
+- * - [privateChain]: attacker-mined blocks that are still hidden / unpublished. Index 0 is the
+- *   next hidden block that would be published first.
+- * - [ownTipHash]: hash of the attacker's own most recently authored block, published or not. Kept
+- *   separate from [privateChain] because that list empties out the moment a block is published
+- *   (e.g. to force a tie), even though the pool must keep mining on top of that same block rather
+- *   than falling back to an ambiguous public tip.
+- * - [inTieState]: true while the attacker is contesting a public tie/race it created by revealing
+- *   exactly one hidden block at lead 1.
++ * Policy when the public chain grows (lead is evaluated after the growth):
++ *   no hidden block, racing  -> race resolved; the round is abandoned only if the new
++ *                               public tip does not build on the attacker's block
++ *   no hidden block          -> keep mining on the public tip
++ *   lead < 0                 -> honest chain overtook the private branch: abandon
++ *   lead == 0 (was 1)        -> publish the hidden block, enter the race (state 0')
++ *   lead == 1 (was 2)        -> publish everything; the private branch wins outright
++ *   lead >= 2                -> publish hidden blocks up to the public height
++ * When the attacker mines while racing, it publishes immediately.
+  *
+- * Policy (hidden lead k, on honest block arrival):
+- * - k == 0: adopt honest progress.
+- * - k == 1: publish one hidden block, entering a tie.
+- * - k == 2: publish all hidden blocks to override outright.
+- * - k > 2: publish one hidden block, keeping the rest of the lead hidden.
+- * - If the attacker mines while tied: publish all remaining hidden blocks immediately.
+- *
+- * @author Yannik Sproll (ported)
++ * Several adversarial nodes each run this policy independently (no pooling of
++ * hashing power or private branches). Model a colluding pool as one adversarial
++ * node with the pool's hashing share.
+  */
+ class SelfishMiningNodeBehavior @JvmOverloads constructor(
+   private val randomGenerator: RandomGenerator = RandomGenerator.of("Random")
+ ) : BlockchainNodeObject(), BlockchainSystemNodeBehavior {
+ 
+-  private val privateChain: MutableList<Block> = mutableListOf()
+-  private var ownTipHash: String? = null
+-  private var inTieState: Boolean = false
++  /** Withheld attacker blocks, oldest first. Not part of the local (public) chain. */
++  private val hidden: MutableList<Block> = mutableListOf()
++
++  /** State 0': the attacker published one block to tie and waits for resolution. */
++  private var racing: Boolean = false
++
++  /** Hash of the attacker's most recently published block of the active round. */
++  private var publishedRoundTipHash: String? = null
++
++  /** Hash of the block the mining process is currently extending. */
++  private var miningTipHash: String? = null
+ 
+-  /** Metadata for the currently active withholding attempt. */
+   private var activeRoundId: String? = null
+   private var activeRoundFirstPrivateBlockHash: String? = null
+   private var activeRoundPrivateBlockCount: Int = 0
++  private var activeRoundReleased: Boolean = false
+ 
+   override fun onNodeInitialized(context: BlockchainSystemNodeContext) {
+-    resetPrivateState()
++    hidden.clear()
++    racing = false
++    publishedRoundTipHash = null
++    clearActiveRoundMetadata()
+     context.miningProcess.startMining()
+   }
+ 
+@@ -70,71 +78,96 @@ class SelfishMiningNodeBehavior @JvmOverloads constructor(
+   override fun onBlockValidated(block: Block, isValid: Boolean, context: BlockchainSystemNodeContext) {
+     if (!isValid) return
+ 
+-    if (inTieState) {
+-      handleBlockWhileInTie(block, context)
++    val publicHeightBefore = context.blockchain.getLength()
++    val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(block, context)
++
++    // Keep the public view complete and relay public blocks like any other node,
++    // so the attacker does not additionally act as a network partition.
++    if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING || outcome == AppendOutcome.STALE) {
++      context.blockPropagationStrategy.distribute(block)
++    }
++
++    val publicHeight = context.blockchain.getLength()
++    if (publicHeight <= publicHeightBefore) {
++      // No public progress (stale, orphan, duplicate or equal-height fork block).
++      restartIfTargetChanged(context)
+       return
+     }
+ 
+-    when (val hiddenLead = hiddenLead()) {
+-      0 -> adoptPublicBlockAndAbandonPrivateState(block, context)
+-
+-      1 -> {
+-        if (publishOneHiddenBlock(context)) {
+-          // The first private block is now public even though the same attack
+-          // round remains active while the tie is resolved.  Emit a release
+-          // marker without clearing round ownership so honest adoption can be
+-          // counted correctly by the SPSM tracker.
+-          emitRoundReleased("PRIVATE_LEAD_ONE_TIE")
+-          inTieState = true
++    onPublicChainGrew(publicHeight, context)
++    restartIfTargetChanged(context)
++  }
++
++  private fun onPublicChainGrew(publicHeight: Long, context: BlockchainSystemNodeContext) {
++    if (hidden.isEmpty()) {
++      if (racing) {
++        val attackerTip = publishedRoundTipHash
++        val won = attackerTip != null && publicTipsDescendFrom(attackerTip, context)
++        racing = false
++        if (won) {
++          // The honest extension builds on the attacker's block. The monitor
++          // determines success from honest validators' fork resolution.
++          clearActiveRoundMetadata()
++        } else {
++          abandonActiveRound("RACE_LOST")
+         }
++        publishedRoundTipHash = null
+       }
++      return
++    }
+ 
+-      2 -> {
+-        if (publishAllHiddenBlocks(context)) {
+-          releaseActiveRound("PRIVATE_LEAD_TWO_OVERRIDE")
+-        }
+-        inTieState = false
++    val lead = hiddenTipHeight(context) - publicHeight
++    when {
++      lead < 0 -> {
++        abandonActiveRound("HONEST_CHAIN_OVERTOOK_PRIVATE_BRANCH")
++        abandonHiddenBlocks(context)
++      }
++
++      lead == 0L -> {
++        publishHiddenUpTo(Long.MAX_VALUE, context)
++        racing = true
++        emitRoundReleased("PRIVATE_LEAD_ONE_TIE")
++      }
++
++      lead == 1L -> {
++        publishHiddenUpTo(Long.MAX_VALUE, context)
++        racing = false
++        emitRoundReleased("PRIVATE_LEAD_TWO_OVERRIDE")
++        clearActiveRoundMetadata()
++        publishedRoundTipHash = null
+       }
+ 
+       else -> {
+-        check(hiddenLead > 2)
+-        // Reveal one block to keep pressure on the public chain, but preserve the remaining
+-        // hidden advantage. The same attack round remains active while hidden material remains.
+-        if (publishOneHiddenBlock(context)) {
+-          inTieState = false
+-        }
++        publishHiddenUpTo(publicHeight, context)
++        emitRoundReleased("PRIVATE_LEAD_PARTIAL_RELEASE")
+       }
+     }
+   }
+ 
+   override fun onBlockMined(block: Block, context: BlockchainSystemNodeContext) {
+-    if (activeRoundId == null) {
+-      beginActiveRound(block, context)
+-    }
++    if (activeRoundId == null) beginActiveRound(block, context)
+ 
+-    privateChain.add(block)
+-    // A hidden private chain must not repeatedly mine the same transaction in
+-    // successive private blocks. If the published branch later loses, normal
+-    // fork-resolution reconciliation restores its unique transactions.
++    hidden.add(block)
++    // Do not mine the same transactions again in the next private block. Unique
++    // transactions of an abandoned private branch are restored in abandonHiddenBlocks().
+     context.trxMemPool.removeTransactions(block.transactions)
+-    ownTipHash = block.hash
+     activeRoundPrivateBlockCount++
+-    logPrivateBlock(block, context)
+-
+-    // If the attacker mines during a tie, it can immediately reveal the remaining hidden blocks
+-    // and try to secure the win. The monitor waits for honest fork resolution before calling the
+-    // round successful.
+-    if (inTieState) {
+-      if (publishAllHiddenBlocks(context)) {
+-        releaseActiveRound("ATTACKER_MINED_TIE_BREAK_EXTENSION")
+-      }
+-      inTieState = false
++    logPrivateBlock(block)
++
++    if (racing) {
++      // State 0' and the attacker finds a block: publish and win the race.
++      publishHiddenUpTo(Long.MAX_VALUE, context)
++      racing = false
++      emitRoundReleased("ATTACKER_MINED_DURING_RACE")
++      clearActiveRoundMetadata()
++      publishedRoundTipHash = null
+     }
++    // The mining process schedules the next block right after this callback and
++    // asks onPreviousBlockSelection(), which now returns the new private tip.
+   }
+ 
+   override fun onCreatingBlock(blockMinedAt: Long, previousBlockHash: String, context: BlockchainSystemNodeContext): Block {
+     val selection = context.transactionSelectionProcess.selectTransactionsForBlock(context)
+-
+     return context.blockFactory.createBlock(
+       UUID(randomGenerator.nextLong(), randomGenerator.nextLong()).toString(),
+       previousBlockHash,
+@@ -146,89 +179,78 @@ class SelfishMiningNodeBehavior @JvmOverloads constructor(
+   }
+ 
+   override fun onPreviousBlockSelection(context: BlockchainSystemNodeContext): String {
+-    // Always continue mining on top of my own last-authored block, published or not (Algorithm
+-    // 1's "mine at the head of the private chain"). Falling back to a generic public-tip lookup
+-    // here would pick arbitrarily between my own tip and a tied honest tip during a race.
+-    return ownTipHash ?: context.blockchain.getLastBlocksOfLongestChains().sortedBy { it.hash }.first().hash
++    val target = miningTarget(context)
++    miningTipHash = target
++    return target
+   }
+ 
+-  /**
+-   * Tie-state handler: if there are still hidden blocks, reveal them now to try to win the tie.
+-   * Otherwise the tie is lost locally, so adopt the honest block and record an unambiguous failed
+-   * attack round.
+-   */
+-  private fun handleBlockWhileInTie(block: Block, context: BlockchainSystemNodeContext) {
+-    if (hiddenLead() > 0) {
+-      if (publishAllHiddenBlocks(context)) {
+-        releaseActiveRound("RELEASED_REMAINING_PRIVATE_BRANCH_DURING_TIE")
+-      }
+-      inTieState = false
+-      return
+-    }
+-
+-    adoptPublicBlockAndAbandonPrivateState(block, context)
++  private fun miningTarget(context: BlockchainSystemNodeContext): String {
++    hidden.lastOrNull()?.let { return it.hash }
++    if (racing) publishedRoundTipHash?.let { return it }
++    return context.blockchain.getLastBlocksOfLongestChains().minBy { it.hash }.hash
+   }
+ 
+-  /** Append a public block and fully abandon any no-longer-viable private strategy state. */
+-  private fun adoptPublicBlockAndAbandonPrivateState(block: Block, context: BlockchainSystemNodeContext) {
+-    val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(block, context)
+-
+-    if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
+-      context.miningProcess.restartMining()
+-      context.blockPropagationStrategy.distribute(block)
++  private fun restartIfTargetChanged(context: BlockchainSystemNodeContext) {
++    if (miningTarget(context) != miningTipHash) context.miningProcess.restartMining()
++  }
+ 
+-      if (activeRoundId != null) {
+-        abandonActiveRound("ATTACKER_ADOPTED_HONEST_BRANCH")
+-      }
++  /** Height the last hidden block would have in the local chain. */
++  private fun hiddenTipHeight(context: BlockchainSystemNodeContext): Long {
++    val base = context.blockchain.getBlock(requireNotNull(hidden.first().previousHash))
++      ?: error("Base of the private branch is missing from the attacker's public view")
++    return context.blockchain.getPositionOfBlock(base) + hidden.size
++  }
+ 
+-      // Once we meaningfully adopt public progress, the prior hidden branch is no longer treated
+-      // as our active private advantage. Transactions from unpublished private blocks must become
+-      // eligible again unless they are already present on a surviving longest branch.
+-      resetPrivateState(context)
++  /** Publish hidden blocks, oldest first, whose height does not exceed [maxHeight]. */
++  private fun publishHiddenUpTo(maxHeight: Long, context: BlockchainSystemNodeContext) {
++    while (hidden.isNotEmpty()) {
++      val next = hidden.first()
++      val parent = context.blockchain.getBlock(requireNotNull(next.previousHash)) ?: break
++      if (context.blockchain.getPositionOfBlock(parent) + 1 > maxHeight) break
++      hidden.removeAt(0)
++      BehaviorUtils.appendBlockToBlockchainDetailed(next, context)
++      context.blockPropagationStrategy.distribute(next)
++      publishedRoundTipHash = next.hash
+     }
+   }
+ 
+-  /**
+-   * Publish the oldest hidden attacker block.
+-   *
+-   * @return true iff the block was meaningfully appended and removed from hidden state
+-   */
+-  private fun publishOneHiddenBlock(context: BlockchainSystemNodeContext): Boolean {
+-    val publish = privateChain.firstOrNull() ?: return false
+-
+-    val outcome = BehaviorUtils.appendBlockToBlockchainDetailed(publish, context)
+-
+-    if (outcome == AppendOutcome.INCLUDED || outcome == AppendOutcome.FORKING) {
+-      privateChain.removeAt(0)
+-      context.miningProcess.restartMining()
+-      context.blockPropagationStrategy.distribute(publish)
+-      return true
++  /** True if every current public tip has the block [hash] as an ancestor (or is it). */
++  private fun publicTipsDescendFrom(hash: String, context: BlockchainSystemNodeContext): Boolean {
++    val target = context.blockchain.getBlock(hash) ?: return false
++    val targetHeight = context.blockchain.getPositionOfBlock(target)
++    return context.blockchain.getLastBlocksOfLongestChains().all { tip ->
++      var current: Block? = tip
++      while (current != null && context.blockchain.getPositionOfBlock(current) > targetHeight) {
++        current = current.previousHash?.let { context.blockchain.getBlock(it) }
++      }
++      current?.hash == hash
+     }
+-
+-    return false
+   }
+ 
+-  /**
+-   * Publish all remaining hidden attacker blocks in order.
+-   *
+-   * @return true iff the private list was completely drained by successful publication
+-   */
+-  private fun publishAllHiddenBlocks(context: BlockchainSystemNodeContext): Boolean {
+-    while (privateChain.isNotEmpty()) {
+-      val sizeBefore = privateChain.size
+-      val published = publishOneHiddenBlock(context)
+-
+-      // Safety guard against infinite loops if append fails and no progress is made.
+-      if (!published || privateChain.size == sizeBefore) return false
++  /** Drop the private branch and return its transactions to the mempool. */
++  private fun abandonHiddenBlocks(context: BlockchainSystemNodeContext) {
++    if (hidden.isNotEmpty()) {
++      val privateTransactions = hidden.asSequence()
++        .flatMap { it.transactions.asSequence() }
++        .distinctBy { it.txId }
++        .toList()
++      val onPublicChain = context.blockchain.findTransactionIdsOnLongestChains(
++        privateTransactions.map { it.txId }.toHashSet(),
++        1L
++      )
++      val restore = privateTransactions.filter { it.txId !in onPublicChain }
++      if (restore.isNotEmpty()) context.trxMemPool.storeTransactions(restore)
+     }
+-    return true
++    hidden.clear()
++    racing = false
++    publishedRoundTipHash = null
+   }
+ 
+   private fun beginActiveRound(block: Block, context: BlockchainSystemNodeContext) {
+     activeRoundId = block.hash
+     activeRoundFirstPrivateBlockHash = block.hash
+     activeRoundPrivateBlockCount = 0
+-
++    activeRoundReleased = false
+     if (traceEventLogger.isEventTypeEnabled(SelfishMiningAttackRoundStartedTraceEvent.EVENT_TYPE)) {
+       traceEventLogger.logEvent(
+         SelfishMiningAttackRoundStartedTraceEvent(
+@@ -242,62 +264,49 @@ class SelfishMiningNodeBehavior @JvmOverloads constructor(
+     }
+   }
+ 
+-  private fun logPrivateBlock(block: Block, context: BlockchainSystemNodeContext) {
++  private fun logPrivateBlock(block: Block) {
+     val roundId = activeRoundId ?: return
+     if (!traceEventLogger.isEventTypeEnabled(SelfishMiningAttackRoundPrivateBlockTraceEvent.EVENT_TYPE)) return
+-
+     traceEventLogger.logEvent(
+       SelfishMiningAttackRoundPrivateBlockTraceEvent(
+         occurrenceTime = block.blockMinedTimestamp,
+         roundId = roundId,
+-        attackerNodeId = context.id,
++        attackerNodeId = traceEventLogger.logOrigin.id,
+         blockHash = block.hash,
+         privateBlockIndex = activeRoundPrivateBlockCount
+       )
+     )
+   }
+ 
+-  /** Emit publication of attack material while retaining the active round. */
+   private fun emitRoundReleased(reason: String) {
+     val roundId = activeRoundId ?: return
+-    val firstHash = activeRoundFirstPrivateBlockHash ?: roundId
+-
++    activeRoundReleased = true
+     if (traceEventLogger.isEventTypeEnabled(SelfishMiningAttackRoundReleasedTraceEvent.EVENT_TYPE)) {
+       traceEventLogger.logEvent(
+         SelfishMiningAttackRoundReleasedTraceEvent(
+           occurrenceTime = simulationContext.systemClock.currentTime,
+           roundId = roundId,
+           attackerNodeId = traceEventLogger.logOrigin.id,
+-          firstPrivateBlockHash = firstHash,
++          firstPrivateBlockHash = activeRoundFirstPrivateBlockHash ?: roundId,
+           reason = reason
+         )
+       )
+     }
+   }
+ 
+-  /** End strategy ownership of a round without declaring its network outcome. */
+-  private fun releaseActiveRound(reason: String) {
+-    emitRoundReleased(reason)
+-    clearActiveRoundMetadata()
+-  }
+-
+-  /** Explicitly record an unambiguous failed attempt before abandoning its private branch. */
+   private fun abandonActiveRound(reason: String) {
+     val roundId = activeRoundId ?: return
+-    val firstHash = activeRoundFirstPrivateBlockHash ?: roundId
+-
+     if (traceEventLogger.isEventTypeEnabled(SelfishMiningAttackRoundAbandonedTraceEvent.EVENT_TYPE)) {
+       traceEventLogger.logEvent(
+         SelfishMiningAttackRoundAbandonedTraceEvent(
+           occurrenceTime = simulationContext.systemClock.currentTime,
+           roundId = roundId,
+           attackerNodeId = traceEventLogger.logOrigin.id,
+-          firstPrivateBlockHash = firstHash,
++          firstPrivateBlockHash = activeRoundFirstPrivateBlockHash ?: roundId,
+           reason = reason
+         )
+       )
+     }
+-
+     clearActiveRoundMetadata()
+   }
+ 
+@@ -305,46 +314,7 @@ class SelfishMiningNodeBehavior @JvmOverloads constructor(
+     activeRoundId = null
+     activeRoundFirstPrivateBlockHash = null
+     activeRoundPrivateBlockCount = 0
+-  }
+-
+-  private fun hiddenLead(): Int = privateChain.size
+-
+-  private fun resetPrivateState(context: BlockchainSystemNodeContext? = null) {
+-    if (context != null && privateChain.isNotEmpty()) {
+-      val privateTransactions = privateChain
+-        .asSequence()
+-        .flatMap { it.transactions.asSequence() }
+-        .distinctBy { it.txId }
+-        .toList()
+-
+-      val candidateTxIds = privateTransactions.map { it.txId }.toHashSet()
+-
+-      // The first still-private block is anchored either directly to the public
+-      // chain or to an attacker block that has already been published. Transactions
+-      // mined before that base cannot have originated in this abandoned suffix.
+-      val privateBasePosition = privateChain.first().previousHash
+-        ?.let { context.blockchain.getBlock(it) }
+-        ?.let { context.blockchain.getPositionOfBlock(it) }
+-        ?.takeIf { it > 0L }
+-        ?: 1L
+-
+-      val activeLongestChainTxIds = context.blockchain.findTransactionIdsOnLongestChains(
+-        candidateTxIds,
+-        privateBasePosition
+-      )
+-
+-      val abandonedTransactions = privateTransactions
+-        .filter { it.txId !in activeLongestChainTxIds }
+-
+-      if (abandonedTransactions.isNotEmpty()) {
+-        context.trxMemPool.storeTransactions(abandonedTransactions)
+-      }
+-    }
+-
+-    privateChain.clear()
+-    ownTipHash = null
+-    inTieState = false
+-    clearActiveRoundMetadata()
++    activeRoundReleased = false
+   }
+ 
+   override fun dispatchEvent(event: Event) {
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/blockchain/BlockchainImpl.kt b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/blockchain/BlockchainImpl.kt
+index 543dbf04..e6d2a7d7 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/blockchain/BlockchainImpl.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/blockchain/BlockchainImpl.kt
+@@ -116,7 +116,21 @@ class BlockchainImpl(
+     logBlockAppended(block, blockPosition, previousBlockchainElement.block, BlockType.IncludedBlock)
+     becameIncluded.add(block)
+ 
+-    // If the blockchain is currently forked, mark blocks in other branches as stale blocks.
++    // Resolve the fork in two passes. First promote the winning branch
++    // (the new block's ancestors that are still Forking) to Included. Only then
++    // demote the losing branches: their traversal stops at the first block that
++    // is no longer Forking, so a Forking ancestor shared with the winning branch
++    // is never marked Stale. (Demoting first mislabelled such canonical blocks as
++    // Stale permanently, which inflated SBR and prevented their transactions from
++    // ever being confirmed.)
++    becameIncluded.addAll(
++      traverseBlockchainAndChangeBlockTypes(
++        previousBlockchainElement,
++        BlockchainElementType.Forking,
++        BlockchainElementType.Included
++      ).map { it.block }
++    )
++
+     for (blockchainElement in staleBlockBranches) {
+       becameStale.addAll(
+         traverseBlockchainAndChangeBlockTypes(
+@@ -127,15 +141,6 @@ class BlockchainImpl(
+       )
+     }
+ 
+-    // Mark (currently forked) descendants of new (latest) block as included.
+-    becameIncluded.addAll(
+-      traverseBlockchainAndChangeBlockTypes(
+-        previousBlockchainElement,
+-        BlockchainElementType.Forking,
+-        BlockchainElementType.Included
+-      ).map { it.block }
+-    )
+-
+     // Mark included blocks that now have enough confirmations as confirmed.
+     markConfirmedBlocks(newBlockchainElement)
+ 
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/network/P2PNode.kt b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/network/P2PNode.kt
+index d27effaf..ae7fc6e1 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/network/P2PNode.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/network/P2PNode.kt
+@@ -14,19 +14,23 @@ class P2PNode(
+   override val endpointId: String
+ ) : P2PNetworkObject(), NodeP2PNetworkInterface, P2PNetworkEndpoint {
+   private lateinit var network: P2PNetwork
+-  private var onMessageReceivedCallback: ((Message, P2PNetworkEndpoint) -> Unit)? = null
+-  private var onMessageDroppedCallback: ((Message, P2PNetworkEndpoint) -> Unit)? = null
++  // One listener per propagation strategy (blocks and transactions). Kept as
++  // ordered lists so dispatch order is deterministic across runs.
++  @kotlinx.serialization.Transient
++  private val messageReceivedListeners = ArrayList<(Message, P2PNetworkEndpoint) -> Unit>(2)
++  @kotlinx.serialization.Transient
++  private val messageDroppedListeners = ArrayList<(Message, P2PNetworkEndpoint) -> Unit>(2)
+ 
+   fun initNetwork(network: P2PNetwork) {
+     this.network = network
+   }
+ 
+   fun onReceive(messageContent: Message, sender: P2PNetworkEndpoint) {
+-    onMessageReceivedCallback?.invoke(messageContent, sender)
++    for (i in messageReceivedListeners.indices) messageReceivedListeners[i](messageContent, sender)
+   }
+ 
+   fun onMessageDropped(messageContent: Message, recipient: P2PNetworkEndpoint) {
+-    onMessageDroppedCallback?.invoke(messageContent, recipient)
++    for (i in messageDroppedListeners.indices) messageDroppedListeners[i](messageContent, recipient)
+   }
+ 
+   override fun dispatchEvent(event: Event) {
+@@ -37,12 +41,20 @@ class P2PNode(
+       .multicast(this, message)
+   }
+ 
+-  override fun setOnMessageReceivedCallback(onMessageReceivedCallback: ((Message, P2PNetworkEndpoint) -> Unit)?) {
+-    this.onMessageReceivedCallback = onMessageReceivedCallback
++  override fun addMessageReceivedListener(listener: (Message, P2PNetworkEndpoint) -> Unit) {
++    if (messageReceivedListeners.none { it === listener }) messageReceivedListeners.add(listener)
+   }
+ 
+-  override fun setOnMessageDroppedCallback(onMessageDroppedCallback: ((Message, P2PNetworkEndpoint) -> Unit)?) {
+-    this.onMessageDroppedCallback = onMessageDroppedCallback
++  override fun removeMessageReceivedListener(listener: (Message, P2PNetworkEndpoint) -> Unit) {
++    messageReceivedListeners.removeAll { it === listener }
++  }
++
++  override fun addMessageDroppedListener(listener: (Message, P2PNetworkEndpoint) -> Unit) {
++    if (messageDroppedListeners.none { it === listener }) messageDroppedListeners.add(listener)
++  }
++
++  override fun removeMessageDroppedListener(listener: (Message, P2PNetworkEndpoint) -> Unit) {
++    messageDroppedListeners.removeAll { it === listener }
+   }
+ 
+   override fun send(message: Message, recipient: P2PNetworkEndpoint) {
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/propagation/GossipPropagationStrategy.kt b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/propagation/GossipPropagationStrategy.kt
+index 00f6ba19..cf5585e2 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/propagation/GossipPropagationStrategy.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/propagation/GossipPropagationStrategy.kt
+@@ -87,24 +87,22 @@ abstract class GossipPropagationStrategy<E : Propagatable> : BlockchainNodeObjec
+     setNewNetworkInterface(networkInterface)
+   }
+ 
++  // Keep the exact listener instances so they can be unregistered again.
++  private val receivedListener: (Message, P2PNetworkEndpoint) -> Unit =
++    { message, sender -> onMessageReceivedFromNetworkInterface(message, sender) }
++  private val droppedListener: (Message, P2PNetworkEndpoint) -> Unit =
++    { message, recipient -> failedToSendMessageToNetworkInterface(message, recipient) }
++
+   private fun removeCurrentNetworkInterface() {
+-    networkInterface?.setOnMessageReceivedCallback(null)
+-    networkInterface?.setOnMessageDroppedCallback(null)
++    networkInterface?.removeMessageReceivedListener(receivedListener)
++    networkInterface?.removeMessageDroppedListener(droppedListener)
+     networkInterface = null
+   }
+ 
+   private fun setNewNetworkInterface(networkInterface: NodeP2PNetworkInterface) {
+     this.networkInterface = networkInterface
+-    this.networkInterface?.setOnMessageReceivedCallback { message, senderNetworkEndpoint ->
+-      this.onMessageReceivedFromNetworkInterface(
+-        message, senderNetworkEndpoint
+-      )
+-    }
+-    this.networkInterface?.setOnMessageDroppedCallback { message, recipientNetworkEndpoint ->
+-      this.failedToSendMessageToNetworkInterface(
+-        message, recipientNetworkEndpoint
+-      )
+-    }
++    networkInterface.addMessageReceivedListener(receivedListener)
++    networkInterface.addMessageDroppedListener(droppedListener)
+   }
+ 
+   override fun setOnReceivedCallback(onReceivedCallback: ((E) -> Unit)) {
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/system/abstractions/NodeP2PNetworkInterface.kt b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/system/abstractions/NodeP2PNetworkInterface.kt
+index f1e7973f..2c4e6551 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/system/abstractions/NodeP2PNetworkInterface.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.core/src/main/kotlin/org/palladiosimulator/blockchainsystems/core/system/abstractions/NodeP2PNetworkInterface.kt
+@@ -31,18 +31,21 @@ interface NodeP2PNetworkInterface : P2PNetworkEndpoint {
+   fun getNeighbors(): MutableSet<P2PNetworkEndpoint>
+ 
+   /**
+-   * Sets the callback that is invoked when a message is received from
+-   * one of the current blockchain system neighbors.
++   * Registers a listener for messages received from a neighbor.
+    *
+-   * @param onMessageReceivedCallback the callback to be set
++   * A node hosts several propagation strategies (blocks and transactions) on the
++   * same interface, so the interface must deliver every message to every
++   * registered listener. Each strategy ignores content types it does not own.
++   * (A single overwritable callback silently disabled transaction gossip.)
+    */
+-  fun setOnMessageReceivedCallback(onMessageReceivedCallback: ((Message, P2PNetworkEndpoint) -> Unit)?)
++  fun addMessageReceivedListener(listener: (Message, P2PNetworkEndpoint) -> Unit)
+ 
+-  /**
+-   * Sets the callback that is invoked when the recipient node
+-   * dropped the message that was sent to it.
+-   *
+-   * @param onMessageDroppedCallback the callback to be set
+-   */
+-  fun setOnMessageDroppedCallback(onMessageDroppedCallback: ((Message, P2PNetworkEndpoint) -> Unit)?)
+-}
+\ No newline at end of file
++  /** Removes a listener previously registered with [addMessageReceivedListener]. */
++  fun removeMessageReceivedListener(listener: (Message, P2PNetworkEndpoint) -> Unit)
++
++  /** Registers a listener for messages that could not be delivered to a neighbor. */
++  fun addMessageDroppedListener(listener: (Message, P2PNetworkEndpoint) -> Unit)
++
++  /** Removes a listener previously registered with [addMessageDroppedListener]. */
++  fun removeMessageDroppedListener(listener: (Message, P2PNetworkEndpoint) -> Unit)
++}
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.core/src/test/kotlin/org/palladiosimulator/blockchainsystems/core/blockchain/BlockchainForkResolutionTest.kt b/3sim/org.palladiosimulator.blockchainsystems.core/src/test/kotlin/org/palladiosimulator/blockchainsystems/core/blockchain/BlockchainForkResolutionTest.kt
+new file mode 100644
+index 00000000..711949d5
+--- /dev/null
++++ b/3sim/org.palladiosimulator.blockchainsystems.core/src/test/kotlin/org/palladiosimulator/blockchainsystems/core/blockchain/BlockchainForkResolutionTest.kt
+@@ -0,0 +1,75 @@
++package org.palladiosimulator.blockchainsystems.core.blockchain
++
++import org.palladiosimulator.blockchainsystems.core.block.BlockFactoryImpl
++import org.palladiosimulator.blockchainsystems.core.block.abstractions.Block
++import org.palladiosimulator.blockchainsystems.core.block.abstractions.BlockType
++import org.palladiosimulator.blockchainsystems.core.clock.SimulationClock
++import org.palladiosimulator.blockchainsystems.core.common.abstractions.*
++import java.util.Random
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertFalse
++
++/**
++ * Regression test: a Forking block shared by the winning branch and a losing tip
++ * must not be marked Stale when the fork resolves (it used to stay Stale forever,
++ * so its transactions were never confirmed and SBR was inflated).
++ */
++class BlockchainForkResolutionTest {
++  private val factory = BlockFactoryImpl(Random(1))
++  private val lastType = HashMap<String, BlockType>()
++
++  private fun block(hash: String, parent: Block) =
++    factory.createBlock(hash, parent.hash, "n", 0L, 0, emptySet())
++
++  private fun newChain(genesis: Block): BlockchainImpl {
++    val chain = BlockchainFactoryImpl(6).createBlockchain(genesis, "x") as BlockchainImpl
++    val origin = object : TraceEventLogOrigin {
++      override val id = "x"
++      override val name = "x"
++    }
++    val logger = object : TraceEventLogger {
++      override val logOrigin = origin
++      override fun isEventTypeEnabled(eventType: String) = true
++      override fun logEvent(traceEvent: TraceEvent) {
++        when (traceEvent) {
++          is BlockAppendedTraceEvent -> lastType[traceEvent.appendedBlock.hash] = traceEvent.appendedBlockType
++          is BlockTypeChangedTraceEvent -> lastType[traceEvent.block.hash] = traceEvent.newBlockType
++        }
++      }
++    }
++    val context = object : SimulationContext {
++      private val clock = SimulationClock()
++      override fun getEventCoordinator(): EventCoordinator = throw UnsupportedOperationException()
++      override fun getSystemClock(): SystemClock = clock
++      override fun getTraceEventLoggerContainer(): TraceEventLoggerContainer = object : TraceEventLoggerContainer {
++        override fun createTraceEventLogger(logOrigin: TraceEventLogOrigin) {}
++        override fun getLogger(logOrigin: TraceEventLogOrigin): TraceEventLogger = logger
++      }
++    }
++    chain.initialize(context)
++    chain.initializeLogger(origin)
++    return chain
++  }
++
++  @Test
++  fun `shared forking ancestor of the winning branch stays canonical and confirms`() {
++    val genesis = factory.createGenesisBlock()
++    val chain = newChain(genesis)
++    val o = block("O", genesis); chain.appendBlock(o)
++    val p = block("P", o); val y1 = block("Y1", o)
++    val x1 = block("X1", p); val y2 = block("Y2", y1); val x2 = block("X2", p); val x3 = block("X3", x1)
++
++    val stale = HashSet<String>()
++    for (b in listOf(p, y1, x1, y2, x2, x3)) {
++      chain.appendBlock(b).blocksBecameStale.forEach { stale.add(it.hash) }
++    }
++    assertFalse("P" in stale, "canonical block P was reported as stale")
++    assertEquals(BlockType.IncludedBlock, lastType["P"])
++    assertEquals(setOf("X2", "Y1", "Y2"), stale)
++
++    var tip = x3
++    repeat(8) { i -> tip = block("X${i + 4}", tip).also { chain.appendBlock(it) } }
++    assertEquals(BlockType.ConfirmedBlock, lastType["P"])
++  }
++}
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.core/src/test/kotlin/org/palladiosimulator/blockchainsystems/core/network/P2PNodeListenerTest.kt b/3sim/org.palladiosimulator.blockchainsystems.core/src/test/kotlin/org/palladiosimulator/blockchainsystems/core/network/P2PNodeListenerTest.kt
+new file mode 100644
+index 00000000..6fe6436f
+--- /dev/null
++++ b/3sim/org.palladiosimulator.blockchainsystems.core/src/test/kotlin/org/palladiosimulator/blockchainsystems/core/network/P2PNodeListenerTest.kt
+@@ -0,0 +1,36 @@
++package org.palladiosimulator.blockchainsystems.core.network
++
++import org.palladiosimulator.blockchainsystems.core.propagation.MessageImpl
++import org.palladiosimulator.blockchainsystems.core.system.abstractions.Message
++import org.palladiosimulator.blockchainsystems.core.system.abstractions.P2PNetworkEndpoint
++import kotlin.test.Test
++import kotlin.test.assertEquals
++
++/**
++ * Regression test: the block and the transaction propagation strategy share one
++ * network interface, so every registered listener must receive every message.
++ * (A single overwritable callback silently disabled transaction gossip.)
++ */
++class P2PNodeListenerTest {
++  @Test
++  fun `all registered listeners receive each message until removed`() {
++    val node = P2PNode("a")
++    val sender = P2PNode("b")
++    val seenByBlocks = ArrayList<String>()
++    val seenByTransactions = ArrayList<String>()
++    val blockListener: (Message, P2PNetworkEndpoint) -> Unit = { m, _ -> seenByBlocks.add(m.contentType) }
++    val txListener: (Message, P2PNetworkEndpoint) -> Unit = { m, _ -> seenByTransactions.add(m.contentType) }
++
++    node.addMessageReceivedListener(txListener)
++    node.addMessageReceivedListener(blockListener)
++    node.onReceive(MessageImpl("t1", "TRX_INV", 44), sender)
++    node.onReceive(MessageImpl("b1", "BLOCK_INV", 44), sender)
++    assertEquals(listOf("TRX_INV", "BLOCK_INV"), seenByTransactions)
++    assertEquals(listOf("TRX_INV", "BLOCK_INV"), seenByBlocks)
++
++    node.removeMessageReceivedListener(txListener)
++    node.onReceive(MessageImpl("t2", "TRX_INV", 44), sender)
++    assertEquals(2, seenByTransactions.size)
++    assertEquals(3, seenByBlocks.size)
++  }
++}
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/behavior/ThreesimBlockchainSystemNodeBehaviorFactory.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/behavior/ThreesimBlockchainSystemNodeBehaviorFactory.kt
+index 93fe8a34..05e65e54 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/behavior/ThreesimBlockchainSystemNodeBehaviorFactory.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/behavior/ThreesimBlockchainSystemNodeBehaviorFactory.kt
+@@ -1,6 +1,6 @@
+ package org.palladiosimulator.blockchainsystems.threesim.behavior
+ 
+-import org.palladiosimulator.blockchainsystems.core.behavior.HonestBlockchainSystemNodeBehavior
++import org.palladiosimulator.blockchainsystems.core.behavior.GammaAwareHonestBlockchainSystemNodeBehavior
+ import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainMaliciousNodesIdProvider
+ import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeBehavior
+ import org.palladiosimulator.blockchainsystems.core.system.abstractions.BlockchainSystemNodeBehaviorFactory
+@@ -9,8 +9,8 @@ import org.palladiosimulator.blockchainsystems.threesim.creation.RefinedExperime
+ /**
+  * Factory for creating a [BlockchainSystemNodeBehavior] for the Threesim blockchain system.
+  *
+- * This factory creates an instance of [HonestBlockchainSystemNodeBehavior], which represents a node that behaves honestly
+- * in the blockchain system. It is used for the plain (non-attack) trilemma pipeline, where there
++ * This factory creates honest nodes for executions without adversarial nodes. It uses the same
++ * behavior class as honest nodes in attack executions so that the honest rules do not depend on f_A. It is used for the plain (non-attack) trilemma pipeline, where there
+  * are no attacker nodes; attack runs use [org.palladiosimulator.blockchainsystems.threesim.selfishmining.behavior.SelfishMiningBlockchainSystemNodeBehaviorFactory] instead.
+  *
+  * @author Davis Riedel
+@@ -19,6 +19,12 @@ class ThreesimBlockchainSystemNodeBehaviorFactory(
+   private val randomness: RefinedExperimentRandomness = RefinedExperimentRandomness(0L, 0L)
+ ) : BlockchainSystemNodeBehaviorFactory {
+   override fun create(nodeId: String, maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider): BlockchainSystemNodeBehavior {
+-    return HonestBlockchainSystemNodeBehavior(randomness.eventForNode("honest-behavior", nodeId))
++    // Same honest rules as in executions with adversarial nodes; with an empty
++    // attacker set the gamma rule never applies.
++    return GammaAwareHonestBlockchainSystemNodeBehavior(
++      emptySet(),
++      0.0,
++      randomness.eventForNode("honest-behavior", nodeId)
++    )
+   }
+ }
+\ No newline at end of file
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/behavior/ThreesimTransactionSubmissionProcess.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/behavior/ThreesimTransactionSubmissionProcess.kt
+index f551e057..eaacb8d9 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/behavior/ThreesimTransactionSubmissionProcess.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/behavior/ThreesimTransactionSubmissionProcess.kt
+@@ -28,6 +28,17 @@ class ThreesimTransactionSubmissionProcess(
+   private var onSelectRecipientNodeIdCallback: (() -> String)? = null
+   private val onTransactionSubmittedCallbackSubscribers = HashSet<TransactionSubmittedCallbackSubscriber>()
+   private var isSubmittingTransactions = false
++  /** When true, the next start request (issued by BlockchainSystem at t = 0) is ignored. */
++  private var ignoreNextStart = false
++
++  /**
++   * Transaction window: the monitor defers the system's initial start so that
++   * submission begins kappa_tx_warm canonical blocks before measurement. The
++   * monitor later calls startTransactionSubmissionProcess() itself.
++   */
++  fun deferInitialStart() {
++    if (!isSubmittingTransactions) ignoreNextStart = true
++  }
+ 
+   override fun addOnTransactionSubmittedCallbackSubscriber(subscriber: TransactionSubmittedCallbackSubscriber) {
+     onTransactionSubmittedCallbackSubscribers.add(subscriber)
+@@ -38,6 +49,10 @@ class ThreesimTransactionSubmissionProcess(
+   }
+ 
+   override fun startTransactionSubmissionProcess() {
++    if (ignoreNextStart) {
++      ignoreNextStart = false
++      return
++    }
+     if (isSubmittingTransactions) return
+     isSubmittingTransactions = true
+     scheduleNewTrxSubmittedEvent()
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitor.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitor.kt
+index ccb67214..d7bd1242 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitor.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitor.kt
+@@ -26,6 +26,7 @@ import org.palladiosimulator.blockchainsystems.core.transaction.TransactionSubmi
+ import org.palladiosimulator.blockchainsystems.core.transaction.abstractions.TransactionSubmissionProcess
+ import org.palladiosimulator.blockchainsystems.core.utils.CounterMap
+ import org.palladiosimulator.blockchainsystems.threesim.behavior.BlockUtils
++import org.palladiosimulator.blockchainsystems.threesim.behavior.ThreesimTransactionSubmissionProcess
+ import org.palladiosimulator.blockchainsystems.threesim.metrics.calculators.TransactionThroughputCalculator
+ import org.palladiosimulator.blockchainsystems.threesim.utils.BlockchainSystemFailureLog
+ import org.palladiosimulator.blockchainsystems.threesim.utils.BlocksMap
+@@ -39,6 +40,14 @@ import org.palladiosimulator.blockchainsystems.threesim.utils.BlocksMap
+  *   2. measure the next kappa_measure * N_V canonical blocks;
+  *   3. stop accepting new transactions and follow measurement-window
+  *      transactions for at most T_drain after their own submission time.
++ *
++ * Transaction window (enabled when transactionMeasurementBlocksMax > 0):
++ *   transactions are submitted only from kappa_tx_warm canonical blocks before
++ *   the measurement window until K_tx = min(K_tx_max, kappa_measure * N_V)
++ *   canonical measurement blocks have been observed. TPS is evaluated over these
++ *   K_tx blocks, and TCR/CL over the transactions submitted in them. Block-based
++ *   metrics (SBR, H_prop, HHI_canon, SPSM) still use all kappa_measure * N_V
++ *   measurement blocks.
+  */
+ class ThreesimSimulationMonitor(
+   private val maxBlockchainLengthCondition: LongestChainExceededMaxLengthCondition,
+@@ -47,7 +56,9 @@ class ThreesimSimulationMonitor(
+   private val warmupBlocksPerValidator: Int = 0,
+   private val measuredBlocksPerValidator: Int = 0,
+   private val transactionDrainMillis: Long = 0L,
+-  private val retainTransactionFollowUpObservations: Boolean = false
++  private val retainTransactionFollowUpObservations: Boolean = false,
++  private val transactionWarmupBlocks: Int = 0,
++  private val transactionMeasurementBlocksMax: Int = 0
+ ) : SimulationMonitor, SafetyTerminationListener {
+ 
+   private enum class Phase { LEGACY, WARMUP, MEASUREMENT, DRAIN }
+@@ -69,6 +80,20 @@ class ThreesimSimulationMonitor(
+   private var measurementStartTimeMs = 0L
+   private var measurementEndTimeMs = 0L
+   private var terminationReason: String = "NOT_TERMINATED"
++
++  // ---- Transaction window -------------------------------------------------
++  private val transactionWindowEnabled: Boolean
++    get() = refinedWindowEnabled && transactionMeasurementBlocksMax > 0
++  /** Cumulative canonical-block count at which submission starts. */
++  private var transactionStartCanonicalBlocks = 0
++  /** K_tx: measurement canonical blocks during which transactions are submitted. */
++  private var transactionMeasurementTargetBlocks = 0
++  private var transactionSubmissionStarted = false
++  private var transactionSubmissionStartTimeMs = -1L
++  private var transactionWindowClosed = false
++  private var transactionWindowEndTimeMs = 0L
++  /** Transactions in majority-canonical measurement blocks when the K_tx-th block was reached. */
++  private var transactionWindowCanonicalTransactions = 0
+   private var transactionFollowUpCompleted: Boolean = false
+ 
+   /*
+@@ -365,6 +390,23 @@ class ThreesimSimulationMonitor(
+       measurementCanonicalBlocksSeen.clear()
+       warmupTargetCanonicalBlocks = warmupBlocksPerValidator * nodes.size
+       measurementTargetCanonicalBlocks = warmupTargetCanonicalBlocks + measuredBlocksPerValidator * nodes.size
++      if (transactionWindowEnabled) {
++        require(transactionWarmupBlocks >= 0) { "transactionWarmupBlocks must be >= 0" }
++        transactionMeasurementTargetBlocks =
++          minOf(transactionMeasurementBlocksMax, measuredBlocksPerValidator * nodes.size)
++        transactionStartCanonicalBlocks = (warmupTargetCanonicalBlocks - transactionWarmupBlocks).coerceAtLeast(0)
++        if (transactionStartCanonicalBlocks > 0) {
++          // BlockchainSystem starts submission at t = 0; defer it to the window start.
++          val process = transactionSubmissionProcess as? ThreesimTransactionSubmissionProcess
++            ?: throw IllegalStateException(
++              "Transaction window requires ThreesimTransactionSubmissionProcess, got " +
++                transactionSubmissionProcess::class.java.name)
++          process.deferInitialStart()
++        } else {
++          transactionSubmissionStarted = true
++          transactionSubmissionStartTimeMs = 0L
++        }
++      }
+       if (warmupTargetCanonicalBlocks > 0) {
+         phase = Phase.WARMUP
+       } else {
+@@ -463,7 +505,13 @@ class ThreesimSimulationMonitor(
+       failedSelfishMiningAttackRounds = spsmSummary.failedRounds,
+       ambiguousSelfishMiningAttackRounds = spsmSummary.ambiguousRounds,
+       unambiguousSelfishMiningAttackRounds = spsmSummary.unambiguousRounds,
+-      selfishMiningSuccessProbability = spsmSummary.successProbability
++      selfishMiningSuccessProbability = spsmSummary.successProbability,
++      transactionWindowEnabled = transactionWindowEnabled,
++      transactionWarmupBlocks = if (transactionWindowEnabled) transactionWarmupBlocks else 0,
++      transactionMeasurementTargetBlocks = transactionMeasurementTargetBlocks,
++      transactionSubmissionStartTimeMs = transactionSubmissionStartTimeMs,
++      transactionWindowEndTimeMs = if (transactionWindowClosed) transactionWindowEndTimeMs else 0L,
++      transactionWindowCanonicalTransactions = transactionWindowCanonicalTransactions
+     )
+   }
+ 
+@@ -700,7 +748,7 @@ class ThreesimSimulationMonitor(
+         totalTransactionSubmissionsAllPhases++
+         if (phase == Phase.LEGACY || phase == Phase.MEASUREMENT) {
+           numberOfSubmittedTransactions++
+-          if (phase == Phase.MEASUREMENT) {
++          if (phase == Phase.MEASUREMENT && !(transactionWindowEnabled && transactionWindowClosed)) {
+             measurementTransactions.addIfAbsent(
+               e.transaction.txId,
+               e.transaction.creationTime
+@@ -775,11 +823,25 @@ class ThreesimSimulationMonitor(
+       )
+     }
+ 
++    if (phase == Phase.WARMUP && canonicalCount >= transactionStartCanonicalBlocks) {
++      startTransactionWindowIfDue(occurrenceTime)
++    }
++
+     if (phase == Phase.WARMUP && canonicalCount >= warmupTargetCanonicalBlocks) {
+       beginMeasurement(occurrenceTime)
++      startTransactionWindowIfDue(occurrenceTime)
+       return
+     }
+ 
++    if (
++      phase == Phase.MEASUREMENT &&
++      transactionWindowEnabled &&
++      !transactionWindowClosed &&
++      measurementCanonicalBlocksSeen.size >= transactionMeasurementTargetBlocks
++    ) {
++      closeTransactionWindow(occurrenceTime)
++    }
++
+     // Warm-up progress is controlled by the cumulative canonical set, while
+     // measurement progress is controlled by the measurement-local canonical set.
+     // Using the cumulative count for both phases allowed a reorganization across
+@@ -796,6 +858,26 @@ class ThreesimSimulationMonitor(
+     }
+   }
+ 
++  private fun startTransactionWindowIfDue(occurrenceTime: Long) {
++    if (!transactionWindowEnabled || transactionSubmissionStarted) return
++    transactionSubmissionStarted = true
++    transactionSubmissionStartTimeMs = occurrenceTime
++    transactionSubmissionProcess.startTransactionSubmissionProcess()
++  }
++
++  private fun closeTransactionWindow(occurrenceTime: Long) {
++    transactionWindowClosed = true
++    transactionWindowEndTimeMs = occurrenceTime
++    // Count distinct transactions: during a reorganization a transaction can sit
++    // in two blocks that both still hold a majority, and must be counted once.
++    val distinctTransactionIds = HashSet<String>()
++    canonicalMeasurementBlocks.getValidBlocks().forEach { (block, _) ->
++      block.transactions.forEach { distinctTransactionIds.add(it.txId) }
++    }
++    transactionWindowCanonicalTransactions = distinctTransactionIds.size
++    transactionSubmissionProcess.stopTransactionSubmissionProcess()
++  }
++
+   private fun beginMeasurement(occurrenceTime: Long) {
+     phase = Phase.MEASUREMENT
+     measurementStartTimeMs = occurrenceTime
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitorState.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitorState.kt
+index 660e534d..d74d7b6f 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitorState.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/monitoring/ThreesimSimulationMonitorState.kt
+@@ -96,5 +96,11 @@ class ThreesimSimulationMonitorState(
+   val failedSelfishMiningAttackRounds: Int = 0,
+   val ambiguousSelfishMiningAttackRounds: Int = 0,
+   val unambiguousSelfishMiningAttackRounds: Int = 0,
+-  val selfishMiningSuccessProbability: Double? = null
++  val selfishMiningSuccessProbability: Double? = null,
++  val transactionWindowEnabled: Boolean = false,
++  val transactionWarmupBlocks: Int = 0,
++  val transactionMeasurementTargetBlocks: Int = 0,
++  val transactionSubmissionStartTimeMs: Long = 0L,
++  val transactionWindowEndTimeMs: Long = 0L,
++  val transactionWindowCanonicalTransactions: Int = 0
+ )
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationParameters.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationParameters.kt
+index 55e79d71..2761979d 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationParameters.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationParameters.kt
+@@ -27,7 +27,19 @@ class ThreesimSimulationParameters @JvmOverloads constructor(
+    * This flag changes output volume only. It does not alter transaction
+    * generation, confirmation, censoring, TCR, RMCL, or simulation timing.
+    */
+-  val retainTransactionFollowUpObservations: Boolean = false
++  val retainTransactionFollowUpObservations: Boolean = false,
++  /**
++   * kappa_tx_warm: transaction submission starts this many canonical blocks
++   * before the measurement window begins (0 with a transaction window = start
++   * at the beginning of measurement).
++   */
++  val transactionWarmupBlocks: Int = 0,
++  /**
++   * K_tx_max: transactions are submitted during the first
++   * K_tx = min(K_tx_max, kappa_measure * N_V) canonical measurement blocks only.
++   * 0 disables the transaction window (legacy: submit throughout).
++   */
++  val transactionMeasurementBlocksMax: Int = 0
+ ) {
+   val refinedWindowEnabled: Boolean
+     get() = measuredBlocksPerValidator > 0
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationRound.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationRound.kt
+index 1370a7c6..3d1da493 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationRound.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationRound.kt
+@@ -34,7 +34,9 @@ class ThreesimSimulationRound(
+     threesimSimulationParameters.warmupBlocksPerValidator,
+     threesimSimulationParameters.measuredBlocksPerValidator,
+     threesimSimulationParameters.transactionDrainMillis,
+-    threesimSimulationParameters.retainTransactionFollowUpObservations
++    threesimSimulationParameters.retainTransactionFollowUpObservations,
++    threesimSimulationParameters.transactionWarmupBlocks,
++    threesimSimulationParameters.transactionMeasurementBlocksMax
+   )
+ ) {
+ 
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/RefinedExecutionAudit.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/RefinedExecutionAudit.kt
+index 26943713..bac87aaa 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/RefinedExecutionAudit.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/RefinedExecutionAudit.kt
+@@ -135,5 +135,26 @@ data class RefinedExecutionAudit(
+   @EncodeDefault
+   val unambiguousSelfishMiningAttackRounds: Int = 0,
+   @EncodeDefault
+-  val selfishMiningSuccessProbability: Double? = null
++  val selfishMiningSuccessProbability: Double? = null,
++  /** Transaction window (kappa_tx_warm, K_tx); see ThreesimSimulationMonitor. */
++  @EncodeDefault
++  val transactionWindowEnabled: Boolean = false,
++  /** kappa_tx_warm: canonical blocks before measurement at which submission starts. */
++  @EncodeDefault
++  val transactionWarmupBlocks: Int = 0,
++  /** K_tx = min(K_tx_max, kappa_measure * N_V) canonical measurement blocks with submission. */
++  @EncodeDefault
++  val transactionMeasurementTargetBlocks: Int = 0,
++  /** Simulated time at which transaction submission started (-1 if it never started). */
++  @EncodeDefault
++  val transactionSubmissionStartTimeMs: Long = 0L,
++  /** Simulated time at which the K_tx-th measurement block was reached (0 if not reached). */
++  @EncodeDefault
++  val transactionWindowEndTimeMs: Long = 0L,
++  /** Duration of the transaction window, the TPS denominator when the window is enabled. */
++  @EncodeDefault
++  val transactionWindowDurationMs: Long = 0L,
++  /** Transactions in majority-canonical measurement blocks at the window end (TPS numerator). */
++  @EncodeDefault
++  val transactionWindowCanonicalTransactions: Int = 0
+ )
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/ThreesimSimulationRoundResultFactory.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/ThreesimSimulationRoundResultFactory.kt
+index 770b2fbf..cef8b122 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/ThreesimSimulationRoundResultFactory.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/ThreesimSimulationRoundResultFactory.kt
+@@ -84,6 +84,10 @@ class ThreesimSimulationRoundResultFactory(
+      * population. The optional raw list may intentionally be empty in production.
+      * Never recompute TCR/censoring from the retained list.
+      */
++    val transactionWindowDurationMs =
++      if (state.transactionWindowEnabled && state.transactionWindowEndTimeMs > 0L) {
++        (state.transactionWindowEndTimeMs - state.measurementStartTimeMs).coerceAtLeast(0L)
++      } else 0L
+     return RefinedExecutionAudit(
+       creation = creationAudit,
+       refinedWindowEnabled = state.refinedWindowEnabled,
+@@ -139,7 +143,15 @@ class ThreesimSimulationRoundResultFactory(
+       transactionFollowUpObservations = state.transactionFollowUpObservations,
+       proposalEntropyNormalized = normalizedEntropy(state.blocksProposedPerNode),
+       canonicalBlockHhiNormalized = normalizedHhi(state.canonicalBlocksPerNode),
+-      transactionsPerSecond = if (state.measurementDurationMs > 0L) {
++      // With the transaction window, TPS is evaluated over the K_tx transaction
++      // blocks only: transactions in majority-canonical measurement blocks when
++      // the K_tx-th block is reached, divided by the time since measurement start.
++      // A run that never reaches K_tx reports 0 (window incomplete).
++      transactionsPerSecond = if (state.transactionWindowEnabled) {
++        if (transactionWindowDurationMs > 0L) {
++          state.transactionWindowCanonicalTransactions.toDouble() / (transactionWindowDurationMs.toDouble() / 1000.0)
++        } else 0.0
++      } else if (state.measurementDurationMs > 0L) {
+         state.numberOfConfirmedTransactions.toDouble() / (state.measurementDurationMs.toDouble() / 1000.0)
+       } else 0.0,
+       transactionConfirmationRatio = state.transactionConfirmationRatio,
+@@ -167,7 +179,14 @@ class ThreesimSimulationRoundResultFactory(
+       failedSelfishMiningAttackRounds = state.failedSelfishMiningAttackRounds,
+       ambiguousSelfishMiningAttackRounds = state.ambiguousSelfishMiningAttackRounds,
+       unambiguousSelfishMiningAttackRounds = state.unambiguousSelfishMiningAttackRounds,
+-      selfishMiningSuccessProbability = state.selfishMiningSuccessProbability
++      selfishMiningSuccessProbability = state.selfishMiningSuccessProbability,
++      transactionWindowEnabled = state.transactionWindowEnabled,
++      transactionWarmupBlocks = state.transactionWarmupBlocks,
++      transactionMeasurementTargetBlocks = state.transactionMeasurementTargetBlocks,
++      transactionSubmissionStartTimeMs = state.transactionSubmissionStartTimeMs,
++      transactionWindowEndTimeMs = state.transactionWindowEndTimeMs,
++      transactionWindowDurationMs = transactionWindowDurationMs,
++      transactionWindowCanonicalTransactions = state.transactionWindowCanonicalTransactions
+     )
+   }
+ 
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/generate_execution_manifests.py b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/generate_execution_manifests.py
+index 217744f3..b6e6019a 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/generate_execution_manifests.py
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/generate_execution_manifests.py
+@@ -24,9 +24,24 @@ SIMULATOR_COLUMNS = [
+     "link_bandwidth_heterogeneity",
+     "hashing_power_concentration",
+     "number_of_attackers",
+-    "relative_transaction_load",
++    # Absolute Poisson rate of transaction submissions (tx/s), written per row by
++    # two_level_nested_lhs_monte_carlo.py (log-uniform 0.5-100 tx/s in the
++    # primary/nested/reference batches; Eq. 7 in the overload batch). The loader
++    # uses it directly; no relative load or lambda_ref is involved.
++    "transaction_arrival_rate",
+ ]
+ 
++# Carried through when present (provenance only).
++OPTIONAL_COLUMNS = [
++    # Sampled f_A. The simulator uses it when present and otherwise falls back
++    # to number_of_attackers (the realized count), so it is optional here.
++    "fraction_of_attackers",
++    "capacity_load_factor",
++    "source_operational_id",
++]
++
++TRANSACTION_SIZE_BYTES = 500
++
+ 
+ def signed_seed(master_seed: int, label: str) -> int:
+     """
+@@ -78,17 +93,75 @@ def prepare_pair_table(df: pd.DataFrame) -> pd.DataFrame:
+             + ", ".join(missing)
+         )
+ 
++    if "fraction_of_attackers" in df.columns:
++        # The simulator rejects rows whose count disagrees with f_A * N_V.
++        expected = (df["fraction_of_attackers"] * df["validating_node_count"]).round()
++        if (expected != df["number_of_attackers"]).any():
++            print(
++                "WARNING: number_of_attackers differs from round(fraction_of_attackers * "
++                "validating_node_count) in "
++                f"{int((expected != df['number_of_attackers']).sum())} rows."
++            )
++
+     return df
+ 
+ 
++def check_capacity_relative_demand(df: pd.DataFrame, u_cap: float = 1.05) -> None:
++    """
++    Overload batch, Eq. (7): transaction_arrival_rate must equal
++    u_cap * MBS / (BCI * S_tx) for every row (MBS in MB = 10^6 bytes, BCI in s,
++    S_tx in bytes). Raises if the pair CSV was generated with another rule.
++    """
++    capacity_tx_per_s = (
++        df["maximum_block_size"] * 1_000_000.0
++        / (df["block_creation_interval"] * TRANSACTION_SIZE_BYTES)
++    )
++    ratio = df["transaction_arrival_rate"] / capacity_tx_per_s
++    if not ((ratio - u_cap).abs() <= 1e-6 * u_cap).all():  # allows CSV rounding
++        raise AssertionError(
++            "Overload pair CSV: transaction_arrival_rate is not 1.05 x nominal capacity "
++            f"(observed ratio range {ratio.min():.6g}-{ratio.max():.6g})."
++        )
++
++
++def check_demand_columns(df: pd.DataFrame, name: str) -> None:
++    if "relative_transaction_load" in df.columns:
++        raise AssertionError(
++            f"{name}: contains relative_transaction_load. The revised design uses the "
++            "absolute transaction_arrival_rate only; regenerate the samples with the "
++            "revised two_level_nested_lhs_monte_carlo.py."
++        )
++    rate = df["transaction_arrival_rate"].astype(float)
++    if not (rate > 0).all() or rate.isna().any():
++        raise AssertionError(f"{name}: transaction_arrival_rate must be finite and > 0.")
++
++
+ def build_manifest(
+     pairs: pd.DataFrame,
+     rs: int,
+     re: int,
+     master_seed: int,
++    seed_scope: str = "pair",
+ ) -> pd.DataFrame:
++    """
++    seed_scope="pair" (default, as in the manuscript): every design-condition pair
++    receives its own network and event seeds. seed_scope="operational" shares seeds
++    across designs within a condition (common random numbers).
++    """
++
++    if seed_scope not in ("operational", "pair"):
++        raise ValueError("seed_scope must be 'operational' or 'pair'")
+ 
+     pairs = prepare_pair_table(pairs)
++    passthrough = [c for c in OPTIONAL_COLUMNS if c in pairs.columns]
++    # Column order: required columns, with fraction_of_attackers (if present)
++    # right after number_of_attackers, then the remaining optional columns.
++    out_columns = []
++    for c in SIMULATOR_COLUMNS:
++        out_columns.append(c)
++        if c == "number_of_attackers" and "fraction_of_attackers" in passthrough:
++            out_columns.append("fraction_of_attackers")
++    out_columns += [c for c in passthrough if c not in out_columns]
+ 
+     rows = []
+     execution_index = 0
+@@ -117,10 +190,15 @@ def build_manifest(
+             #
+             # Therefore E01 and E02 for the same S realization share
+             # exactly the same network structure/resource realization.
++            seed_key = (
++                operational_id if seed_scope == "operational"
++                else manifest_pair_id
++            )
++
+             network_seed = signed_seed(
+                 master_seed,
+                 (
+-                    f"{manifest_pair_id}"
++                    f"{seed_key}"
+                     f"|network|{network_instance}"
+                 ),
+             )
+@@ -132,7 +210,7 @@ def build_manifest(
+                 event_seed = signed_seed(
+                     master_seed,
+                     (
+-                        f"{manifest_pair_id}"
++                        f"{seed_key}"
+                         f"|network|{network_instance}"
+                         f"|event|{event_replication}"
+                     ),
+@@ -145,7 +223,7 @@ def build_manifest(
+ 
+                 row = {
+                     c: pair_dict[c]
+-                    for c in SIMULATOR_COLUMNS
++                    for c in out_columns
+                 }
+ 
+                 row.update(
+@@ -210,9 +288,13 @@ def build_manifest(
+             "network seeds."
+         )
+ 
+-    if not manifest["event_seed"].is_unique:
++    # Event seeds must differ between the executions of one pair. With
++    # seed_scope="operational" they are intentionally shared across designs.
++    if seed_scope == "pair" and not manifest["event_seed"].is_unique:
++        raise AssertionError("Event seeds are not globally unique.")
++    if manifest.groupby("manifest_pair_id")["event_seed"].nunique().min() != rs * re:
+         raise AssertionError(
+-            "Event seeds are not unique."
++            "Event seeds are not unique within a design-condition pair."
+         )
+ 
+     return manifest
+@@ -225,9 +307,14 @@ def generate_one(
+     rs: int,
+     re: int,
+     master_seed: int,
++    seed_scope: str = "pair",
++    capacity_relative_demand: bool = False,
+ ):
+ 
+     pairs = pd.read_csv(input_file)
++    check_demand_columns(prepare_pair_table(pairs), input_file.name)
++    if capacity_relative_demand:
++        check_capacity_relative_demand(pairs)
+ 
+     if len(pairs) != expected_pairs:
+         raise AssertionError(
+@@ -240,6 +327,7 @@ def generate_one(
+         rs=rs,
+         re=re,
+         master_seed=master_seed,
++        seed_scope=seed_scope,
+     )
+ 
+     output_file.parent.mkdir(
+@@ -296,6 +384,13 @@ def main():
+         default=MASTER_SEED_DEFAULT,
+     )
+ 
++    parser.add_argument(
++        "--seed-scope",
++        choices=["pair", "operational"],
++        default="pair",
++        help="Share network/event seeds across designs (operational) or not (pair).",
++    )
++
+     args = parser.parse_args()
+ 
+     d = args.samples_dir.expanduser().resolve()
+@@ -307,69 +402,41 @@ def main():
+             "or pass --samples-dir with the correct path."
+         )
+ 
+-    # ---------------------------------------------------------
+-    # 64 x 48 preliminary / nested experiment
+-    # ---------------------------------------------------------
+-
+-    generate_one(
+-        input_file=
+-            d / "nested_design_operational_pairs_64x48.csv",
+-
+-        output_file=
+-            d / (
+-                f"nested_design_operational_pairs_64x48_"
+-                f"rs{args.rs}re{args.re}_"
+-                f"master{args.master_seed}.csv"
+-            ),
+-
+-        expected_pairs=64 * 48,
+-        rs=args.rs,
+-        re=args.re,
+-        master_seed=args.master_seed,
+-    )
+-
+-    # ---------------------------------------------------------
+-    # 128 x 96 primary experiment
+-    # ---------------------------------------------------------
+-
+-    generate_one(
+-        input_file=
+-            d / "nested_design_operational_pairs_128x96.csv",
+-
+-        output_file=
+-            d / (
+-                f"nested_design_operational_pairs_128x96_"
+-                f"rs{args.rs}re{args.re}_"
+-                f"master{args.master_seed}.csv"
+-            ),
+-
+-        expected_pairs=128 * 96,
+-        rs=args.rs,
+-        re=args.re,
+-        master_seed=args.master_seed,
+-    )
+-
+-    # ---------------------------------------------------------
+-    # 128 x 32 design-relative overload sensitivity
+-    # ---------------------------------------------------------
+-
+-    generate_one(
+-        input_file=
+-            d / "overload_105pct_128x32.csv",
+-
+-        output_file=
+-            d / (
+-                f"overload_105pct_128x32_"
+-                f"rs{args.rs}re{args.re}_"
+-                f"master{args.master_seed}.csv"
++    # Pair CSVs written by the revised two_level_nested_lhs_monte_carlo.py.
++    # Each batch accepts the generator's file name or the older/renamed one.
++    batches = [
++        # (accepted input names, output stem, expected pairs, Eq. 7 check, required)
++        (["simulation_nested_64x48.csv", "nested_design_operational_pairs_64x48.csv"],
++         "nested_64x48", 64 * 48, False, True),
++        (["simulation_primary_128x96.csv", "nested_design_operational_pairs_128x96.csv"],
++         "primary_128x96", 128 * 96, False, True),
++        (["simulation_overload_105pct_128x32.csv", "overload_105pct_128x32.csv"],
++         "overload_105pct_128x32", 128 * 32, True, True),
++        (["homogeneous_reference_128x1.csv"],
++         "reference_homogeneous_128x1", 128, False, False),
++    ]
++    for names, stem, expected, eq7, required in batches:
++        found = [d / n for n in names if (d / n).is_file()]
++        if not found:
++            msg = f"{stem}: none of {', '.join(names)} found in {d}"
++            if required:
++                raise FileNotFoundError(msg)
++            print(f"SKIPPED {msg}\n")
++            continue
++        if len(found) > 1:
++            print(f"NOTE {stem}: several inputs present, using {found[0].name}")
++        generate_one(
++            input_file=found[0],
++            output_file=d / "manifests" / (
++                f"{stem}_rs{args.rs}re{args.re}_master{args.master_seed}.csv"
+             ),
+-
+-        expected_pairs=128 * 32,
+-        rs=args.rs,
+-        re=args.re,
+-        master_seed=args.master_seed,
+-    )
+-
++            expected_pairs=expected,
++            rs=args.rs,
++            re=args.re,
++            master_seed=args.master_seed,
++            seed_scope=args.seed_scope,
++            capacity_relative_demand=eq7,
++        )
+ 
+ if __name__ == "__main__":
+     main()
+\ No newline at end of file
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py
+index 0f585b18..73c0930f 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py
+@@ -44,6 +44,35 @@ def main():
+         started=int(audit.get('selfishMiningAttackRoundsStarted',0)); succ=int(audit.get('successfulSelfishMiningAttackRounds',0)); fail=int(audit.get('failedSelfishMiningAttackRounds',0)); amb=int(audit.get('ambiguousSelfishMiningAttackRounds',0))
+         if started != succ+fail+amb:
+             print(f'[FAIL] {p.name}: SPSM count identity violated'); good=False
++        # Transaction gossip must reach every validator. Knowledge entries are kept for
++        # the whole run, so a working gossip layer gives ~ submissions * N_V entries.
++        # (A single-slot network callback once disabled gossip: ratio = 1/N_V.)
++        submitted=int(audit.get('totalTransactionSubmissionsAllPhases',0) or 0)
++        known=int(audit.get('maxTransactionKnowledgeEntriesObserved',0) or 0)
++        nv=int(creation.get('validatingNodeCount',0) or 0)
++        if submitted>0 and nv>0 and known < 0.99*submitted*nv:
++            print(f'[FAIL] {p.name}: transaction gossip coverage {known/(submitted*nv):.3f} < 0.99'); good=False
++        if not inp.get('lambda_tx_effective'):
++            print(f'[FAIL] {p.name}: lambda_tx_effective missing (simulator predates demand fix)'); good=False
++        elif inp.get('transaction_arrival_rate') in (None, ''):
++            print(f'[FAIL] {p.name}: manifest has no transaction_arrival_rate (old rho-based manifest)'); good=False
++        elif abs(float(inp['lambda_tx_effective']) - float(inp['transaction_arrival_rate'])) > 1e-9 * max(1.0, float(inp['transaction_arrival_rate'])):
++            print(f'[FAIL] {p.name}: simulated rate {inp["lambda_tx_effective"]} != manifest transaction_arrival_rate {inp["transaction_arrival_rate"]}'); good=False
++        # Transaction window (manuscript): submission from kappa_tx_warm blocks before
++        # measurement until K_tx = min(K_tx_max, kappa_measure * N_V) measurement blocks.
++        if not audit.get('transactionWindowEnabled'):
++            print(f'[FAIL] {p.name}: transaction window not enabled (old jar, or transaction_measurement_blocks_max = 0)'); good=False
++        else:
++            kmeas=int(audit.get('measuredBlocksPerValidator',0) or 0)
++            expected_ktx=min(100, kmeas*nv) if nv>0 else None
++            if expected_ktx is not None and int(audit.get('transactionMeasurementTargetBlocks',0)) != expected_ktx:
++                print(f'[WARN] {p.name}: K_tx = {audit.get("transactionMeasurementTargetBlocks")} differs from min(100, kappa_measure*N_V) = {expected_ktx}')
++            if int(audit.get('transactionWarmupBlocks',-1)) != 30:
++                print(f'[WARN] {p.name}: kappa_tx_warm = {audit.get("transactionWarmupBlocks")} (manuscript: 30)')
++            if complete and int(audit.get('transactionWindowEndTimeMs',0) or 0) <= 0:
++                print(f'[FAIL] {p.name}: run complete but transaction window end not recorded'); good=False
++        if audit.get('terminationReason','').startswith('WORKLOAD_LIMIT'):
++            print(f'[WARN] {p.name}: stopped by execution guard {audit["terminationReason"]} in phase {audit.get("executionPhaseAtTermination")}')
+         rid=inp.get('network_realization_id')
+         if rid: by_real[rid].append((p,inp,creation))
+     for rid,rr in by_real.items():
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/BlockchainSystemModelLoader.java b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/BlockchainSystemModelLoader.java
+index 73e367f6..fc35de23 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/BlockchainSystemModelLoader.java
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/BlockchainSystemModelLoader.java
+@@ -137,7 +137,23 @@ public class BlockchainSystemModelLoader {
+         final double fA = hasSampledAttackerFraction
+                 ? requiredDouble(c, "fraction_of_attackers")
+                 : Double.NaN;
+-        final double lambdaTx = requiredDouble(c, "transaction_arrival_rate");
++        // Transaction demand. An explicit absolute arrival rate (tx/s) takes
++        // precedence; the manifest generator writes it for design-relative demand
++        // (Eq. 7, overload sensitivity) and for absolute-demand designs. Otherwise
++        // fall back to lambda_tx = rho * lambda_ref (Eq. 6).
++        final boolean hasAbsoluteRate = c.containsKey("transaction_arrival_rate")
++                && c.get("transaction_arrival_rate") != null
++                && !c.get("transaction_arrival_rate").isBlank();
++        final double lambdaTx = hasAbsoluteRate
++                ? requiredDouble(c, "transaction_arrival_rate")
++                : requiredDouble(c, "relative_transaction_load") * requiredDouble(c, "lambda_ref");
++        // Record the rate actually simulated in the serialized input parameters.
++        try {
++            c.put("lambda_tx_effective", Double.toString(lambdaTx));
++            c.put("lambda_tx_source", hasAbsoluteRate ? "transaction_arrival_rate" : "relative_transaction_load*lambda_ref");
++        } catch (UnsupportedOperationException ignored) {
++            // Read-only configuration maps are allowed; the rate is still applied.
++        }
+ 
+         requireRange("connection_count", connectionCount, 1, 8);
+         requireRange("block_creation_interval", bciSeconds, 60.0, 1200.0);
+@@ -153,7 +169,8 @@ public class BlockchainSystemModelLoader {
+                     "Refined input requires fraction_of_attackers; number_of_attackers is accepted only as a pilot-compatibility fallback.");
+         }
+         if (!(lambdaTx > 0.0) || !Double.isFinite(lambdaTx)) {
+-            throw new IllegalArgumentException("transaction_arrival_rate must be finite and > 0; got " + lambdaTx);
++            throw new IllegalArgumentException(
++                    "transaction_arrival_rate (or relative_transaction_load * lambda_ref) must be finite and > 0; got " + lambdaTx);
+         }
+         if (2 * connectionCount > nv - 1) {
+             throw new IllegalArgumentException(
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulationFactory.java b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulationFactory.java
+index b96c6625..6ff02de7 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulationFactory.java
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulationFactory.java
+@@ -154,6 +154,19 @@ public class TrilemmaSimulationFactory implements Simulation {
+         boolean retainTransactionFollowUpObservations = Boolean.parseBoolean(
+                 configuration.getOrDefault("retainTransactionFollowUpObservations", "false"));
+ 
++        /*
++         * Transaction window (manuscript Sec. V): submission starts kappa_tx_warm
++         * canonical blocks before measurement and stops after
++         * K_tx = min(K_tx_max, kappa_measure * N_V) measurement blocks. The
++         * manuscript values (30, 100) are the defaults; set
++         * transaction_measurement_blocks_max = 0 to restore the legacy behaviour
++         * (submission throughout the run).
++         */
++        int transactionWarmupBlocks = Integer.parseInt(configuration.getOrDefault(
++                "transaction_warmup_blocks", "30"));
++        int transactionMeasurementBlocksMax = Integer.parseInt(configuration.getOrDefault(
++                "transaction_measurement_blocks_max", "100"));
++
+         return new ThreesimSimulationParameters(
+                 failureThroughputThreshold,
+                 shannonEntropyK,
+@@ -162,7 +175,9 @@ public class TrilemmaSimulationFactory implements Simulation {
+                 warmupBlocksPerValidator,
+                 measuredBlocksPerValidator,
+                 transactionDrainMillis,
+-                retainTransactionFollowUpObservations);
++                retainTransactionFollowUpObservations,
++                transactionWarmupBlocks,
++                transactionMeasurementBlocksMax);
+     }
+ 
+     private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulator.java b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulator.java
+index 949f96ad..27deac62 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulator.java
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulator.java
+@@ -295,8 +295,7 @@ public class TrilemmaSimulator {
+                 "validating_node_count",
+                 "node_bandwidth_heterogeneity",
+                 "link_bandwidth_heterogeneity",
+-                "hashing_power_concentration",
+-                "transaction_arrival_rate");
++                "hashing_power_concentration");
+ 
+         Map<String, String> realizationNetworkSeed = new HashMap<>();
+         Map<String, String> realizationPair = new HashMap<>();
+@@ -341,6 +340,8 @@ public class TrilemmaSimulator {
+             }
+ 
+             String signature = sampledSignature(row, sampledColumns)
++                    + "|rho=" + row.getOrDefault("relative_transaction_load", "")
++                    + "|lambda=" + row.getOrDefault("transaction_arrival_rate", "")
+                     + attackerParticipationSignature(row);
+             String previousSignature = realizationSampleSignature.putIfAbsent(realizationId, signature);
+             if (previousSignature != null && !previousSignature.equals(signature)) {
+@@ -591,13 +592,22 @@ public class TrilemmaSimulator {
+                 "validating_node_count",
+                 "node_bandwidth_heterogeneity",
+                 "link_bandwidth_heterogeneity",
+-                "hashing_power_concentration",
+-                "transaction_arrival_rate");
++                "hashing_power_concentration");
+         for (String key : required) {
+             if (!row.containsKey(key) || row.get(key).isBlank()) {
+                 throw new IllegalArgumentException("Missing or empty refined CSV column: " + key + " in row: " + row);
+             }
+         }
++        boolean hasRelativeLoad = row.containsKey("relative_transaction_load")
++                && row.get("relative_transaction_load") != null
++                && !row.get("relative_transaction_load").isBlank();
++        boolean hasAbsoluteRate = row.containsKey("transaction_arrival_rate")
++                && row.get("transaction_arrival_rate") != null
++                && !row.get("transaction_arrival_rate").isBlank();
++        if (!hasRelativeLoad && !hasAbsoluteRate) {
++            throw new IllegalArgumentException(
++                    "Refined CSV requires transaction_arrival_rate (tx/s) or relative_transaction_load: " + row);
++        }
+         boolean hasFraction = row.containsKey("fraction_of_attackers")
+                 && row.get("fraction_of_attackers") != null
+                 && !row.get("fraction_of_attackers").isBlank();
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/attack/SelfishminingSimulator.java b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/attack/SelfishminingSimulator.java
+index 5963052f..276d40df 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/attack/SelfishminingSimulator.java
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/attack/SelfishminingSimulator.java
+@@ -257,14 +257,25 @@ public class SelfishminingSimulator {
+                 "validating_node_count",
+                 "node_bandwidth_heterogeneity",
+                 "link_bandwidth_heterogeneity",
+-                "hashing_power_concentration",
+-                "transaction_arrival_rate");
++                "hashing_power_concentration");
+         for (String key : required) {
+             if (!row.containsKey(key) || row.get(key).isBlank()) {
+                 throw new IllegalArgumentException(
+                         "Missing or empty refined CSV column: " + key + " in row: " + row);
+             }
+         }
++        // Demand: the absolute transaction_arrival_rate (tx/s) is the revised input;
++        // relative_transaction_load is accepted only for legacy manifests.
++        boolean hasAbsoluteRate = row.containsKey("transaction_arrival_rate")
++                && row.get("transaction_arrival_rate") != null
++                && !row.get("transaction_arrival_rate").isBlank();
++        boolean hasRelativeLoad = row.containsKey("relative_transaction_load")
++                && row.get("relative_transaction_load") != null
++                && !row.get("relative_transaction_load").isBlank();
++        if (!hasAbsoluteRate && !hasRelativeLoad) {
++            throw new IllegalArgumentException(
++                    "Refined CSV requires transaction_arrival_rate (tx/s) or relative_transaction_load: " + row);
++        }
+         boolean hasFraction = row.containsKey("fraction_of_attackers")
+                 && row.get("fraction_of_attackers") != null
+                 && !row.get("fraction_of_attackers").isBlank();
+-- 
+2.43.0
+
