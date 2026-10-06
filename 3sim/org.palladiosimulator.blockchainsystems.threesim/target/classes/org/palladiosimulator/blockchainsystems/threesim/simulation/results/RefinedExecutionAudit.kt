@@ -156,5 +156,12 @@ data class RefinedExecutionAudit(
   val transactionWindowDurationMs: Long = 0L,
   /** Transactions in majority-canonical measurement blocks at the window end (TPS numerator). */
   @EncodeDefault
-  val transactionWindowCanonicalTransactions: Int = 0
+  val transactionWindowCanonicalTransactions: Int = 0,
+  /**
+   * b: transactions represented by one simulated transaction. Counts in this
+   * audit (submissions, knowledge entries, window transactions) are in simulated
+   * messages; transactionsPerSecond is already multiplied by b.
+   */
+  @EncodeDefault
+  val transactionBatchSize: Int = 1
 )

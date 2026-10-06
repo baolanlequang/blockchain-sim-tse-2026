@@ -42,6 +42,12 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
 ) {
   protected val randomness = RefinedExperimentRandomness(networkSeed, eventSeed)
 
+  /**
+   * Single-attacker design: combined hashing-power share of the adversarial
+   * node(s). Null keeps the legacy behaviour (attackers keep their drawn shares).
+   */
+  var adversarialHashingPowerShare: Double? = null
+
   @Volatile
   private var lastCreationAudit: RefinedCreationAudit? = null
 
@@ -73,6 +79,15 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
     )
     val maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider =
       MaliciousNodesIdProviderImpl(HashSet(attackerIds), requestedAttackers)
+
+    adversarialHashingPowerShare?.let { alpha ->
+      if (attackerIds.isNotEmpty()) {
+        val calculator = resourcePowerCalculator as?
+          org.palladiosimulator.blockchainsystems.threesim.creation.network.connectedsubgraphs.ConnectedSubgraphNetworkResourcePowerCalculator
+          ?: throw IllegalStateException("adversarialHashingPowerShare requires the connected-subgraph network.")
+        calculator.assignAdversarialHashingPowerShare(attackerIds, alpha)
+      }
+    }
 
     val nodeFactory = createBlockchainSystemNodeFactory(
       nodeAllocationResolver,

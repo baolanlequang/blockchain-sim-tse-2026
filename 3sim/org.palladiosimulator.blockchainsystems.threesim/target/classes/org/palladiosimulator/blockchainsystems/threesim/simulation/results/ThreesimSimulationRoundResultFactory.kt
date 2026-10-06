@@ -147,7 +147,7 @@ class ThreesimSimulationRoundResultFactory(
       // blocks only: transactions in majority-canonical measurement blocks when
       // the K_tx-th block is reached, divided by the time since measurement start.
       // A run that never reaches K_tx reports 0 (window incomplete).
-      transactionsPerSecond = if (state.transactionWindowEnabled) {
+      transactionsPerSecond = threesimSimulationParameters.transactionBatchSize * if (state.transactionWindowEnabled) {
         if (transactionWindowDurationMs > 0L) {
           state.transactionWindowCanonicalTransactions.toDouble() / (transactionWindowDurationMs.toDouble() / 1000.0)
         } else 0.0
@@ -186,7 +186,8 @@ class ThreesimSimulationRoundResultFactory(
       transactionSubmissionStartTimeMs = state.transactionSubmissionStartTimeMs,
       transactionWindowEndTimeMs = state.transactionWindowEndTimeMs,
       transactionWindowDurationMs = transactionWindowDurationMs,
-      transactionWindowCanonicalTransactions = state.transactionWindowCanonicalTransactions
+      transactionWindowCanonicalTransactions = state.transactionWindowCanonicalTransactions,
+      transactionBatchSize = threesimSimulationParameters.transactionBatchSize
     )
   }
 

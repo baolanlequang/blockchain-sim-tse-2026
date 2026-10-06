@@ -1,0 +1,2293 @@
+From 47ddb4d2cdb6f35809c5ab5727bfbb5ce75bcce5 Mon Sep 17 00:00:00 2001
+From: Mansur Aliyu <mansurmasama@gmail.com>
+Date: Mon, 5 Oct 2026 15:00:50 +0200
+Subject: [PATCH] Single selfish-mining attacker, transaction batching,
+ stricter pilot checks
+
+Prepared with Claude (Anthropic's AI assistant) and tested on pilot rows.
+
+Single attacker (manuscript change agreed with Niclas):
+- New manifest column adversarial_hashing_power_share (alpha, in [0, 0.25]);
+  number_of_attackers is 1 if alpha > 0, else 0.
+- The attacker holds exactly alpha of the total hashing power; honest nodes keep
+  their Dirichlet draw for H_hash, rescaled to 1 - alpha (same random stream).
+- Rows with the old fraction_of_attackers column behave exactly as before.
+  Previously the attackers' combined share was not controlled (0.00002 to 0.83
+  in the pilot), which produced majority takeovers and runs without rounds.
+
+Transaction batching (computational feasibility):
+- New manifest column transaction_batch_size (b, default 1). One simulated
+  transaction stands for b transactions: b * S_tx bytes at rate lambda_tx / b.
+  Block filling and bandwidth use are unchanged; TPS is multiplied by b; TCR and
+  CL are unchanged. b is the smallest of 1, 2, 5, 10, 20, 50, 100 that keeps the
+  expected (node, transaction) entries of a run below 1e8; b = 1 for 66% of
+  primary rows. The audit records transactionBatchSize.
+
+Sampling and manifests:
+- two_level_nested_lhs_monte_carlo.py exports adversarial_hashing_power_share
+  (same LHS values as the former f_A) and transaction_batch_size.
+- generate_execution_manifests.py requires both columns. Run IDs and seeds are
+  unchanged.
+
+verify_pilot_results.py:
+- FAILs on incomplete runs (unless --allow-incomplete), complete runs with zero
+  TPS or no window transactions, a realized attacker share or batch size that
+  differs from the manifest; warns on reorganized windows and SBR > 0.5;
+  prints termination reasons.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01VW4BVs5G9Z88DX5W1xG1Ma
+---
+ .../ThreesimBlockchainSystemFactory.kt        |   15 +
+ ...dSubgraphNetworkResourcePowerCalculator.kt |   37 +-
+ .../ThreesimSimulationParameters.kt           |    4 +-
+ .../results/RefinedExecutionAudit.kt          |    9 +-
+ .../ThreesimSimulationRoundResultFactory.kt   |    5 +-
+ .../generate_execution_manifests.py           |   36 +-
+ .../pilot_tools/verify_pilot_results.py       |   33 +-
+ .../two_level_nested_lhs_monte_carlo.py       | 1802 +++++++++++++++++
+ .../trilemma/BlockchainSystemModelLoader.java |   41 +-
+ .../trilemma/TrilemmaSimulationFactory.java   |   11 +-
+ .../trilemma/TrilemmaSimulator.java           |   23 +-
+ 11 files changed, 1983 insertions(+), 33 deletions(-)
+ create mode 100644 trilemma/org.palladiosimulator.blockchainsystems.trilemma/refined_sampling/two_level_nested_lhs_monte_carlo.py
+
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/creation/ThreesimBlockchainSystemFactory.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/creation/ThreesimBlockchainSystemFactory.kt
+index d04168bf..b077b926 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/creation/ThreesimBlockchainSystemFactory.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/creation/ThreesimBlockchainSystemFactory.kt
+@@ -42,6 +42,12 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
+ ) {
+   protected val randomness = RefinedExperimentRandomness(networkSeed, eventSeed)
+ 
++  /**
++   * Single-attacker design: combined hashing-power share of the adversarial
++   * node(s). Null keeps the legacy behaviour (attackers keep their drawn shares).
++   */
++  var adversarialHashingPowerShare: Double? = null
++
+   @Volatile
+   private var lastCreationAudit: RefinedCreationAudit? = null
+ 
+@@ -74,6 +80,15 @@ abstract class ThreesimBlockchainSystemFactory @JvmOverloads constructor(
+     val maliciousNodesIdProvider: BlockchainMaliciousNodesIdProvider =
+       MaliciousNodesIdProviderImpl(HashSet(attackerIds), requestedAttackers)
+ 
++    adversarialHashingPowerShare?.let { alpha ->
++      if (attackerIds.isNotEmpty()) {
++        val calculator = resourcePowerCalculator as?
++          org.palladiosimulator.blockchainsystems.threesim.creation.network.connectedsubgraphs.ConnectedSubgraphNetworkResourcePowerCalculator
++          ?: throw IllegalStateException("adversarialHashingPowerShare requires the connected-subgraph network.")
++        calculator.assignAdversarialHashingPowerShare(attackerIds, alpha)
++      }
++    }
++
+     val nodeFactory = createBlockchainSystemNodeFactory(
+       nodeAllocationResolver,
+       resourcePowerCalculator,
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/creation/network/connectedsubgraphs/ConnectedSubgraphNetworkResourcePowerCalculator.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/creation/network/connectedsubgraphs/ConnectedSubgraphNetworkResourcePowerCalculator.kt
+index 6e7d3a96..578f7349 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/creation/network/connectedsubgraphs/ConnectedSubgraphNetworkResourcePowerCalculator.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/creation/network/connectedsubgraphs/ConnectedSubgraphNetworkResourcePowerCalculator.kt
+@@ -27,17 +27,52 @@ class ConnectedSubgraphNetworkResourcePowerCalculator(
+       .let { if (it > 0.0) it else 1.0 }
+   }
+ 
++  /** Single-attacker design: node indices holding the fixed adversarial share. */
++  private var adversarialIndices: Set<Int> = emptySet()
++  private var adversarialShare: Double? = null
++  private var sharesMaterialized = false
++
++  /**
++   * Give the adversarial node(s) a fixed combined share alpha of the total
++   * hashing power. The honest nodes keep their Dirichlet draw (same random
++   * stream), rescaled to 1 - alpha; by the aggregation property of the
++   * Dirichlet distribution their shares stay Dirichlet with the same alpha
++   * parameter. Must be called before any share is read.
++   */
++  fun assignAdversarialHashingPowerShare(adversarialNodeIds: Set<String>, alpha: Double) {
++    check(!sharesMaterialized) { "Hashing-power shares were already drawn." }
++    require(alpha in 0.0..0.5) { "Adversarial hashing-power share must lie in [0, 0.5]; got $alpha" }
++    adversarialIndices = adversarialNodeIds.map {
++      nodeIdToIndexMapping[it] ?: throw IllegalArgumentException("Unknown adversarial node $it")
++    }.toSet()
++    adversarialShare = alpha
++  }
++
+   private val hashShares: DoubleArray by lazy {
++    sharesMaterialized = true
+     val h = hashRateConcentration
+       ?: throw IllegalArgumentException("Hashing-power concentration H_hash is missing.")
+     val numberOfNodes = connectedSubgraphsTopology.subgraphs
+       .flatMap { it.nodeTemplates }
+       .sumOf { it.numberOfNodeOccurences }
+-    DirichletUtils.drawShares(
++    val drawn = DirichletUtils.drawShares(
+       numberOfNodes,
+       h,
+       randomness.network("hashing-power-allocation")
+     )
++    val alpha = adversarialShare
++    if (alpha == null || adversarialIndices.isEmpty()) {
++      drawn
++    } else {
++      require(adversarialIndices.size < numberOfNodes) { "At least one honest node is required." }
++      val honestSum = drawn.indices.filter { it !in adversarialIndices }.sumOf { drawn[it] }
++      val perAttacker = alpha / adversarialIndices.size
++      DoubleArray(numberOfNodes) { i ->
++        if (i in adversarialIndices) perAttacker
++        else if (honestSum > 0.0) drawn[i] / honestSum * (1.0 - alpha)
++        else (1.0 - alpha) / (numberOfNodes - adversarialIndices.size)
++      }
++    }
+   }
+ 
+   val realizedHashingPowerH: Double
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationParameters.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationParameters.kt
+index 2761979d..354df8d1 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationParameters.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/ThreesimSimulationParameters.kt
+@@ -39,7 +39,9 @@ class ThreesimSimulationParameters @JvmOverloads constructor(
+    * K_tx = min(K_tx_max, kappa_measure * N_V) canonical measurement blocks only.
+    * 0 disables the transaction window (legacy: submit throughout).
+    */
+-  val transactionMeasurementBlocksMax: Int = 0
++  val transactionMeasurementBlocksMax: Int = 0,
++  /** b: transactions represented by one simulated transaction; TPS is multiplied by b. */
++  val transactionBatchSize: Int = 1
+ ) {
+   val refinedWindowEnabled: Boolean
+     get() = measuredBlocksPerValidator > 0
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/RefinedExecutionAudit.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/RefinedExecutionAudit.kt
+index bac87aaa..cea12a10 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/RefinedExecutionAudit.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/RefinedExecutionAudit.kt
+@@ -156,5 +156,12 @@ data class RefinedExecutionAudit(
+   val transactionWindowDurationMs: Long = 0L,
+   /** Transactions in majority-canonical measurement blocks at the window end (TPS numerator). */
+   @EncodeDefault
+-  val transactionWindowCanonicalTransactions: Int = 0
++  val transactionWindowCanonicalTransactions: Int = 0,
++  /**
++   * b: transactions represented by one simulated transaction. Counts in this
++   * audit (submissions, knowledge entries, window transactions) are in simulated
++   * messages; transactionsPerSecond is already multiplied by b.
++   */
++  @EncodeDefault
++  val transactionBatchSize: Int = 1
+ )
+diff --git a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/ThreesimSimulationRoundResultFactory.kt b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/ThreesimSimulationRoundResultFactory.kt
+index cef8b122..32e32902 100644
+--- a/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/ThreesimSimulationRoundResultFactory.kt
++++ b/3sim/org.palladiosimulator.blockchainsystems.threesim/src/main/kotlin/org/palladiosimulator/blockchainsystems/threesim/simulation/results/ThreesimSimulationRoundResultFactory.kt
+@@ -147,7 +147,7 @@ class ThreesimSimulationRoundResultFactory(
+       // blocks only: transactions in majority-canonical measurement blocks when
+       // the K_tx-th block is reached, divided by the time since measurement start.
+       // A run that never reaches K_tx reports 0 (window incomplete).
+-      transactionsPerSecond = if (state.transactionWindowEnabled) {
++      transactionsPerSecond = threesimSimulationParameters.transactionBatchSize * if (state.transactionWindowEnabled) {
+         if (transactionWindowDurationMs > 0L) {
+           state.transactionWindowCanonicalTransactions.toDouble() / (transactionWindowDurationMs.toDouble() / 1000.0)
+         } else 0.0
+@@ -186,7 +186,8 @@ class ThreesimSimulationRoundResultFactory(
+       transactionSubmissionStartTimeMs = state.transactionSubmissionStartTimeMs,
+       transactionWindowEndTimeMs = state.transactionWindowEndTimeMs,
+       transactionWindowDurationMs = transactionWindowDurationMs,
+-      transactionWindowCanonicalTransactions = state.transactionWindowCanonicalTransactions
++      transactionWindowCanonicalTransactions = state.transactionWindowCanonicalTransactions,
++      transactionBatchSize = threesimSimulationParameters.transactionBatchSize
+     )
+   }
+ 
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/generate_execution_manifests.py b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/generate_execution_manifests.py
+index b6e6019a..66ff09d3 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/generate_execution_manifests.py
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/generate_execution_manifests.py
+@@ -24,18 +24,22 @@ SIMULATOR_COLUMNS = [
+     "link_bandwidth_heterogeneity",
+     "hashing_power_concentration",
+     "number_of_attackers",
++    # Single selfish-mining attacker: its share of total hashing power (alpha).
++    # number_of_attackers is 1 if this share is > 0, else 0.
++    "adversarial_hashing_power_share",
+     # Absolute Poisson rate of transaction submissions (tx/s), written per row by
+     # two_level_nested_lhs_monte_carlo.py (log-uniform 0.5-100 tx/s in the
+     # primary/nested/reference batches; Eq. 7 in the overload batch). The loader
+     # uses it directly; no relative load or lambda_ref is involved.
+     "transaction_arrival_rate",
++    # One simulated transaction stands for this many transactions (computational
++    # feasibility; b = 1 for most rows). The simulator submits b-sized messages at
++    # rate lambda_tx / b and multiplies TPS by b.
++    "transaction_batch_size",
+ ]
+ 
+ # Carried through when present (provenance only).
+ OPTIONAL_COLUMNS = [
+-    # Sampled f_A. The simulator uses it when present and otherwise falls back
+-    # to number_of_attackers (the realized count), so it is optional here.
+-    "fraction_of_attackers",
+     "capacity_load_factor",
+     "source_operational_id",
+ ]
+@@ -93,15 +97,14 @@ def prepare_pair_table(df: pd.DataFrame) -> pd.DataFrame:
+             + ", ".join(missing)
+         )
+ 
+-    if "fraction_of_attackers" in df.columns:
+-        # The simulator rejects rows whose count disagrees with f_A * N_V.
+-        expected = (df["fraction_of_attackers"] * df["validating_node_count"]).round()
+-        if (expected != df["number_of_attackers"]).any():
+-            print(
+-                "WARNING: number_of_attackers differs from round(fraction_of_attackers * "
+-                "validating_node_count) in "
+-                f"{int((expected != df['number_of_attackers']).sum())} rows."
+-            )
++    alpha = df["adversarial_hashing_power_share"].astype(float)
++    if not alpha.between(0.0, 0.25).all():
++        raise AssertionError("adversarial_hashing_power_share must lie in [0, 0.25].")
++    if ((alpha > 0).astype(int) != df["number_of_attackers"].astype(int)).any():
++        raise AssertionError("number_of_attackers must be 1 when adversarial_hashing_power_share > 0, else 0.")
++    b = df["transaction_batch_size"]
++    if not ((b >= 1) & (b == b.round())).all():
++        raise AssertionError("transaction_batch_size must be a positive integer.")
+ 
+     return df
+ 
+@@ -154,14 +157,7 @@ def build_manifest(
+ 
+     pairs = prepare_pair_table(pairs)
+     passthrough = [c for c in OPTIONAL_COLUMNS if c in pairs.columns]
+-    # Column order: required columns, with fraction_of_attackers (if present)
+-    # right after number_of_attackers, then the remaining optional columns.
+-    out_columns = []
+-    for c in SIMULATOR_COLUMNS:
+-        out_columns.append(c)
+-        if c == "number_of_attackers" and "fraction_of_attackers" in passthrough:
+-            out_columns.append("fraction_of_attackers")
+-    out_columns += [c for c in passthrough if c not in out_columns]
++    out_columns = list(SIMULATOR_COLUMNS) + passthrough
+ 
+     rows = []
+     execution_index = 0
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py
+index cf1ee360..cebac93e 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/pilot_tools/verify_pilot_results.py
+@@ -26,10 +26,11 @@ def find_dict(root, keys):
+ 
+ def main():
+     ap=argparse.ArgumentParser(); ap.add_argument('--results',type=Path,default=Path('result_trilemma'))
++    ap.add_argument('--allow-incomplete',action='store_true',help='do not fail the audit because some runs are incomplete')
+     a=ap.parse_args(); files=sorted(a.results.glob('result_config_*.json'))
+     if not files:
+         print('[FAIL] no result_config_*.json files found'); return 2
+-    good=True; by_real=defaultdict(list); incomplete=0; undefined_spsm=0
++    good=True; by_real=defaultdict(list); incomplete=0; undefined_spsm=0; reasons=defaultdict(int)
+     for p in files:
+         try: root=json.loads(p.read_text(encoding='utf-8'))
+         except Exception as e: print('[FAIL]',p.name,e); good=False; continue
+@@ -78,6 +79,33 @@ def main():
+             print(f'[FAIL] {p.name}: INACTIVITY stop with the transaction window (jar predates the inactivity fix)'); good=False
+         if audit.get('terminationReason','').startswith('WORKLOAD_LIMIT'):
+             print(f'[WARN] {p.name}: stopped by execution guard {audit["terminationReason"]} in phase {audit.get("executionPhaseAtTermination")}')
++        reasons[audit.get('terminationReason','?')]+=1
++        if not complete:
++            print(f'[INCOMPLETE] {p.name}: {audit.get("terminationReason")} in phase {audit.get("executionPhaseAtTermination")}')
++        # A complete run must have produced a usable transaction window.
++        if complete and audit.get('transactionWindowEnabled'):
++            if float(audit.get('transactionsPerSecond',0) or 0) <= 0:
++                print(f'[FAIL] {p.name}: complete run with zero TPS'); good=False
++            if int(audit.get('transactionFollowUpObservationCount',0) or 0) == 0:
++                print(f'[FAIL] {p.name}: complete run without measurement-window transactions'); good=False
++        # Reorganizations: blocks counted for window control but no longer canonical at the end.
++        target=int(audit.get('measurementTargetCanonicalBlocks',0) or 0)-int(audit.get('warmupTargetCanonicalBlocks',0) or 0)
++        final=int(audit.get('measurementCanonicalBlocks',0) or 0)
++        if complete and target>0 and final < 0.8*target:
++            print(f'[WARN] {p.name}: only {final} of {target} measurement blocks are canonical at the end (reorganizations)')
++        if complete and float(audit.get('staleBlockRatio',0) or 0) > 0.5:
++            print(f'[WARN] {p.name}: stale-block ratio {float(audit["staleBlockRatio"]):.2f} > 0.5')
++        # Single-attacker design: the attacker must hold exactly the manifest share.
++        alpha=inp.get('adversarial_hashing_power_share')
++        if alpha not in (None,''):
++            n_att=int(creation.get('numberOfAttackers',0) or 0)
++            if n_att != (1 if float(alpha)>0 else 0):
++                print(f'[FAIL] {p.name}: {n_att} attackers for adversarial share {alpha} (expected a single attacker)'); good=False
++            elif q_a is not None and abs(float(q_a)-float(alpha))>1e-9:
++                print(f'[FAIL] {p.name}: realized adversarial share {float(q_a):.6f} != manifest {float(alpha):.6f} (jar predates the single-attacker change)'); good=False
++        b_manifest=inp.get('transaction_batch_size')
++        if b_manifest not in (None,'') and int(float(b_manifest)) != int(audit.get('transactionBatchSize',1) or 1):
++            print(f'[FAIL] {p.name}: transaction batch size {audit.get("transactionBatchSize",1)} != manifest {b_manifest}'); good=False
+         rid=inp.get('network_realization_id')
+         if rid: by_real[rid].append((p,inp,creation))
+     for rid,rr in by_real.items():
+@@ -93,6 +121,9 @@ def main():
+         if len(eseed)!=len(set(eseed)):
+             print(f'[FAIL] {rid}: event_seed is not unique across R_E'); good=False
+     print(f'Checked {len(files)} result files; network realizations={len(by_real)}; incomplete={incomplete}; undefined SPSM={undefined_spsm}')
++    print('Termination reasons:', dict(reasons))
++    if incomplete and not a.allow_incomplete:
++        print(f'[FAIL] {incomplete} run(s) incomplete (use --allow-incomplete to audit them anyway)'); good=False
+     print('RESULT AUDIT:', 'PASS' if good else 'FAIL')
+     return 0 if good else 2
+ if __name__=='__main__': raise SystemExit(main())
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/refined_sampling/two_level_nested_lhs_monte_carlo.py b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/refined_sampling/two_level_nested_lhs_monte_carlo.py
+new file mode 100644
+index 00000000..545d1c5f
+--- /dev/null
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/refined_sampling/two_level_nested_lhs_monte_carlo.py
+@@ -0,0 +1,1802 @@
++#!/usr/bin/env python3
++"""Generate the design and operational samples for the refined 3SIM experiment.
++
++Revised to match the revised manuscript (transaction demand as an absolute rate)
++---------------------------------------------------------------------------
++* Design: 128 configurations = 120 Latin-hypercube configurations + 8 corners.
++* Operational: 96 Latin-hypercube conditions over
++  (N_V, H_node, H_link, H_hash, f_A, lambda_tx).
++* Transaction demand is the transaction-arrival rate lambda_tx, sampled on a
++  logarithmic scale in [0.5, 100] tx/s, independently of all other parameters
++  (in particular of MBS and BCI, so the LHS parameters stay independent).
++* Every simulation CSV exports the simulator-facing rate directly in the column
++  ``transaction_arrival_rate`` (tx/s). No relative load and no lambda_ref are used
++  anywhere, so the simulator must not derive the rate from another column.
++* Homogeneous operational reference: one additional condition with all H values
++  and f_A equal to zero and the geometric midpoints of N_V (141) and lambda_tx
++  (sqrt(0.5 * 100) = 7.071 tx/s).
++* Nested preliminary stage: 64 design configurations x 48 operational conditions.
++* Separate overload sensitivity (manuscript Eq. 7): 32 space-filling conditions
++  over the five non-demand operational coordinates, crossed with the 128 designs,
++  with a design-specific rate
++      transaction_arrival_rate = u_cap * MBS / (BCI * S_tx),  u_cap = 1.05,
++  exported per row. u_cap is also exported (capacity_load_factor) for audit.
++
++Continuity with the earlier (rho-based) sample
++----------------------------------------------
++The operational LHS, seeds and selectors are unchanged. The sixth LHS coordinate
++u that previously gave rho = 0.50 + 0.55 u now gives lambda_tx = 0.5 * 200**u.
++Because the sampling coordinates are identical (log-scaled lambda_tx equals u, as
++linearly scaled rho did), all design/operational IDs, the nested 64x48 subset and
++the 32 overload base conditions are the same as before; only the demand values
++change. Results of the old batches cannot be reused, because the simulator build
++and the demand both change.
++
++Important sampling details
++--------------------------
++* C in [1, 8], BCI in [60, 1200] s, MBS in [0.25, 8] MB.
++* N_V in [20, 1000], H_node in [0, 0.50], H_link in [0, 0.40],
++  H_hash in [0, 0.50], f_A in [0, 0.25], lambda_tx in [0.5, 100] tx/s.
++* BCI, MBS, N_V and lambda_tx use logarithmic transforms.
++* H_node, H_link, H_hash and f_A use linear transforms.
++* The topology is feasible only when 2*C <= N_V - 1.
++* H_node and H_hash use allocation dimension m=N_V; H_link uses m=2*C.
++* For H=0, equal shares are assigned. For 0<H<1,
++      alpha(m,H) = (1-H)/(m*H).
++* f_A is the hashing-power share of a single selfish-mining attacker and is
++  exported as adversarial_hashing_power_share (number_of_attackers = 1 if
++  f_A > 0, else 0). Earlier versions treated f_A as a fraction of nodes; the
++  attacker count is derived deterministically and exported as well.
++
++Execution settings recorded in sample_metadata.json (applied by the simulator)
++-----------------------------------------------------------------------------
++* transaction window: submission starts kappa_tx_warm = 30 canonical blocks before
++  the measurement window and stops after K_tx = min(K_tx_max = 100,
++  kappa_measure * N_V) canonical measurement blocks.
++
++Unspecified implementation choices recorded for reproducibility
++---------------------------------------------------------------
++The manuscript does not numerically fix the number of candidate design Latin
++hypercubes or the exact selector for the nested 64/48 subsets. This script keeps
++the original explicit choices: candidate maximin selection for the 120-point
++design LHS and deterministic greedy-maximin subset selection for the nested and
++32-condition secondary samples. All choices are written to sample_metadata.json.
++
++Default fixed settings
++----------------------
++* S_tx = 500 bytes, 1 MB = 1,000,000 bytes
++* u_cap = 1.05
++* master seed = 1024
++
++Example
++-------
++python two_level_nested_lhs_monte_carlo.py --out generated_samples
++
++Dependencies: numpy, pandas, scipy.
++"""
++
++from __future__ import annotations
++
++import argparse
++import hashlib
++import itertools
++import json
++import math
++from collections import Counter, deque
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Iterable, Sequence
++
++import numpy as np
++import pandas as pd
++from scipy.spatial.distance import pdist
++from scipy.stats import qmc
++
++
++# ---------------------------------------------------------------------------
++# MANUSCRIPT TRACEABILITY: Sections IV-A and V-A/V-B
++# ---------------------------------------------------------------------------
++# This generator intentionally distinguishes:
++#   * design configuration = values of C, BCI, and MBS;
++#   * operational condition = values of N_V, H_node, H_link, H_hash, f_A,
++#     and the transaction-arrival rate lambda_tx.
++#
++# lambda_tx is sampled directly (log scale, 0.5-100 tx/s) and exported as
++# transaction_arrival_rate. In the overload batch it is derived per design from
++# Eq. 7 and exported in the same column.
++#
++# The constants below reproduce the parameter domains and sample sizes stated
++# in the manuscript.  Keeping them together makes it easy to audit whether a
++# generated CSV still corresponds to the reported experiment.
++#
++# IMPORTANT: values such as Dirichlet alpha, allocation dimensions, attacker
++# count, and realized attacker fraction are translations/diagnostics.  They are
++# not additional sampled design or operational parameters.
++# ---------------------------------------------------------------------------
++# Manuscript-defined ranges/sizes
++# ---------------------------------------------------------------------------
++C_MIN, C_MAX = 1, 8
++BCI_MIN, BCI_MAX = 60, 1200  # seconds
++MBS_MIN, MBS_MAX = 0.25, 8.0  # MB
++
++NV_MIN, NV_MAX = 20, 1000
++HNODE_MIN, HNODE_MAX = 0.0, 0.50
++HLINK_MIN, HLINK_MAX = 0.0, 0.40
++HHASH_MIN, HHASH_MAX = 0.0, 0.50
++FA_MIN, FA_MAX = 0.0, 0.25
++LAMBDA_MIN, LAMBDA_MAX = 0.5, 100.0  # tx/s; transaction-arrival rate, log scale
++TX_SIZE_BYTES_DEFAULT = 500.0
++U_CAP_OVERLOAD = 1.05  # Eq. 7: overload demand = 1.05 x nominal capacity of each design
++# Execution settings of the revised method (applied by the simulator, recorded here)
++KAPPA_TX_WARM = 30
++# Transaction batching (computational feasibility): see transaction_batch_size().
++E_MAX_SIMULATED_ENTRIES = 1.0e8
++BATCH_OPTIONS = (1, 2, 5, 10, 20, 50, 100)
++K_TX_MAX = 100
++
++N_DESIGN_LHS = 120
++N_DESIGN_FINAL = 128
++N_DESIGN_INITIAL = 64
++N_OPERATIONAL_FINAL = 96
++N_OPERATIONAL_INITIAL = 48
++N_SENSITIVITY = 32
++
++
++@dataclass(frozen=True)
++class ScriptChoices:
++    """Implementation choices that are not fixed numerically by the manuscript."""
++
++    design_candidate_count: int
++    nested_subset_method: str = "greedy maximin in manuscript sampling coordinates"
++    design_initial_forces_all_8_corners: bool = False
++    sensitivity_interpretation: str = "greedy maximin 32-point subset of operational_96 using the five non-demand coordinates"
++    mb_bytes: int = 1_000_000
++    mc_z: float = 6.0
++    mc_abs_tol: float = 0.01
++
++
++
++# ---------------------------------------------------------------------------
++# MANUSCRIPT TRACEABILITY: Table II / Table III parameter terminology
++# ---------------------------------------------------------------------------
++# The internal short names mirror the mathematical notation used in Sections
++# IV and V, while exported CSVs use descriptive names intended for the
++# simulator and replication package.
++#
++# The separation below is deliberate:
++#   sampled parameter columns -> define design configurations/operational conditions;
++#   derived columns           -> translate those sampled values into executable inputs
++#                                or retain diagnostics for later interpretation.
++# ---------------------------------------------------------------------------
++# User-facing CSV parameter names (close to the manuscript)
++# ---------------------------------------------------------------------------
++#
++# The implementation keeps short internal symbols such as C, NV, H_node, etc.
++# because those names map directly to the manuscript equations. However, all
++# CSV files intended for experiment setup use the descriptive names below.
++#
++# Sampled design parameters:
++#   C       -> connection_count
++#   BCI     -> block_creation_interval
++#   MBS     -> maximum_block_size
++#
++# Sampled operational parameters:
++#   N_V     -> validating_node_count
++#   H_node  -> node_bandwidth_heterogeneity
++#   H_link  -> link_bandwidth_heterogeneity
++#   H_hash  -> hashing_power_concentration
++#   f_A       -> adversarial_hashing_power_share (single attacker's share)
++#   lambda_tx -> transaction_arrival_rate (tx/s)
++#
++# Overload batch: transaction_arrival_rate = 1.05 * MBS / (BCI * S_tx) per design
++# (Eq. 7); the factor 1.05 is exported as capacity_load_factor.
++#
++# Derived quantities (Dirichlet alphas, allocation dimensions, topology
++# feasibility, etc.) are kept out of the main simulation-input CSV.
++
++PARAMETER_CSV_NAMES = {
++    "C": "connection_count",
++    "BCI_s": "block_creation_interval",
++    "MBS_MB": "maximum_block_size",
++    "NV": "validating_node_count",
++    "H_node": "node_bandwidth_heterogeneity",
++    "H_link": "link_bandwidth_heterogeneity",
++    "H_hash": "hashing_power_concentration",
++    # f_A is the hashing-power share of the single selfish-mining attacker
++    # (Eyal & Sirer's alpha); exported under a descriptive name.
++    "f_A": "adversarial_hashing_power_share",
++    "lambda_tx": "transaction_arrival_rate",
++}
++
++DERIVED_CSV_NAMES = {
++    "m_node": "node_bandwidth_allocation_dimension",
++    "m_hash": "hashing_power_allocation_dimension",
++    "m_link": "link_bandwidth_allocation_dimension",
++    "alpha_node": "node_bandwidth_dirichlet_alpha",
++    "alpha_hash": "hashing_power_dirichlet_alpha",
++    "alpha_link": "link_bandwidth_dirichlet_alpha",
++    "m_eff_node": "effective_node_bandwidth_recipient_count",
++    "m_eff_hash": "effective_hashing_power_recipient_count",
++    "m_eff_link": "effective_link_bandwidth_recipient_count",
++    "aggregate_block_rate_per_s": "aggregate_block_production_rate",
++    "theoretical_capacity_tx_per_s": "theoretical_transaction_capacity",
++    "N_A": "number_of_attackers",
++    "f_A_realized": "realized_adversarial_hashing_power_share",
++    "batch_b": "transaction_batch_size",
++    "expected_simulated_knowledge_entries": "expected_simulated_transaction_knowledge_entries",
++}
++
++PARAMETER_UNITS = {
++    "connection_count": "connections per validating node initiated and accepted",
++    "block_creation_interval": "seconds",
++    "maximum_block_size": "MB",
++    "validating_node_count": "validating nodes",
++    "node_bandwidth_heterogeneity": "normalized concentration",
++    "link_bandwidth_heterogeneity": "normalized concentration",
++    "hashing_power_concentration": "normalized concentration",
++    "adversarial_hashing_power_share": "share of total hashing power held by the single attacker",
++    "transaction_batch_size": "transactions represented by one simulated transaction message (derived)",
++    "transaction_arrival_rate": "transactions per second (Poisson rate of submissions)",
++    "capacity_load_factor": "u_cap in Eq. 7 (overload batch only)",
++    "number_of_attackers": "validating nodes (derived: 1 if share > 0, else 0)",
++    "realized_adversarial_hashing_power_share": "share (derived diagnostic, equals the sampled share)",
++}
++
++
++def _descriptive_csv_names(df: pd.DataFrame, *, include_derived: bool = False) -> pd.DataFrame:
++    """Return a copy with manuscript-like, human-readable CSV column names."""
++    mapping = dict(PARAMETER_CSV_NAMES)
++    if include_derived:
++        mapping.update(DERIVED_CSV_NAMES)
++    return df.rename(columns=mapping).copy()
++
++
++def _design_csv(design: pd.DataFrame) -> pd.DataFrame:
++    """Final design sample with clearly named sampled design parameters."""
++    cols = ["design_id", "C", "BCI_s", "MBS_MB", "source", "is_boundary"]
++    return _descriptive_csv_names(design[cols])
++
++
++def _operational_csv(operational: pd.DataFrame) -> pd.DataFrame:
++    """Final operational sample containing only the six sampled operational parameters."""
++    cols = [
++        "operational_id",
++        "NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx",
++    ]
++    return _descriptive_csv_names(operational[cols])
++
++
++def _primary_simulation_csv(primary_pairs: pd.DataFrame) -> pd.DataFrame:
++    """Primary crossed sample with the nine experimental parameters.
++
++    ``lambda_tx`` (transaction_arrival_rate, tx/s) is the sampled workload
++    parameter and is passed to the simulator unchanged.
++
++    ``N_A`` and ``f_A_realized`` are retained as explicitly derived diagnostics,
++    not additional sampled parameters.
++    """
++    cols = [
++        "design_id", "operational_id",
++        "C", "BCI_s", "MBS_MB",
++        "NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx",
++        "N_A", "batch_b",
++    ]
++    return _descriptive_csv_names(primary_pairs[cols], include_derived=True)
++
++
++def _overload_simulation_csv(overload_pairs: pd.DataFrame) -> pd.DataFrame:
++    """Separate 105%-capacity sensitivity sample (manuscript Eq. 7).
++
++    transaction_arrival_rate is design-specific: 1.05 * MBS / (BCI * S_tx).
++    capacity_load_factor (= 1.05) is exported for audit only; the simulator must
++    use transaction_arrival_rate.
++    """
++    cols = [
++        "design_id", "sensitivity_id", "source_operational_id",
++        "C", "BCI_s", "MBS_MB",
++        "NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx",
++        "u_cap", "N_A", "batch_b",
++    ]
++    out = _descriptive_csv_names(overload_pairs[cols], include_derived=True)
++    return out.rename(columns={"sensitivity_id": "overload_condition_id", "u_cap": "capacity_load_factor"})
++
++
++def _reference_simulation_csv(reference_pairs: pd.DataFrame) -> pd.DataFrame:
++    """Homogeneous reference crossed with all designs (lambda_tx at its geometric midpoint)."""
++    cols = [
++        "design_id", "operational_id",
++        "C", "BCI_s", "MBS_MB",
++        "NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx",
++        "N_A", "batch_b",
++    ]
++    return _descriptive_csv_names(reference_pairs[cols], include_derived=True)
++
++
++# ---------------------------------------------------------------------------
++# LOW-LEVEL REPRODUCIBILITY AND MATHEMATICAL UTILITIES
++# ---------------------------------------------------------------------------
++# These helpers implement transformations used repeatedly by the sampling,
++# translation, and verification stages.  They do not define additional
++# experimental factors.
++#
++# _derived_seed() is especially important for reproducibility: every stochastic
++# construction receives a deterministic seed derived from the master seed plus
++# a descriptive label.  This lets the replication package reproduce individual
++# candidates and verification draws without relying on global RNG state.
++# ---------------------------------------------------------------------------
++
++def _log_interp(u: np.ndarray, lo: float, hi: float) -> np.ndarray:
++    return np.exp(np.log(lo) + u * (np.log(hi) - np.log(lo)))
++
++
++def _scale_linear(x: np.ndarray, lo: float, hi: float) -> np.ndarray:
++    return (x - lo) / (hi - lo)
++
++
++def _scale_log(x: np.ndarray, lo: float, hi: float) -> np.ndarray:
++    return (np.log(x) - np.log(lo)) / (np.log(hi) - np.log(lo))
++
++
++def _derived_seed(master_seed: int, label: str, index: int = 0) -> int:
++    """Stable 64-bit seed derived from a master seed and text label."""
++    payload = f"{master_seed}|{label}|{index}".encode("utf-8")
++    digest = hashlib.blake2b(payload, digest_size=8).digest()
++    return int.from_bytes(digest, "little", signed=False)
++
++
++def _lhs(n: int, d: int, seed: int) -> np.ndarray:
++    # Plain scrambled LHS. We do not use scipy's discrepancy optimization because
++    # the manuscript specifically describes candidate selection for the design LHS.
++    return qmc.LatinHypercube(d=d, scramble=True, seed=seed).random(n=n)
++
++
++def _min_distance(coords: np.ndarray) -> float:
++    if len(coords) < 2:
++        return math.inf
++    return float(np.min(pdist(coords, metric="euclidean")))
++
++
++def _unique_rows(df: pd.DataFrame, cols: Sequence[str]) -> bool:
++    return not df.duplicated(subset=list(cols)).any()
++
++
++def _round_half_away_nonnegative(x: np.ndarray | float) -> np.ndarray | int:
++    """round(x) for nonnegative values with .5 rounded upward.
++
++    Python/NumPy use bankers' rounding. The manuscript only says 'rounding'; this
++    helper makes the rule explicit and stable for positive counts/times.
++    """
++    arr = np.asarray(x)
++    out = np.floor(arr + 0.5).astype(int)
++    if np.ndim(x) == 0:
++        return int(out)
++    return out
++
++
++def normalized_concentration(shares: np.ndarray) -> float:
++    """Equation (3): normalized concentration H(p)."""
++    p = np.asarray(shares, dtype=float)
++    m = p.size
++    if m < 2:
++        raise ValueError("Normalized concentration requires allocation dimension m >= 2.")
++    if np.any(p < -1e-15):
++        raise ValueError("Shares must be nonnegative.")
++    s = p.sum()
++    if not np.isclose(s, 1.0, rtol=1e-10, atol=1e-12):
++        raise ValueError(f"Shares must sum to one; got {s}.")
++    return float((m * np.sum(p * p) - 1.0) / (m - 1.0))
++
++
++def alpha_from_h(m: int, h: float) -> float | None:
++    """Equation (4). Returns None for H=0, which is handled by equal shares."""
++    if m < 2:
++        raise ValueError(f"Allocation dimension must be >=2; got m={m}.")
++    if not (0.0 <= h < 1.0):
++        raise ValueError(f"H must satisfy 0 <= H < 1; got H={h}.")
++    if h == 0.0:
++        return None
++    return (1.0 - h) / (m * h)
++
++
++def effective_recipient_count(m: int, h: float) -> float:
++    """Equation (14): effective number of equally resourced recipients."""
++    if m < 1:
++        raise ValueError("m must be positive.")
++    if not (0.0 <= h <= 1.0):
++        raise ValueError("H must lie in [0,1].")
++    return m / (1.0 + (m - 1.0) * h)
++
++
++def draw_shares(m: int, h: float, rng: np.random.Generator, size: int | None = None) -> np.ndarray:
++    """Translate a target H into equal or symmetric-Dirichlet shares."""
++    alpha = alpha_from_h(m, h)
++    if alpha is None:
++        if size is None:
++            return np.full(m, 1.0 / m)
++        return np.full((size, m), 1.0 / m)
++    return rng.dirichlet(np.full(m, alpha, dtype=float), size=size)
++
++
++# ---------------------------------------------------------------------------
++# SAMPLING TRANSFORMS: Section V-A and Section V-B
++# ---------------------------------------------------------------------------
++# Design LHS coordinates:
++#   C   -> mapped to integer values 1..8
++#   BCI -> logarithmic scale, then rounded to integer seconds
++#   MBS -> logarithmic scale
++#
++# Operational LHS coordinates:
++#   N_V       -> logarithmic scale, then rounded to an integer
++#   H_node    -> linear scale
++#   H_link    -> linear scale
++#   H_hash    -> linear scale
++#   f_A       -> linear scale
++#   lambda_tx -> logarithmic scale (0.5-100 tx/s)
++#
++# Sampling is performed in normalized LHS space first and then transformed to
++# the physical parameter domains.  Derived quantities such as alpha and N_A
++# are computed only after design and operational samples are crossed.
++# ---------------------------------------------------------------------------
++
++# Section V-B: transform a 3-D LHS point into one design configuration.
++# C is discretized only after LHS generation; BCI and MBS are transformed on
++# logarithmic scales to preserve space-filling coverage across wide ranges.
++def transform_design_lhs(u: np.ndarray) -> pd.DataFrame:
++    if u.shape[1] != 3:
++        raise ValueError("Design LHS must have 3 dimensions.")
++    # Map the stratified unit-interval coordinate to one of the eight allowed C values.
++    c = np.floor(u[:, 0] * (C_MAX - C_MIN + 1)).astype(int) + C_MIN
++    c = np.clip(c, C_MIN, C_MAX)
++    bci = _round_half_away_nonnegative(_log_interp(u[:, 1], BCI_MIN, BCI_MAX))
++    bci = np.clip(bci, BCI_MIN, BCI_MAX)
++    mbs = _log_interp(u[:, 2], MBS_MIN, MBS_MAX)
++    return pd.DataFrame({"C": c, "BCI_s": bci, "MBS_MB": mbs})
++
++
++def design_sampling_coords(df: pd.DataFrame) -> np.ndarray:
++    return np.column_stack(
++        [
++            _scale_linear(df["C"].to_numpy(float), C_MIN, C_MAX),
++            _scale_log(df["BCI_s"].to_numpy(float), BCI_MIN, BCI_MAX),
++            _scale_log(df["MBS_MB"].to_numpy(float), MBS_MIN, MBS_MAX),
++        ]
++    )
++
++
++# Section V-B: enumerate all 2^3 combinations of lower/upper design bounds.
++# These eight boundary configurations supplement the 120 interior LHS points.
++def design_corners() -> pd.DataFrame:
++    rows = [
++        {"C": c, "BCI_s": bci, "MBS_MB": mbs, "source": "boundary"}
++        for c, bci, mbs in itertools.product(
++            (C_MIN, C_MAX), (BCI_MIN, BCI_MAX), (MBS_MIN, MBS_MAX)
++        )
++    ]
++    return pd.DataFrame(rows)
++
++
++def _replace_duplicate_design_rows(
++    df: pd.DataFrame,
++    master_seed: int,
++    candidate_id: int,
++    forbidden: set[tuple[int, int, float]] | None = None,
++) -> tuple[pd.DataFrame, int]:
++    """Deterministically replace duplicate/transformation-colliding design rows.
++
++    Replacement points are generated from independent one-point scrambled LHS draws
++    using derived seeds. This implements the manuscript statement that duplicates
++    created by integer conversion are replaced, while keeping the procedure fully
++    reproducible and auditable.
++    """
++    out = df.copy().reset_index(drop=True)
++    forbidden = set() if forbidden is None else set(forbidden)
++    seen: set[tuple[int, int, float]] = set()
++    replacements = 0
++    for i in range(len(out)):
++        key = (int(out.at[i, "C"]), int(out.at[i, "BCI_s"]), float(out.at[i, "MBS_MB"]))
++        attempt = 0
++        while key in seen or key in forbidden:
++            seed = _derived_seed(master_seed, f"design_duplicate_replacement_{candidate_id}_{i}", attempt)
++            repl = transform_design_lhs(_lhs(1, 3, seed)).iloc[0]
++            key = (int(repl["C"]), int(repl["BCI_s"]), float(repl["MBS_MB"]))
++            attempt += 1
++            if attempt > 10000:
++                raise RuntimeError("Could not generate a unique replacement design point.")
++        if attempt:
++            out.loc[i, ["C", "BCI_s", "MBS_MB"]] = [key[0], key[1], key[2]]
++            replacements += 1
++        seen.add(key)
++    out["C"] = out["C"].astype(int)
++    out["BCI_s"] = out["BCI_s"].astype(int)
++    return out, replacements
++
++
++# Section V-B: construct the reported 128-design sample.
++# Multiple reproducible 120-point LHS candidates are generated, transformed,
++# de-duplicated after integer mapping, augmented with the same eight boundary
++# configurations, and compared by their minimum pairwise distance.
++def generate_design_sample(master_seed: int, n_candidates: int) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
++    """Generate 120 candidate-LHS points, select maximin candidate, add 8 corners."""
++    if n_candidates < 1:
++        raise ValueError("design candidate count must be >= 1")
++
++    all_candidates: list[pd.DataFrame] = []
++    scores: list[dict] = []
++    best_df: pd.DataFrame | None = None
++    best_score = -math.inf
++    best_seed = None
++    best_id = None
++
++    for candidate_id in range(n_candidates):
++        seed = _derived_seed(master_seed, "design_lhs_candidate", candidate_id)
++        raw = _lhs(N_DESIGN_LHS, 3, seed)
++        df = transform_design_lhs(raw)
++        corner_keys = set(
++            (int(r.C), int(r.BCI_s), float(r.MBS_MB))
++            for r in design_corners().itertuples(index=False)
++        )
++        df, replacement_count = _replace_duplicate_design_rows(
++            df, master_seed, candidate_id, forbidden=corner_keys
++        )
++        unique = _unique_rows(df, ["C", "BCI_s", "MBS_MB"])
++        # Section V-B describes the maximin comparison for the 120-point LHS
++        # that supplies the interior design sample. The eight boundary points are
++        # appended only after the best LHS candidate has been selected. Scoring
++        # the interior LHS alone keeps the implementation faithful to that order.
++        score = _min_distance(design_sampling_coords(df))
++
++        candidate_copy = df.copy()
++        candidate_copy.insert(0, "candidate_id", candidate_id)
++        candidate_copy.insert(1, "candidate_seed", seed)
++        candidate_copy.insert(2, "candidate_min_distance", score)
++        candidate_copy.insert(3, "candidate_unique", unique)
++        candidate_copy.insert(4, "duplicate_replacements", replacement_count)
++        candidate_copy.insert(5, "candidate_row", np.arange(1, len(candidate_copy) + 1))
++        all_candidates.append(candidate_copy)
++        scores.append(
++            {
++                "candidate_id": candidate_id,
++                "candidate_seed": seed,
++                "candidate_min_distance": score,
++                "candidate_unique": bool(unique),
++                "duplicate_replacements": int(replacement_count),
++            }
++        )
++
++        if score > best_score:
++            best_score = score
++            best_seed = seed
++            best_id = candidate_id
++            best_df = df.copy()
++
++    if best_df is None:
++        raise RuntimeError("No valid 120-point design LHS candidate was generated.")
++
++    best_df["source"] = "lhs"
++    final = pd.concat([best_df, design_corners()], ignore_index=True)
++    if len(final) != N_DESIGN_FINAL:
++        raise AssertionError("Design sample size mismatch after adding corners.")
++    if not _unique_rows(final, ["C", "BCI_s", "MBS_MB"]):
++        raise AssertionError("Duplicate-replacement logic failed to keep design points distinct from boundaries.")
++
++    final.insert(0, "design_id", [f"D{i:03d}" for i in range(1, len(final) + 1)])
++    final["is_boundary"] = final["source"].eq("boundary")
++
++    candidates = pd.concat(all_candidates, ignore_index=True)
++    score_df = pd.DataFrame(scores).sort_values("candidate_min_distance", ascending=False)
++    metadata = {
++        "selected_candidate_id": int(best_id),
++        "selected_candidate_seed": int(best_seed),
++        "selected_candidate_min_distance_lhs_120": float(best_score),
++        "duplicate_handling": "deterministic replacement after integer conversion; boundary collisions also replaced",
++        "maximin_scoring": "minimum Euclidean distance in manuscript sampling coordinates on the 120 transformed LHS design points; 8 boundaries are appended after candidate selection",
++    }
++    return final, candidates, {**metadata, "candidate_scores": score_df.to_dict(orient="records")}
++
++
++# Section V-A/V-B: primary transaction demand.
++# lambda_tx is sampled directly on a log scale, independently of MBS and BCI, so
++# all LHS parameters remain independent.
++def transform_operational_lhs(u: np.ndarray) -> pd.DataFrame:
++    """Transform one six-dimensional LHS into manuscript operational parameters.
++
++    The sixth coordinate is the transaction-arrival rate lambda_tx (tx/s),
++    log-uniform in [LAMBDA_MIN, LAMBDA_MAX].
++    """
++    if u.shape[1] != 6:
++        raise ValueError("Operational LHS must have 6 dimensions.")
++    nv = _round_half_away_nonnegative(_log_interp(u[:, 0], NV_MIN, NV_MAX))
++    nv = np.clip(nv, NV_MIN, NV_MAX)
++    lambda_tx = _log_interp(u[:, 5], LAMBDA_MIN, LAMBDA_MAX)
++    return pd.DataFrame(
++        {
++            "NV": nv,
++            "H_node": HNODE_MIN + u[:, 1] * (HNODE_MAX - HNODE_MIN),
++            "H_link": HLINK_MIN + u[:, 2] * (HLINK_MAX - HLINK_MIN),
++            "H_hash": HHASH_MIN + u[:, 3] * (HHASH_MAX - HHASH_MIN),
++            "f_A": FA_MIN + u[:, 4] * (FA_MAX - FA_MIN),
++            "lambda_tx": lambda_tx,
++        }
++    )
++
++
++def operational_sampling_coords(df: pd.DataFrame) -> np.ndarray:
++    return np.column_stack(
++        [
++            _scale_log(df["NV"].to_numpy(float), NV_MIN, NV_MAX),
++            _scale_linear(df["H_node"].to_numpy(float), HNODE_MIN, HNODE_MAX),
++            _scale_linear(df["H_link"].to_numpy(float), HLINK_MIN, HLINK_MAX),
++            _scale_linear(df["H_hash"].to_numpy(float), HHASH_MIN, HHASH_MAX),
++            _scale_linear(df["f_A"].to_numpy(float), FA_MIN, FA_MAX),
++            _scale_log(df["lambda_tx"].to_numpy(float), LAMBDA_MIN, LAMBDA_MAX),
++        ]
++    )
++
++
++# Section V-B: generate the 96-condition operational sample.
++# N_V and lambda_tx are represented logarithmically; H_node, H_link, H_hash and
++# f_A are represented linearly.
++def generate_operational_sample(
++    master_seed: int,
++) -> tuple[pd.DataFrame, dict]:
++    """Generate the single 96-point operational LHS specified by Section V-B."""
++
++    seed = _derived_seed(master_seed, "operational_lhs", 0)
++    u = _lhs(N_OPERATIONAL_FINAL, 6, seed)
++    operational = transform_operational_lhs(u)
++
++    key_cols = ["NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx"]
++    if not _unique_rows(operational, key_cols):
++        raise RuntimeError(
++            "Integer conversion produced a duplicate complete operational condition. "
++            "Choose a different master seed and regenerate the operational LHS."
++        )
++
++    operational.insert(
++        0,
++        "operational_id",
++        [f"O{i:03d}" for i in range(1, len(operational) + 1)],
++    )
++
++    min_distance = _min_distance(operational_sampling_coords(operational))
++
++    return operational, {
++        "operational_lhs_seed": int(seed),
++        "operational_lhs_points": int(N_OPERATIONAL_FINAL),
++        "selection": "single six-dimensional LHS; no candidate maximin search",
++        "minimum_distance_audit_only": float(min_distance),
++        "sampling_dimensions": {
++            "logarithmic": ["NV", "lambda_tx"],
++            "linear": ["H_node", "H_link", "H_hash", "f_A"],
++        },
++        "sampled_workload_parameter": "lambda_tx (transaction_arrival_rate, tx/s)",
++        "lambda_tx_range_per_s": [LAMBDA_MIN, LAMBDA_MAX],
++    }
++
++
++# Section V-B: separately reported homogeneous reference.
++# N_V and lambda_tx use geometric midpoints because both are sampled
++# logarithmically.
++def homogeneous_reference() -> pd.DataFrame:
++    nv_mid = _round_half_away_nonnegative(math.sqrt(NV_MIN * NV_MAX))
++    lambda_mid = math.sqrt(LAMBDA_MIN * LAMBDA_MAX)
++    return pd.DataFrame(
++        [
++            {
++                "operational_id": "OREF",
++                "NV": nv_mid,
++                "H_node": 0.0,
++                "H_link": 0.0,
++                "H_hash": 0.0,
++                "f_A": 0.0,
++                "lambda_tx": lambda_mid,
++                "reference": "homogeneous_geometric_midpoints_NV_lambda_tx",
++            }
++        ]
++    )
++
++
++def sensitivity_sampling_coords(df: pd.DataFrame) -> np.ndarray:
++    return np.column_stack(
++        [
++            _scale_log(df["NV"].to_numpy(float), NV_MIN, NV_MAX),
++            _scale_linear(df["H_node"].to_numpy(float), HNODE_MIN, HNODE_MAX),
++            _scale_linear(df["H_link"].to_numpy(float), HLINK_MIN, HLINK_MAX),
++            _scale_linear(df["H_hash"].to_numpy(float), HHASH_MIN, HHASH_MAX),
++            _scale_linear(df["f_A"].to_numpy(float), FA_MIN, FA_MAX),
++        ]
++    )
++
++
++# ---------------------------------------------------------------------------
++# NESTED SPACE-FILLING SUBSETS: Section V-B
++# ---------------------------------------------------------------------------
++# The final primary samples contain 128 design configurations and 96
++# operational conditions.  The 64-design and 48-condition sets below are
++# selected as subsets of those final samples, so the smaller experiment can be
++# enlarged without changing the already selected points.
++#
++# The manuscript requires space-filling nested subsets but does not prescribe
++# the exact subset-selection algorithm.  This implementation therefore uses a
++# deterministic greedy maximin selector and records that choice in metadata.
++#
++# The 32-condition set is reserved for the separate design-relative overload
++# sensitivity analysis. Its demand coordinate is not inherited from the primary
++# sample; only the five non-demand operational coordinates are retained.
++# ---------------------------------------------------------------------------
++
++# Section V-B: deterministic selector for nested/secondary space-filling sets.
++# This algorithm is not claimed to preserve Latin-hypercube stratification after
++# discreteness/boundary augmentation; it is used only to obtain nested coverage.
++def greedy_maximin_subset(
++    coords: np.ndarray,
++    k: int,
++    forced_indices: Iterable[int] = (),
++) -> list[int]:
++    """Choose a deterministic nested space-filling subset by greedy maximin.
++
++    This is an explicit implementation choice because the manuscript does not give
++    the exact algorithm used to pick its nested 64/48 subsets.
++    """
++    n = len(coords)
++    if not (1 <= k <= n):
++        raise ValueError("k must satisfy 1 <= k <= n")
++
++    selected: list[int] = []
++    forced = sorted(set(int(i) for i in forced_indices))
++    if any(i < 0 or i >= n for i in forced):
++        raise IndexError("forced index out of range")
++    if len(forced) > k:
++        raise ValueError("more forced points than requested subset size")
++    selected.extend(forced)
++
++    if not selected:
++        # Start with the pair farthest apart; ties resolved by lexicographic index.
++        # For k=1, choose the point farthest from the geometric center.
++        center = np.full(coords.shape[1], 0.5)
++        if k == 1:
++            d = np.linalg.norm(coords - center, axis=1)
++            return [int(np.argmax(d))]
++        best_pair = (0, 1)
++        best_d = -1.0
++        for i in range(n - 1):
++            diff = coords[i + 1 :] - coords[i]
++            ds = np.einsum("ij,ij->i", diff, diff)
++            jrel = int(np.argmax(ds))
++            d2 = float(ds[jrel])
++            pair = (i, i + 1 + jrel)
++            if d2 > best_d or (d2 == best_d and pair < best_pair):
++                best_d = d2
++                best_pair = pair
++        selected.extend(best_pair)
++
++    selected_set = set(selected)
++    while len(selected) < k:
++        remaining = np.array([i for i in range(n) if i not in selected_set], dtype=int)
++        sel = coords[np.array(selected, dtype=int)]
++        rem = coords[remaining]
++        # Distance from each remaining point to its nearest selected point.
++        diff = rem[:, None, :] - sel[None, :, :]
++        d2 = np.sum(diff * diff, axis=2)
++        nearest = np.min(d2, axis=1)
++        # Deterministic tie break: first remaining index with maximal nearest distance.
++        pick = int(remaining[int(np.argmax(nearest))])
++        selected.append(pick)
++        selected_set.add(pick)
++
++    return selected
++
++
++def nested_design_64(design: pd.DataFrame) -> pd.DataFrame:
++    """Select the nested 64-design space-filling subset described in Section V-B.
++
++    No boundary point is forced into the subset. The eight boundary configurations
++    remain part of the final 128-design sample, while the 64-point stage is chosen
++    solely for space-filling coverage as stated in the method.
++    """
++    coords = design_sampling_coords(design)
++    idx = greedy_maximin_subset(coords, N_DESIGN_INITIAL)
++    subset = design.iloc[idx].copy()
++    subset.insert(1, "initial_stage_rank", np.arange(1, len(subset) + 1))
++    return subset
++
++
++def nested_operational_48(operational: pd.DataFrame) -> pd.DataFrame:
++    coords = operational_sampling_coords(operational)
++    idx = greedy_maximin_subset(coords, N_OPERATIONAL_INITIAL)
++    subset = operational.iloc[idx].copy()
++    subset.insert(1, "initial_stage_rank", np.arange(1, len(subset) + 1))
++    return subset
++
++
++def sensitivity_32_from_operational(operational: pd.DataFrame) -> pd.DataFrame:
++    """Select the manuscript's 32-condition space-filling sensitivity subset.
++
++    The manuscript calls this a 32-condition "subset" over the five non-demand
++    operational coordinates but does not state the exact selector. We interpret
++    "subset" literally as a subset of operational_96 and choose it with the same
++    deterministic greedy-maximin rule used for the other nested subsets. The
++    transaction-arrival rate is added only after crossing this subset with the
++    designs, as 1.05 x each design's nominal capacity (Eq. 7).
++    """
++    coords = sensitivity_sampling_coords(operational)
++    idx = greedy_maximin_subset(coords, N_SENSITIVITY)
++    chosen = operational.iloc[idx].copy()
++    out = pd.DataFrame(
++        {
++            "sensitivity_id": [f"S{i:03d}" for i in range(1, len(chosen) + 1)],
++            "source_operational_id": chosen["operational_id"].to_numpy(),
++            "NV": chosen["NV"].to_numpy(),
++            "H_node": chosen["H_node"].to_numpy(),
++            "H_link": chosen["H_link"].to_numpy(),
++            "H_hash": chosen["H_hash"].to_numpy(),
++            "f_A": chosen["f_A"].to_numpy(),
++        }
++    )
++    return out
++
++
++# ---------------------------------------------------------------------------
++# TOPOLOGY TRANSLATION: Section IV-C1
++# ---------------------------------------------------------------------------
++# For each (N_V, C), the model draws a random node permutation and lets each
++# node initiate C forward connections in that circular ordering.
++#
++# Consequences checked below:
++#   * N_V * C directed initiation records / physical connections;
++#   * exactly C initiated and C accepted connections per node;
++#   * realized degree d_i = 2C because established connections are bidirectional;
++#   * no self, duplicate, or reciprocally initiated pair when 2C <= N_V - 1;
++#   * connectivity for C >= 1.
++#
++# The topology seed changes which operational resources/adversaries become
++# adjacent without changing the regular degree imposed by C.
++# ---------------------------------------------------------------------------
++
++def construct_topology(nv: int, c: int, seed: int) -> list[tuple[int, int]]:
++    """Manuscript Section IV-C1 topology: random permutation + C forward initiations."""
++    if c < 1:
++        raise ValueError("C must be >=1")
++    if 2 * c > nv - 1:
++        raise ValueError(f"Infeasible topology: 2C={2*c} > NV-1={nv-1}")
++    rng = np.random.default_rng(seed)
++    sigma = rng.permutation(nv)
++    edges: list[tuple[int, int]] = []
++    for r in range(nv):
++        u = int(sigma[r])
++        for offset in range(1, c + 1):
++            v = int(sigma[(r + offset) % nv])
++            edges.append((u, v))
++    return edges
++
++
++def verify_topology(nv: int, c: int, edges: Sequence[tuple[int, int]]) -> dict:
++    expected_edges = nv * c
++    if len(edges) != expected_edges:
++        return {"pass": False, "reason": f"edge_count={len(edges)} expected={expected_edges}"}
++
++    self_edges = [(u, v) for u, v in edges if u == v]
++    directed_unique = len(set(edges)) == len(edges)
++    undirected = [tuple(sorted((u, v))) for u, v in edges]
++    undirected_unique = len(set(undirected)) == len(undirected)
++
++    out = Counter(u for u, _ in edges)
++    inc = Counter(v for _, v in edges)
++    degree_ok = all(out[i] == c and inc[i] == c for i in range(nv))
++
++    adj = [[] for _ in range(nv)]
++    for u, v in edges:
++        adj[u].append(v)
++        adj[v].append(u)
++    seen = {0}
++    q = deque([0])
++    while q:
++        u = q.popleft()
++        for v in adj[u]:
++            if v not in seen:
++                seen.add(v)
++                q.append(v)
++    connected = len(seen) == nv
++
++    passed = (
++        not self_edges
++        and directed_unique
++        and undirected_unique
++        and degree_ok
++        and connected
++    )
++    return {
++        "pass": bool(passed),
++        "self_connection_count": len(self_edges),
++        "directed_unique": bool(directed_unique),
++        "no_second_or_reciprocal_connection": bool(undirected_unique),
++        "inbound_outbound_each_equal_C": bool(degree_ok),
++        "connected": bool(connected),
++        "directed_edge_count": len(edges),
++    }
++
++
++# ---------------------------------------------------------------------------
++# CROSSING AND EXECUTABLE TRANSLATION: Sections IV-C2/IV-C3 and V-B
++# ---------------------------------------------------------------------------
++# The primary experiment crosses every sampled design configuration with every
++# sampled operational condition.  Only after that crossing do we derive inputs
++# whose executable representation depends jointly on sampled values:
++#
++#   N_A        = integer attacker count derived from (f_A, N_V)
++#   m_node     = N_V
++#   m_hash     = N_V
++#   m_link     = 2C
++#   alpha_*    = (1-H)/(mH) for H>0; H=0 means equal shares
++#
++# Keeping f_A and H_* as the sampled variables is essential for the later
++# surrogate/fANOVA analysis.  The derived quantities are simulator-facing
++# translations or diagnostics and must not be treated as extra experimental
++# parameters.
++# ---------------------------------------------------------------------------
++
++# Section IV-C3 / Eq. attacker-count:
++# f_A remains the sampled operational parameter.  The simulator needs an integer
++# N_A: a single attacker (N_A = 1) holds hashing share f_A; f_A_realized = f_A is
++# retained only to expose rounding effects.
++def derive_attacker_count(nv: int, f_a: float) -> tuple[int, float]:
++    """Implement the manuscript attacker-count equation exactly.
++
++    N_A = 0 when f_A = 0; otherwise
++    N_A = max(1, round_half_up(f_A * N_V)).
++    The realized fraction N_A/N_V is retained only as a diagnostic.
++    """
++    nv = int(nv)
++    f_a = float(f_a)
++    if nv < 1:
++        raise ValueError(f"N_V must be positive; got {nv}.")
++    if not (FA_MIN <= f_a <= FA_MAX):
++        raise ValueError(f"f_A must lie in [{FA_MIN}, {FA_MAX}]; got {f_a}.")
++
++    # Single attacker (Eyal & Sirer): one adversarial node holds the sampled
++    # share f_A of the total hashing power; the honest nodes share the rest.
++    n_a = 0 if f_a == 0.0 else 1
++    realized = f_a
++    return n_a, realized
++
++
++def _expected_attacker_count_from_manuscript(nv: int, f_a: float) -> tuple[int, float]:
++    """Independent verification implementation of the manuscript equation."""
++    n_a = 0 if f_a == 0.0 else 1
++    return n_a, f_a
++
++# Translate sampled design--operational pairs into simulator-facing quantities.
++# The allocation dimension for H_link is 2C (adjacent peers), whereas H_node and
++# H_hash use N_V.  This is why these translations occur after crossing samples:
++# their internal alpha values depend on another sampled parameter even though
++# H_node/H_link/H_hash themselves were sampled as independent LHS dimensions.
++def add_translation_columns(pairs: pd.DataFrame) -> pd.DataFrame:
++    out = pairs.copy()
++
++    # f_A is sampled; N_A is derived for the simulator. Keep the realized
++    # fraction explicit so rounding/clipping is transparent in later analyses.
++    attacker_values = [
++        derive_attacker_count(int(nv), float(f_a))
++        for nv, f_a in zip(out["NV"], out["f_A"])
++    ]
++    out["N_A"] = [value[0] for value in attacker_values]
++    out["f_A_realized"] = [value[1] for value in attacker_values]
++
++    # Section IV-C2: node bandwidth and hashing power are allocations over N_V nodes.
++    out["m_node"] = out["NV"].astype(int)
++    out["m_hash"] = out["NV"].astype(int)
++    # Section IV-C2: each node allocates its bandwidth across its 2C adjacent peers.
++    out["m_link"] = 2 * out["C"].astype(int)
++
++    def alpha_series(mcol: str, hcol: str) -> list[float]:
++        vals = []
++        for m, h in zip(out[mcol], out[hcol]):
++            a = alpha_from_h(int(m), float(h))
++            vals.append(np.nan if a is None else a)
++        return vals
++
++    out["alpha_node"] = alpha_series("m_node", "H_node")
++    out["alpha_hash"] = alpha_series("m_hash", "H_hash")
++    out["alpha_link"] = alpha_series("m_link", "H_link")
++
++    out["m_eff_node"] = [effective_recipient_count(int(m), float(h)) for m, h in zip(out["m_node"], out["H_node"])]
++    out["m_eff_hash"] = [effective_recipient_count(int(m), float(h)) for m, h in zip(out["m_hash"], out["H_hash"])]
++    out["m_eff_link"] = [effective_recipient_count(int(m), float(h)) for m, h in zip(out["m_link"], out["H_link"])]
++
++    # Section IV-C1: sufficient feasibility condition for distinct non-reciprocal peers.
++    out["topology_feasible"] = (2 * out["C"] <= out["NV"] - 1)
++    out["aggregate_block_rate_per_s"] = 1.0 / out["BCI_s"]
++    out["nominal_capacity_proxy_MB_per_s"] = out["MBS_MB"] / out["BCI_s"]
++    out["bandwidth_budget_factor_NV_times_C"] = out["NV"] * out["C"]
++    # Planning estimate for simulator memory and execution guards (not a sampled
++    # quantity): transactions are submitted during kappa_tx_warm + K_tx canonical
++    # blocks of about BCI seconds each, and every validating node stores every
++    # gossiped transaction.
++    if "lambda_tx" in out.columns:
++        window_blocks = KAPPA_TX_WARM + np.minimum(K_TX_MAX, 4 * out["NV"].astype(int))
++        out["expected_transaction_submissions"] = out["lambda_tx"] * window_blocks * out["BCI_s"]
++        out["expected_transaction_knowledge_entries"] = out["expected_transaction_submissions"] * out["NV"]
++        out["batch_b"] = [transaction_batch_size(e) for e in out["expected_transaction_knowledge_entries"]]
++        out["expected_simulated_knowledge_entries"] = out["expected_transaction_knowledge_entries"] / out["batch_b"]
++    return out
++
++
++def transaction_batch_size(expected_entries: float) -> int:
++    """Smallest b in BATCH_OPTIONS keeping the simulated (node, message) pairs
++    under E_MAX_SIMULATED_ENTRIES. One simulated transaction then stands for b
++    transactions: b * S_tx bytes, submitted at rate lambda_tx / b."""
++    for b in BATCH_OPTIONS:
++        if expected_entries / b <= E_MAX_SIMULATED_ENTRIES:
++            return b
++    return BATCH_OPTIONS[-1]
++
++
++def overload_transaction_arrival_rate(
++    mbs_mb: np.ndarray | pd.Series | float,
++    bci_s: np.ndarray | pd.Series | float,
++    tx_size_mb: float,
++    u_cap: float = U_CAP_OVERLOAD,
++) -> np.ndarray:
++    """Manuscript Eq. 7: design-relative overload rate u_cap * MBS / (BCI * S_tx)."""
++    if tx_size_mb <= 0:
++        raise ValueError("transaction size must be > 0")
++    if u_cap <= 0:
++        raise ValueError("u_cap must be > 0")
++    mbs = np.asarray(mbs_mb, dtype=float)
++    bci = np.asarray(bci_s, dtype=float)
++    if np.any(mbs <= 0) or np.any(bci <= 0):
++        raise ValueError("MBS and BCI must be > 0")
++    nominal_capacity = mbs / (bci * float(tx_size_mb))
++    return float(u_cap) * nominal_capacity
++
++
++# Primary common-demand experiment (128 x 96, or nested 64 x 48 subset).
++def cross_design_operational(design: pd.DataFrame, operational: pd.DataFrame) -> pd.DataFrame:
++    """Cross every design with the same operational conditions (same absolute lambda_tx)."""
++    d = design.assign(_k=1)
++    o = operational.assign(_k=1)
++    pairs = d.merge(o, on="_k", how="inner").drop(columns="_k")
++    pairs["experiment_type"] = "primary_common_absolute_demand"
++    pairs["demand_definition"] = "sampled transaction_arrival_rate (tx/s), common to all designs"
++    return add_translation_columns(pairs)
++
++
++# Separate design-relative overload sensitivity experiment (128 x 32), Eq. 7.
++# transaction_arrival_rate differs between designs by construction.
++def cross_sensitivity(
++    design: pd.DataFrame,
++    sensitivity: pd.DataFrame,
++    tx_size_mb: float,
++    u_cap: float = U_CAP_OVERLOAD,
++) -> pd.DataFrame:
++    d = design.assign(_k=1)
++    s = sensitivity.assign(_k=1)
++    pairs = d.merge(s, on="_k", how="inner").drop(columns="_k")
++    pairs["u_cap"] = float(u_cap)
++    pairs["lambda_tx"] = overload_transaction_arrival_rate(pairs["MBS_MB"], pairs["BCI_s"], tx_size_mb, u_cap)
++    pairs["experiment_type"] = "separate_design_relative_overload_sensitivity"
++    pairs["demand_definition"] = "transaction_arrival_rate = u_cap * MBS / (BCI * S_tx) (Eq. 7)"
++    return add_translation_columns(pairs)
++
++
++def primary_workload_capacity_diagnostics(design: pd.DataFrame, tx_size_mb: float) -> pd.DataFrame:
++    """Audit-only comparison of the sampled demand range with nominal design capacity.
++
++    Not used to sample, filter, or modify any configuration.
++    """
++    if tx_size_mb <= 0:
++        raise ValueError("tx_size_mb must be > 0")
++    out = design[["design_id", "C", "BCI_s", "MBS_MB"]].copy()
++    out["nominal_capacity_tx_per_s"] = out["MBS_MB"] / (out["BCI_s"] * tx_size_mb)
++    out["load_to_capacity_at_lambda_min"] = LAMBDA_MIN / out["nominal_capacity_tx_per_s"]
++    out["load_to_capacity_at_lambda_max"] = LAMBDA_MAX / out["nominal_capacity_tx_per_s"]
++    # Share of the log-uniform demand range above capacity (expected share of overloaded conditions)
++    lo, hi = math.log(LAMBDA_MIN), math.log(LAMBDA_MAX)
++    cap = np.log(out["nominal_capacity_tx_per_s"].clip(lower=LAMBDA_MIN, upper=LAMBDA_MAX))
++    out["expected_overloaded_condition_share"] = (hi - cap) / (hi - lo)
++    return out
++
++
++# ---------------------------------------------------------------------------
++# CONFIGURATION-GENERATION VERIFICATION: Section V-C (partial coverage)
++# ---------------------------------------------------------------------------
++# This file can verify invariants that depend only on generated configurations:
++#   * sample sizes, ranges, uniqueness, and nesting;
++#   * topology feasibility and structural invariants;
++#   * attacker-count derivation;
++#   * allocation dimensions and Dirichlet alpha translations;
++#   * resource-share/bandwidth-budget conservation;
++#   * expected concentration under repeated Dirichlet draws;
++#   * common absolute demand in the primary experiment;
++#   * exactly 105% nominal load in the separate overload analysis.
++#
++# It CANNOT verify simulator/event-engine behavior such as realized Poisson
++# event rates, fork resolution, selfish-mining behavior, R_S/R_E replication,
++# warm-up/measurement/drain rules, or result-based sample adequacy.  Those
++# checks require the simulator or simulation outputs and are listed explicitly
++# in verify_all().
++# ---------------------------------------------------------------------------
++
++def _mc_check_h(m: int, h: float, draws: int, seed: int, z: float, abs_tol: float) -> dict:
++    if m < 2:
++        return {"pass": False, "m": m, "H_target": h, "reason": "m<2"}
++    if h == 0.0:
++        shares = np.full(m, 1.0 / m)
++        realized = normalized_concentration(shares)
++        return {
++            "pass": bool(np.isclose(realized, 0.0, atol=1e-14)),
++            "m": m,
++            "H_target": h,
++            "H_mean": realized,
++            "H_se": 0.0,
++            "tolerance": 1e-14,
++            "draws": 1,
++        }
++
++    alpha = alpha_from_h(m, h)
++    assert alpha is not None
++    analytic_h = 1.0 / (m * alpha + 1.0)
++    analytic_ok = math.isclose(analytic_h, h, rel_tol=1e-12, abs_tol=1e-12)
++
++    rng = np.random.default_rng(seed)
++    x = rng.dirichlet(np.full(m, alpha), size=draws)
++    hvals = (m * np.sum(x * x, axis=1) - 1.0) / (m - 1.0)
++    mean = float(np.mean(hvals))
++    sd = float(np.std(hvals, ddof=1)) if draws > 1 else 0.0
++    se = sd / math.sqrt(draws) if draws > 1 else 0.0
++    tolerance = max(abs_tol, z * se)
++    mc_ok = abs(mean - h) <= tolerance
++    return {
++        "pass": bool(analytic_ok and mc_ok),
++        "m": int(m),
++        "H_target": float(h),
++        "alpha": float(alpha),
++        "H_analytic": float(analytic_h),
++        "analytic_pass": bool(analytic_ok),
++        "H_mean": mean,
++        "H_se": se,
++        "tolerance": tolerance,
++        "draws": int(draws),
++        "monte_carlo_pass": bool(mc_ok),
++    }
++
++
++# Section IV-C2 verification of resource-allocation invariants.
++# For the regular topology, N_V*C physical connections imply 2*N_V*C endpoints;
++# therefore B_total = 2 * B_endpoint * N_V * C, which is algebraically the same
++# as the manuscript's 2 * B_endpoint * N_VC when N_VC=N_V*C.
++def verify_resource_translation(
++    operational: pd.DataFrame,
++    design: pd.DataFrame,
++    master_seed: int,
++    b_endpoint: float,
++) -> dict:
++    """One structural allocation smoke test for each operational condition and C value."""
++    if b_endpoint <= 0:
++        raise ValueError("b_endpoint must be >0")
++
++    c_values = sorted(set(int(x) for x in design["C"]))
++    failures: list[dict] = []
++    checked = 0
++
++    for op_row in operational.itertuples(index=False):
++        nv = int(op_row.NV)
++        hnode = float(op_row.H_node)
++        hlink = float(op_row.H_link)
++        hhash = float(op_row.H_hash)
++        op_id = str(op_row.operational_id)
++
++        # Node bandwidth and hashing power depend on N_V, not C.
++        rng_node = np.random.default_rng(_derived_seed(master_seed, f"verify_node_{op_id}"))
++        node_shares = draw_shares(nv, hnode, rng_node)
++        rng_hash = np.random.default_rng(_derived_seed(master_seed, f"verify_hash_{op_id}"))
++        hash_shares = draw_shares(nv, hhash, rng_hash)
++        if not np.isclose(node_shares.sum(), 1.0, atol=1e-12):
++            failures.append({"operational_id": op_id, "kind": "node_shares_sum"})
++        if not np.isclose(hash_shares.sum(), 1.0, atol=1e-12):
++            failures.append({"operational_id": op_id, "kind": "hash_shares_sum"})
++
++        for c in c_values:
++            checked += 1
++            if 2 * c > nv - 1:
++                failures.append({"operational_id": op_id, "C": c, "kind": "topology_infeasible"})
++                continue
++            # Regular topology: N_V*C connections and 2*N_V*C endpoints.
++            b_total = 2.0 * b_endpoint * nv * c
++            node_bw = node_shares * b_total
++            if not np.isclose(node_bw.sum(), b_total, rtol=1e-12, atol=1e-10):
++                failures.append({"operational_id": op_id, "C": c, "kind": "bandwidth_budget_sum"})
++
++            # Every node has the same H_link target and dimension 2C. Verify every
++            # node's endpoint allocation sums back to that node's bandwidth.
++            rng_link = np.random.default_rng(_derived_seed(master_seed, f"verify_link_{op_id}_C{c}"))
++            m = 2 * c
++            alpha = alpha_from_h(m, hlink)
++            if alpha is None:
++                link_shares = np.full((nv, m), 1.0 / m)
++            else:
++                link_shares = rng_link.dirichlet(np.full(m, alpha), size=nv)
++            endpoint_bw = link_shares * node_bw[:, None]
++            row_sums = endpoint_bw.sum(axis=1)
++            if not np.allclose(row_sums, node_bw, rtol=1e-11, atol=1e-9):
++                failures.append({"operational_id": op_id, "C": c, "kind": "link_bandwidth_row_sum"})
++
++    return {"pass": not failures, "checked_operational_C_combinations": checked, "failures": failures}
++
++
++# Consolidate every configuration-level verification that can be performed
++# before running the discrete-event simulator.  The returned report deliberately
++# separates implemented checks from checks that require simulator execution.
++def verify_all(
++    design: pd.DataFrame,
++    design64: pd.DataFrame,
++    operational: pd.DataFrame,
++    operational48: pd.DataFrame,
++    reference: pd.DataFrame,
++    sensitivity: pd.DataFrame,
++    primary_pairs: pd.DataFrame,
++    nested_pairs: pd.DataFrame,
++    sensitivity_pairs: pd.DataFrame,
++    master_seed: int,
++    mc_draws: int,
++    choices: ScriptChoices,
++    b_endpoint: float,
++    tx_size_mb: float,
++    reference_pairs: pd.DataFrame | None = None,
++) -> dict:
++    report: dict = {"checks": {}}
++    checks = report["checks"]
++
++    # Counts, uniqueness, ranges, nesting.
++    checks["counts"] = {
++        "pass": all(
++            [
++                len(design) == N_DESIGN_FINAL,
++                len(design64) == N_DESIGN_INITIAL,
++                len(operational) == N_OPERATIONAL_FINAL,
++                len(operational48) == N_OPERATIONAL_INITIAL,
++                len(reference) == 1,
++                len(sensitivity) == N_SENSITIVITY,
++                len(primary_pairs) == N_DESIGN_FINAL * N_OPERATIONAL_FINAL,
++                len(nested_pairs) == N_DESIGN_INITIAL * N_OPERATIONAL_INITIAL,
++                len(sensitivity_pairs) == N_DESIGN_FINAL * N_SENSITIVITY,
++            ]
++        ),
++        "design_final": len(design),
++        "design_initial": len(design64),
++        "operational_final": len(operational),
++        "operational_initial": len(operational48),
++        "reference": len(reference),
++        "sensitivity": len(sensitivity),
++        "primary_pairs": len(primary_pairs),
++        "nested_pairs": len(nested_pairs),
++        "sensitivity_pairs": len(sensitivity_pairs),
++    }
++
++    checks["uniqueness"] = {
++        "pass": all(
++            [
++                design["design_id"].is_unique,
++                operational["operational_id"].is_unique,
++                sensitivity["sensitivity_id"].is_unique,
++                sensitivity["source_operational_id"].is_unique,
++                _unique_rows(design, ["C", "BCI_s", "MBS_MB"]),
++                _unique_rows(operational, ["NV", "H_node", "H_link", "H_hash", "f_A", "lambda_tx"]),
++            ]
++        )
++    }
++
++    design_ids = set(design["design_id"])
++    op_ids = set(operational["operational_id"])
++    checks["nested_membership"] = {
++        "pass": set(design64["design_id"]).issubset(design_ids)
++        and set(operational48["operational_id"]).issubset(op_ids)
++        and set(sensitivity["source_operational_id"]).issubset(op_ids),
++        "all_8_design_boundaries_in_initial_64": bool(design64["is_boundary"].sum() == 8),
++        "corners_forced_by_script_choice": bool(choices.design_initial_forces_all_8_corners),
++        "sensitivity_32_is_subset_of_operational_96": bool(set(sensitivity["source_operational_id"]).issubset(op_ids)),
++    }
++    if choices.design_initial_forces_all_8_corners:
++        checks["nested_membership"]["pass"] = bool(
++            checks["nested_membership"]["pass"]
++            and checks["nested_membership"]["all_8_design_boundaries_in_initial_64"]
++        )
++
++    corners = set(
++        (int(c), int(bci), float(mbs))
++        for c, bci, mbs in itertools.product(
++            (C_MIN, C_MAX), (BCI_MIN, BCI_MAX), (MBS_MIN, MBS_MAX)
++        )
++    )
++    actual_boundaries = set(
++        (int(r.C), int(r.BCI_s), float(r.MBS_MB))
++        for r in design.loc[design["is_boundary"]].itertuples(index=False)
++    )
++    checks["design_boundaries"] = {"pass": actual_boundaries == corners, "count": len(actual_boundaries)}
++
++    range_ok = (
++        design["C"].between(C_MIN, C_MAX).all()
++        and design["BCI_s"].between(BCI_MIN, BCI_MAX).all()
++        and design["MBS_MB"].between(MBS_MIN, MBS_MAX).all()
++        and operational["NV"].between(NV_MIN, NV_MAX).all()
++        and operational["H_node"].between(HNODE_MIN, HNODE_MAX).all()
++        and operational["H_link"].between(HLINK_MIN, HLINK_MAX).all()
++        and operational["H_hash"].between(HHASH_MIN, HHASH_MAX).all()
++        and operational["f_A"].between(FA_MIN, FA_MAX).all()
++        and operational["lambda_tx"].between(LAMBDA_MIN, LAMBDA_MAX).all()
++        and sensitivity["NV"].between(NV_MIN, NV_MAX).all()
++        and sensitivity["H_node"].between(HNODE_MIN, HNODE_MAX).all()
++        and sensitivity["H_link"].between(HLINK_MIN, HLINK_MAX).all()
++        and sensitivity["H_hash"].between(HHASH_MIN, HHASH_MAX).all()
++        and sensitivity["f_A"].between(FA_MIN, FA_MAX).all()
++        and np.allclose(sensitivity_pairs["u_cap"].to_numpy(float), U_CAP_OVERLOAD, rtol=0.0, atol=0.0)
++    )
++    checks["parameter_ranges"] = {"pass": bool(range_ok)}
++
++    # Attacker count is derived from sampled f_A and N_V, never sampled independently.
++    attacker_failures = []
++    for table_name, table in [("primary", primary_pairs), ("sensitivity", sensitivity_pairs)]:
++        for row in table.itertuples(index=False):
++            expected_n, expected_realized = _expected_attacker_count_from_manuscript(int(row.NV), float(row.f_A))
++            if int(row.N_A) != expected_n or not math.isclose(
++                float(row.f_A_realized), expected_realized, rel_tol=0.0, abs_tol=1e-15
++            ):
++                if len(attacker_failures) < 20:
++                    attacker_failures.append({
++                        "table": table_name,
++                        "NV": int(row.NV),
++                        "f_A": float(row.f_A),
++                        "N_A": int(row.N_A),
++                        "expected_N_A": expected_n,
++                        "f_A_realized": float(row.f_A_realized),
++                        "expected_f_A_realized": expected_realized,
++                    })
++    checks["attacker_count_derivation"] = {
++        "pass": not attacker_failures,
++        "rule": "single attacker: N_A=0 if f_A=0, otherwise 1; the attacker holds hashing share f_A",
++        "failures": attacker_failures,
++    }
++
++    # Every crossed primary pair must be topology-feasible and H-translatable.
++    topology_cross_ok = bool(primary_pairs["topology_feasible"].all())
++    sens_topology_cross_ok = bool(sensitivity_pairs["topology_feasible"].all())
++    checks["all_crossed_pairs_topology_feasible"] = {
++        "pass": topology_cross_ok and sens_topology_cross_ok,
++        "primary_infeasible": int((~primary_pairs["topology_feasible"]).sum()),
++        "sensitivity_infeasible": int((~sensitivity_pairs["topology_feasible"]).sum()),
++        "global_sufficient_condition": f"2*C_max={2*C_MAX} <= NV_min-1={NV_MIN-1}",
++    }
++
++    # Explicit topology construction tests for every unique (C,NV) pair used in
++    # primary + sensitivity samples. This directly checks the manuscript invariants.
++    unique_nv = sorted(set(operational["NV"].astype(int)) | set(sensitivity["NV"].astype(int)) | {int(reference.iloc[0]["NV"])})
++    unique_c = sorted(set(design["C"].astype(int)))
++    topo_failures = []
++    topo_checked = 0
++    for nv in unique_nv:
++        for c in unique_c:
++            topo_checked += 1
++            seed = _derived_seed(master_seed, f"topology_nv{nv}_c{c}")
++            try:
++                edges = construct_topology(nv, c, seed)
++                result = verify_topology(nv, c, edges)
++                if not result["pass"]:
++                    topo_failures.append({"NV": nv, "C": c, **result})
++            except Exception as exc:  # verification report should retain failure details
++                topo_failures.append({"NV": nv, "C": c, "pass": False, "reason": repr(exc)})
++    checks["topology_construction"] = {
++        "pass": not topo_failures,
++        "checked_unique_C_NV_combinations": topo_checked,
++        "failures": topo_failures,
++    }
++
++    # Algebraic translation for every crossed pair.
++    alpha_cols = ["alpha_node", "alpha_hash", "alpha_link"]
++    finite_or_equal = True
++    bad_translation_rows = []
++    for table_name, table in [("primary", primary_pairs), ("sensitivity", sensitivity_pairs)]:
++        for row in table.itertuples(index=False):
++            vals = {
++                "node": (int(row.m_node), float(row.H_node), row.alpha_node),
++                "hash": (int(row.m_hash), float(row.H_hash), row.alpha_hash),
++                "link": (int(row.m_link), float(row.H_link), row.alpha_link),
++            }
++            for kind, (m, h, a) in vals.items():
++                ok = m >= 2 and 0 <= h < 1 and ((h == 0 and pd.isna(a)) or (h > 0 and np.isfinite(a) and a > 0))
++                if not ok:
++                    finite_or_equal = False
++                    if len(bad_translation_rows) < 20:
++                        bad_translation_rows.append({"table": table_name, "kind": kind, "m": m, "H": h, "alpha": None if pd.isna(a) else float(a)})
++    checks["heterogeneity_translation_all_pairs"] = {
++        "pass": bool(finite_or_equal),
++        "bad_examples": bad_translation_rows,
++        "rule": "m=N_V for H_node/H_hash; m=2C for H_link; H=0 equal shares; 0<H<1 uses alpha=(1-H)/(mH)",
++    }
++
++    # Resource sums. Include the homogeneous reference in this smoke test.
++    op_with_ref = pd.concat([operational, reference[operational.columns]], ignore_index=True)
++    checks["resource_allocation_sums"] = verify_resource_translation(
++        operational=op_with_ref,
++        design=design,
++        master_seed=master_seed,
++        b_endpoint=b_endpoint,
++    )
++
++    # Aggregate block rate check is algebraic once hashing shares sum to one.
++    expected = 1.0 / primary_pairs["BCI_s"].to_numpy(float)
++    checks["aggregate_block_rate"] = {
++        "pass": bool(np.allclose(primary_pairs["aggregate_block_rate_per_s"], expected, rtol=0, atol=0)),
++        "rule": "sum_i(pi_i/BCI) = 1/BCI whenever sum_i(pi_i)=1",
++    }
++    # Transaction-arrival rates: every simulation table must carry a finite,
++    # positive transaction_arrival_rate; primary demand is common across designs
++    # within a condition; overload demand is exactly 105% of each design's
++    # nominal capacity (Eq. 7); the reference uses the geometric midpoint.
++    tables = {"primary": primary_pairs, "nested": nested_pairs, "overload": sensitivity_pairs}
++    if reference_pairs is not None:
++        tables["reference"] = reference_pairs
++    rates_present = all(
++        "lambda_tx" in t.columns and np.all(np.isfinite(t["lambda_tx"].to_numpy(float))) and np.all(t["lambda_tx"].to_numpy(float) > 0)
++        for t in tables.values()
++    )
++    primary_common = bool((primary_pairs.groupby("operational_id")["lambda_tx"].nunique(dropna=False) == 1).all())
++    nested_matches_primary = bool(
++        nested_pairs.merge(primary_pairs[["design_id", "operational_id", "lambda_tx"]], on=["design_id", "operational_id"],
++                           suffixes=("", "_primary")).pipe(lambda m: np.allclose(m["lambda_tx"], m["lambda_tx_primary"], rtol=0, atol=0) and len(m) == len(nested_pairs))
++    )
++    expected_overload = overload_transaction_arrival_rate(sensitivity_pairs["MBS_MB"], sensitivity_pairs["BCI_s"], tx_size_mb, U_CAP_OVERLOAD)
++    overload_ok = bool(np.allclose(sensitivity_pairs["lambda_tx"].to_numpy(float), expected_overload, rtol=1e-12, atol=0))
++    nominal_capacity = sensitivity_pairs["MBS_MB"].to_numpy(float) / (sensitivity_pairs["BCI_s"].to_numpy(float) * float(tx_size_mb))
++    overload_ratio_ok = bool(np.allclose(sensitivity_pairs["lambda_tx"].to_numpy(float) / nominal_capacity, U_CAP_OVERLOAD, rtol=1e-12, atol=1e-12))
++    reference_ok = True
++    if reference_pairs is not None:
++        reference_ok = bool(np.allclose(reference_pairs["lambda_tx"].to_numpy(float), math.sqrt(LAMBDA_MIN * LAMBDA_MAX), rtol=0, atol=0))
++    checks["transaction_arrival_rate"] = {
++        "pass": bool(rates_present and primary_common and nested_matches_primary and overload_ok and overload_ratio_ok and reference_ok),
++        "exported_in_every_simulation_table": bool(rates_present),
++        "primary_common_across_designs_per_condition": primary_common,
++        "nested_rates_identical_to_primary": nested_matches_primary,
++        "overload_equals_eq7": overload_ok,
++        "overload_exactly_105pct_of_nominal_capacity": overload_ratio_ok,
++        "reference_geometric_midpoint": reference_ok,
++        "primary_rule": "transaction_arrival_rate sampled log-uniform in [0.5, 100] tx/s",
++        "overload_rule": "transaction_arrival_rate = 1.05 * MBS / (BCI * S_tx)",
++        "note": "Realized event-time arrival rates must be checked in the simulator (lambda_tx_effective in result JSONs).",
++    }
++
++    # Repeated Dirichlet allocation verification. Test all unique translation
++    # (dimension,target-H) pairs appearing in primary/reference/sensitivity data.
++    translation_keys: set[tuple[int, float, str]] = set()
++    combined_ops = pd.concat(
++        [
++            operational[["NV", "H_node", "H_link", "H_hash"]],
++            reference[["NV", "H_node", "H_link", "H_hash"]],
++            sensitivity[["NV", "H_node", "H_link", "H_hash"]],
++        ],
++        ignore_index=True,
++    )
++    for r in combined_ops.itertuples(index=False):
++        translation_keys.add((int(r.NV), float(r.H_node), "node"))
++        translation_keys.add((int(r.NV), float(r.H_hash), "hash"))
++        for c in unique_c:
++            translation_keys.add((2 * int(c), float(r.H_link), "link"))
++
++    mc_results = []
++    for idx, (m, h, kind) in enumerate(sorted(translation_keys, key=lambda x: (x[2], x[0], x[1]))):
++        seed = _derived_seed(master_seed, f"mc_h_{kind}_{m}_{h:.17g}", idx)
++        res = _mc_check_h(m, h, mc_draws, seed, choices.mc_z, choices.mc_abs_tol)
++        res["kind"] = kind
++        mc_results.append(res)
++    mc_failures = [r for r in mc_results if not r["pass"]]
++    checks["dirichlet_target_concentration"] = {
++        "pass": not mc_failures,
++        "unique_translation_cases": len(mc_results),
++        "mc_draws_per_nonzero_case": mc_draws,
++        "acceptance_rule": f"analytic identity must hold and |mean(H_realized)-H_target| <= max({choices.mc_abs_tol}, {choices.mc_z}*SE)",
++        "failures": mc_failures[:50],
++    }
++
++    report["simulator_only_checks_not_implemented_here"] = [
++        "Monte Carlo agreement of realized transaction-arrival/event timing with configured rates in the actual event engine",
++        "fork-resolution behavior against the SM-SIM reference",
++        "selfish-mining behavior against the SM-SIM reference",
++        "held-out surrogate prediction error and learning-curve/sample-adequacy checks, which require simulation results",
++    ]
++    report["configuration_verification_pass"] = all(bool(v.get("pass", False)) for v in checks.values())
++    report["pass"] = report["configuration_verification_pass"]  # backward-compatible alias
++    report["method_coverage"] = {
++        "implemented_here": [
++            "parameter ranges and sampling transforms",
++            "design/operational sample generation and crossing",
++            "homogeneous reference at geometric-midpoint N_V and lambda_tx; separate 105% design-relative overload configuration (Eq. 7) with an exported per-row transaction_arrival_rate",
++            "topology structural checks",
++            "resource-share sum and Dirichlet-concentration checks",
++        ],
++        "requires_simulator_or_results": report["simulator_only_checks_not_implemented_here"] + [
++            "R_S network-instance and R_E event-replication execution",
++            "pilot selection of R_S/R_E and metric-specific Monte Carlo tolerances",
++            "warm-up and measured canonical-chain block horizons",
++            "transaction drain, confirmation tracking, and right-censoring",
++            "adversarial hashing-power share per network instance",
++            "fixed transaction/latency/validation/confirmation/selfish-mining settings used by the simulator",
++        ],
++    }
++    return report
++
++
++# ---------------------------------------------------------------------------
++# REPLICATION-PACKAGE OUTPUTS
++# ---------------------------------------------------------------------------
++# User-facing simulation inputs are separated from audit material.
++# The simulation CSVs contain the sampled parameters plus only those derived
++# values required by the simulator (notably N_A and f_A_realized).  Audit files
++# retain candidate samples, nested subsets, translation diagnostics, random
++# seeds, metadata, and verification results so the reported sampling procedure
++# can be reconstructed.
++# ---------------------------------------------------------------------------
++
++def _json_default(obj):
++    if isinstance(obj, (np.integer,)):
++        return int(obj)
++    if isinstance(obj, (np.floating,)):
++        return float(obj)
++    if isinstance(obj, (np.bool_,)):
++        return bool(obj)
++    raise TypeError(type(obj).__name__)
++
++
++# Orchestrate the manuscript sampling workflow without performing simulations:
++# 1) derive lambda bounds from mean transaction size;
++# 2) generate 128 design configurations and 96 operational conditions;
++# 3) build the homogeneous reference and nested/overload subsets;
++# 4) cross samples into simulator input tables;
++# 5) verify configuration-generation invariants;
++# 6) emit user-facing inputs plus audit/replication metadata.
++#
++# METHOD-COMPATIBILITY NOTE
++# -------------------------
++# This script implements configuration generation and pre-simulation checks only.
++# It does not claim to implement the simulator-level verification/execution work
++# in Section V-C (R_S/R_E pilot selection, warm-up/measurement/drain periods,
++# realized Poisson-rate checks, or SM-SIM reference-behavior tests).
++def main() -> int:
++    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    parser.add_argument("--seed", type=int, default=1024, help="Master random seed s0 (default: 1024, matching the manuscript table).")
++    parser.add_argument(
++        "--tx-size-bytes",
++        type=float,
++        default=TX_SIZE_BYTES_DEFAULT,
++        help="Fixed transaction size S_tx used for nominal capacity and Eq. 7 (default: 500 bytes).",
++    )
++    parser.add_argument(
++        "--mb-bytes",
++        type=int,
++        default=1_000_000,
++        help="Bytes per MB used to put transaction size in the same units as MBS (default: 1,000,000).",
++    )
++    parser.add_argument("--out", type=Path, default=Path("generated_samples"), help="Output directory.")
++    parser.add_argument(
++        "--design-candidates",
++        type=int,
++        default=128,
++        help="Number of candidate 120-point design LHS samples compared by minimum distance. Manuscript does not specify this count.",
++    )
++    parser.add_argument(
++        "--mc-draws",
++        type=int,
++        default=256,
++        help="Dirichlet draws per nonzero (m,H) verification case (default: 256).",
++    )
++    parser.add_argument(
++        "--b-endpoint",
++        type=float,
++        default=1.0,
++        help="Baseline endpoint bandwidth used only to verify Eq. (5)-style budget sums. Scaling does not affect the invariant.",
++    )
++    args = parser.parse_args()
++
++    if args.tx_size_bytes <= 0:
++        parser.error("--tx-size-bytes must be > 0")
++    if args.mb_bytes <= 0:
++        parser.error("--mb-bytes must be > 0")
++    if args.mc_draws < 20:
++        parser.error("--mc-draws should be at least 20")
++
++    out_dir: Path = args.out
++    out_dir.mkdir(parents=True, exist_ok=True)
++
++    choices = ScriptChoices(
++        design_candidate_count=args.design_candidates,
++        design_initial_forces_all_8_corners=False,
++        mb_bytes=args.mb_bytes,
++    )
++    tx_size_mb = args.tx_size_bytes / args.mb_bytes
++
++    design, design_candidates, design_meta = generate_design_sample(args.seed, args.design_candidates)
++    operational, operational_meta = generate_operational_sample(args.seed)
++    reference = homogeneous_reference()
++    design64 = nested_design_64(design)
++    operational48 = nested_operational_48(operational)
++    sensitivity = sensitivity_32_from_operational(operational)
++
++    primary_pairs = cross_design_operational(design, operational)
++    nested_pairs = cross_design_operational(design64, operational48)
++    nested_pairs["experiment_type"] = "nested_sample_adequacy"
++    reference_pairs = cross_design_operational(design, reference[operational.columns])
++    reference_pairs["experiment_type"] = "homogeneous_reference_descriptive"
++    sensitivity_pairs = cross_sensitivity(design, sensitivity, tx_size_mb, U_CAP_OVERLOAD)
++    workload_diagnostics = primary_workload_capacity_diagnostics(design, tx_size_mb)
++    primary_capacity = primary_pairs["MBS_MB"] / (primary_pairs["BCI_s"] * tx_size_mb)
++    primary_overloaded_share = float((primary_pairs["lambda_tx"] > primary_capacity).mean())
++
++    # ------------------------------------------------------------------
++    # MAIN USER-FACING CSV FILES (simulation inputs)
++    # ------------------------------------------------------------------
++    # Every simulation CSV carries transaction_arrival_rate (tx/s), which the
++    # simulator uses as the Poisson submission rate without any translation.
++    _design_csv(design).to_csv(out_dir / "design_configurations_128.csv", index=False)
++    _operational_csv(operational).to_csv(out_dir / "operational_conditions_96.csv", index=False)
++    _primary_simulation_csv(primary_pairs).to_csv(out_dir / "simulation_primary_128x96.csv", index=False)
++    _primary_simulation_csv(nested_pairs).to_csv(out_dir / "simulation_nested_64x48.csv", index=False)
++    _overload_simulation_csv(sensitivity_pairs).to_csv(out_dir / "simulation_overload_105pct_128x32.csv", index=False)
++    _reference_simulation_csv(reference_pairs).to_csv(out_dir / "homogeneous_reference_128x1.csv", index=False)
++
++    # ------------------------------------------------------------------
++    # AUDIT / REPLICATION FILES
++    # ------------------------------------------------------------------
++    audit_dir = out_dir / "audit"
++    audit_dir.mkdir(parents=True, exist_ok=True)
++
++    _descriptive_csv_names(design64).to_csv(audit_dir / "design_64_nested.csv", index=False)
++    _descriptive_csv_names(operational48).to_csv(audit_dir / "operational_48_nested.csv", index=False)
++    _descriptive_csv_names(reference).to_csv(audit_dir / "operational_reference_condition.csv", index=False)
++    _descriptive_csv_names(sensitivity).to_csv(audit_dir / "overload_32_base_conditions.csv", index=False)
++    _descriptive_csv_names(workload_diagnostics, include_derived=True).to_csv(
++        audit_dir / "primary_workload_capacity_diagnostics.csv", index=False
++    )
++    _descriptive_csv_names(primary_pairs, include_derived=True).to_csv(audit_dir / "primary_128x96_detailed.csv", index=False)
++    _descriptive_csv_names(nested_pairs, include_derived=True).to_csv(audit_dir / "nested_64x48_detailed.csv", index=False)
++    _descriptive_csv_names(reference_pairs, include_derived=True).to_csv(
++        audit_dir / "homogeneous_reference_128x1_detailed.csv", index=False
++    )
++    _descriptive_csv_names(sensitivity_pairs, include_derived=True).to_csv(
++        audit_dir / "overload_105pct_128x32_detailed.csv", index=False
++    )
++    _descriptive_csv_names(design_candidates).to_csv(audit_dir / "design_lhs_candidates.csv", index=False)
++    pd.DataFrame(design_meta.pop("candidate_scores")).to_csv(audit_dir / "design_candidate_scores.csv", index=False)
++
++    verification = verify_all(
++        design=design,
++        design64=design64,
++        operational=operational,
++        operational48=operational48,
++        reference=reference,
++        sensitivity=sensitivity,
++        primary_pairs=primary_pairs,
++        nested_pairs=nested_pairs,
++        sensitivity_pairs=sensitivity_pairs,
++        master_seed=args.seed,
++        mc_draws=args.mc_draws,
++        choices=choices,
++        b_endpoint=args.b_endpoint,
++        tx_size_mb=tx_size_mb,
++        reference_pairs=reference_pairs,
++    )
++
++    metadata = {
++        "master_seed": int(args.seed),
++        "transaction_arrival_rate_range_per_s": [LAMBDA_MIN, LAMBDA_MAX],
++        "transaction_arrival_rate_scale": "logarithmic (log-uniform LHS coordinate)",
++        "transaction_size_bytes": float(args.tx_size_bytes),
++        "mb_bytes": int(args.mb_bytes),
++        "transaction_size_MB": float(tx_size_mb),
++        "csv_parameter_names": PARAMETER_CSV_NAMES,
++        "csv_parameter_units": PARAMETER_UNITS,
++        "design": design_meta,
++        "operational": operational_meta,
++        "primary_demand_treatment": {
++            "sampled_parameter": "transaction_arrival_rate (tx/s)",
++            "range_per_s": [LAMBDA_MIN, LAMBDA_MAX],
++            "independent_of_design_parameters": True,
++            "simulator_input": "transaction_arrival_rate used directly; no relative load, no lambda_ref",
++            "comparison_rule": "every design is crossed with the same 96 operational conditions",
++            "continuity_with_previous_rho_sample": "lambda_tx = 0.5 * 200 ** u for the same LHS coordinate u that gave rho = 0.50 + 0.55 u",
++            "expected_share_of_overloaded_primary_pairs": primary_overloaded_share,
++        },
++        "sensitivity": {
++            "source": "32-point subset of operational_96 selected by deterministic greedy maximin in five non-demand coordinates",
++            "capacity_load_factor_u_cap": U_CAP_OVERLOAD,
++            "transaction_size_bytes": float(args.tx_size_bytes),
++            "simulator_input": "transaction_arrival_rate = u_cap * MBS / (BCI * S_tx), exported per row (Eq. 7)",
++        },
++        "reference_condition": {
++            "validating_node_count": int(reference.iloc[0]["NV"]),
++            "transaction_arrival_rate_per_s": float(reference.iloc[0]["lambda_tx"]),
++            "H_node": 0.0, "H_link": 0.0, "H_hash": 0.0, "f_A": 0.0,
++        },
++        "execution_settings_applied_by_simulator": {
++            "kappa_warm": 4, "kappa_measure": 4,
++            "kappa_tx_warm": KAPPA_TX_WARM, "K_tx_max": K_TX_MAX,
++            "K_tx": "min(K_tx_max, kappa_measure * N_V)",
++            "T_drain_s": 14400, "R_S": 2, "R_E": 2,
++        },
++        "primary_workload_capacity_diagnostic": {
++            "audit_only": True,
++            "nominal_capacity_min_tx_per_s": float(workload_diagnostics["nominal_capacity_tx_per_s"].min()),
++            "nominal_capacity_max_tx_per_s": float(workload_diagnostics["nominal_capacity_tx_per_s"].max()),
++            "designs_never_overloaded": int((workload_diagnostics["load_to_capacity_at_lambda_max"] <= 1).sum()),
++            "designs_always_overloaded": int((workload_diagnostics["load_to_capacity_at_lambda_min"] > 1).sum()),
++        },
++        "script_choices_not_numerically_fixed_by_manuscript": asdict(choices),
++        "counts": {
++            "design_final": N_DESIGN_FINAL,
++            "design_lhs": N_DESIGN_LHS,
++            "design_boundaries": 8,
++            "design_initial_nested": N_DESIGN_INITIAL,
++            "operational_final": N_OPERATIONAL_FINAL,
++            "operational_reference_separate": 1,
++            "operational_initial_nested": N_OPERATIONAL_INITIAL,
++            "nested_pairs": N_DESIGN_INITIAL * N_OPERATIONAL_INITIAL,
++            "sensitivity_conditions": N_SENSITIVITY,
++        },
++        "manuscript_feasibility_summary": {
++            "topology": "2*C <= NV-1",
++            "node_bandwidth_dimension": "m=NV",
++            "hashing_power_dimension": "m=NV",
++            "link_bandwidth_dimension": "m=2*C",
++            "H_zero": "equal shares",
++            "H_positive": "0<H<1 and alpha=(1-H)/(mH)",
++            "attacker_count": "single attacker: N_A=0 if f_A=0, otherwise 1; the attacker holds hashing share f_A (alpha); honest nodes share 1-f_A with concentration H_hash",
++            "transaction_batching": f"one simulated transaction = b transactions of S_tx bytes; b = smallest of {BATCH_OPTIONS} with expected knowledge entries / b <= {E_MAX_SIMULATED_ENTRIES:.0e}; TPS is multiplied by b",
++        },
++    }
++
++    with (audit_dir / "sample_metadata.json").open("w", encoding="utf-8") as f:
++        json.dump(metadata, f, indent=2, default=_json_default)
++    with (audit_dir / "verification_report.json").open("w", encoding="utf-8") as f:
++        json.dump(verification, f, indent=2, default=_json_default)
++    with (audit_dir / "method_coverage.json").open("w", encoding="utf-8") as f:
++        json.dump(verification["method_coverage"], f, indent=2, default=_json_default)
++
++    print(f"\nWrote samples to: {out_dir.resolve()}")
++    print("\nSIMULATION INPUT FILES (each contains transaction_arrival_rate in tx/s):")
++    print(f"  {out_dir / 'simulation_primary_128x96.csv'}   12,288 pairs")
++    print(f"  {out_dir / 'simulation_nested_64x48.csv'}     3,072 pairs (nested subset of the primary sample)")
++    print(f"  {out_dir / 'simulation_overload_105pct_128x32.csv'}   4,096 pairs (Eq. 7, separate analysis)")
++    print(f"  {out_dir / 'homogeneous_reference_128x1.csv'}   128 pairs (descriptive reference)")
++    print("\nNINE EXPERIMENTAL PARAMETER COLUMNS:")
++    for name in ["connection_count", "block_creation_interval", "maximum_block_size", "validating_node_count",
++                 "node_bandwidth_heterogeneity", "link_bandwidth_heterogeneity", "hashing_power_concentration",
++                 "adversarial_hashing_power_share", "transaction_arrival_rate"]:
++        print(f"  {name}")
++    print("DERIVED COLUMNS: number_of_attackers (1 if share > 0), transaction_batch_size; capacity_load_factor (overload only)")
++    print("\nSUMMARY:")
++    print(f"  Design: 120 LHS + 8 boundaries = {len(design)}")
++    print(f"  Operational: {len(operational)} sampled + 1 homogeneous reference "
++          f"(N_V={int(reference.iloc[0]['NV'])}, lambda_tx={float(reference.iloc[0]['lambda_tx']):.4g} tx/s)")
++    print(f"  Nested initial stage: {len(design64)} x {len(operational48)}")
++    print(f"  Primary demand: {operational['lambda_tx'].min():.4g} to {operational['lambda_tx'].max():.4g} tx/s (log-uniform)")
++    print(f"  Overload demand (Eq. 7): {sensitivity_pairs['lambda_tx'].min():.4g} to {sensitivity_pairs['lambda_tx'].max():.4g} tx/s")
++    print(f"  Nominal capacity of designs: {workload_diagnostics['nominal_capacity_tx_per_s'].min():.4g} to "
++          f"{workload_diagnostics['nominal_capacity_tx_per_s'].max():.4g} tx/s")
++    print(f"  Primary pairs with demand above nominal capacity: {primary_overloaded_share:.1%}")
++    for label, pairs in [("primary", primary_pairs), ("overload", sensitivity_pairs)]:
++        ent = pairs["expected_transaction_knowledge_entries"]
++        print(f"  Expected transaction-knowledge entries per run ({label}): median {ent.median():,.0f}, "
++              f"95th percentile {ent.quantile(0.95):,.0f}, max {ent.max():,.0f}")
++        sim = pairs["expected_simulated_knowledge_entries"]
++        shares = pairs["batch_b"].value_counts(normalize=True).sort_index()
++        print(f"    with transaction batching: max {sim.max():,.0f} simulated entries; batch sizes "
++              + ", ".join(f"b={int(k)}: {v:.1%}" for k, v in shares.items()))
++    print("  -> guards: set maxTransactionKnowledgeEntries above "
++          f"{E_MAX_SIMULATED_ENTRIES:,.0f} (see audit/*_detailed.csv, column expected_simulated_transaction_knowledge_entries)")
++    print(f"  Configuration-generation verification: {'PASS' if verification['configuration_verification_pass'] else 'FAIL'}")
++    print("  Simulator-level checks (gossip coverage, effective lambda_tx, transaction window): run verify_pilot_results.py on a pilot")
++    if not verification["configuration_verification_pass"]:
++        print(f"See {audit_dir / 'verification_report.json'} for failed checks.")
++        return 2
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/BlockchainSystemModelLoader.java b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/BlockchainSystemModelLoader.java
+index fc35de23..b2afbfd7 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/BlockchainSystemModelLoader.java
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/BlockchainSystemModelLoader.java
+@@ -162,7 +162,19 @@ public class BlockchainSystemModelLoader {
+         requireRange("node_bandwidth_heterogeneity", hNode, 0.0, 0.50);
+         requireRange("link_bandwidth_heterogeneity", hLink, 0.0, 0.40);
+         requireRange("hashing_power_concentration", hHash, 0.0, 0.50);
+-        if (hasSampledAttackerFraction) {
++        // Single-attacker design (Eyal & Sirer): one adversarial node holds the
++        // sampled share alpha of the total hashing power.
++        final boolean hasAdversarialShare = c.containsKey("adversarial_hashing_power_share")
++                && c.get("adversarial_hashing_power_share") != null
++                && !c.get("adversarial_hashing_power_share").isBlank();
++        final double alpha = hasAdversarialShare ? requiredDouble(c, "adversarial_hashing_power_share") : Double.NaN;
++        if (hasAdversarialShare) {
++            if (hasSampledAttackerFraction) {
++                throw new IllegalArgumentException(
++                        "Use either adversarial_hashing_power_share (single attacker) or fraction_of_attackers, not both.");
++            }
++            requireRange("adversarial_hashing_power_share", alpha, 0.0, 0.25);
++        } else if (hasSampledAttackerFraction) {
+             requireRange("fraction_of_attackers", fA, 0.0, 0.25);
+         } else if (!c.containsKey("number_of_attackers") || c.get("number_of_attackers").isBlank()) {
+             throw new IllegalArgumentException(
+@@ -184,7 +196,14 @@ public class BlockchainSystemModelLoader {
+         system.getSpecification().setHashRateConcentration(hHash);
+ 
+         int derivedAttackers;
+-        if (hasSampledAttackerFraction) {
++        if (hasAdversarialShare) {
++            derivedAttackers = alpha > 0.0 ? 1 : 0;
++            if (c.containsKey("number_of_attackers") && !c.get("number_of_attackers").isBlank()
++                    && requiredInt(c, "number_of_attackers") != derivedAttackers) {
++                throw new IllegalArgumentException(
++                        "number_of_attackers must be " + derivedAttackers + " for adversarial_hashing_power_share=" + alpha);
++            }
++        } else if (hasSampledAttackerFraction) {
+             derivedAttackers = deriveAttackerCount(nv, fA);
+             if (c.containsKey("number_of_attackers") && !c.get("number_of_attackers").isBlank()) {
+                 int provided = requiredInt(c, "number_of_attackers");
+@@ -272,7 +291,21 @@ public class BlockchainSystemModelLoader {
+ 
+         // lambda_tx is in transactions/second; the current metamodel stores the
+         // mean interarrival time in milliseconds.
+-        system.getTransactionsSpecification().setMeanTransactionCreationInterval(1000.0 / lambdaTx);
++        // Transaction batching (computational feasibility): one simulated
++        // transaction stands for b transactions, i.e. a message of b * S_tx bytes
++        // submitted at rate lambda_tx / b. Block filling and bandwidth use are
++        // unchanged; TPS is multiplied by b in the result. b = 1 reproduces the
++        // unbatched model exactly.
++        final int batchSize = Integer.parseInt(c.getOrDefault("transaction_batch_size", "1").trim().replaceAll("\\.0+$", ""));
++        if (batchSize < 1) {
++            throw new IllegalArgumentException("transaction_batch_size must be >= 1; got " + batchSize);
++        }
++        try {
++            c.put("transaction_batch_size_effective", Integer.toString(batchSize));
++        } catch (UnsupportedOperationException ignored) {
++            // Read-only configuration maps are allowed.
++        }
++        system.getTransactionsSpecification().setMeanTransactionCreationInterval(1000.0 * batchSize / lambdaTx);
+ 
+         // Current study setting: fixed 500-byte transactions.  Preserve the
+         // existing fee and amount values/distribution while normalizing size.
+@@ -283,7 +316,7 @@ public class BlockchainSystemModelLoader {
+         system.getTransactionsSpecification()
+                 .getTransactionPropertiesSpecification()
+                 .getValues()
+-                .forEach(v -> v.setSize(transactionSizeBytes));
++                .forEach(v -> v.setSize(transactionSizeBytes * batchSize));
+ 
+         int confirmationDepth = Integer.parseInt(c.getOrDefault("confirmationDepthBlocks", "6"));
+         if (confirmationDepth < 1) {
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulationFactory.java b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulationFactory.java
+index 6ff02de7..f44a7e42 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulationFactory.java
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulationFactory.java
+@@ -177,7 +177,8 @@ public class TrilemmaSimulationFactory implements Simulation {
+                 transactionDrainMillis,
+                 retainTransactionFollowUpObservations,
+                 transactionWarmupBlocks,
+-                transactionMeasurementBlocksMax);
++                transactionMeasurementBlocksMax,
++                Integer.parseInt(configuration.getOrDefault("transaction_batch_size", "1").trim().replaceAll("\\.0+$", "")));
+     }
+ 
+     private ThreesimBlockchainSystemFactory createBlockchainSystemFactory(
+@@ -202,7 +203,7 @@ public class TrilemmaSimulationFactory implements Simulation {
+             double gamma = Double.parseDouble(configuration.getOrDefault("selfishMiningGamma", "0.5"));
+             boolean hasAttackers = designBlockchainSystem.getSpecification().getNumberOfAttacker() > 0;
+ 
+-            return new ConnectedSubgraphNetworkBlockchainSystemFactory(
++            ConnectedSubgraphNetworkBlockchainSystemFactory factory = new ConnectedSubgraphNetworkBlockchainSystemFactory(
+                     designBlockchainSystem,
+                     (ConnectedSubgraphsNetworkTopology) networkTopology,
+                     hasAttackers,
+@@ -210,6 +211,12 @@ public class TrilemmaSimulationFactory implements Simulation {
+                     gamma,
+                     networkSeed,
+                     eventSeed);
++            // Single-attacker design: the adversarial node holds the sampled share.
++            String alpha = configuration.get("adversarial_hashing_power_share");
++            if (alpha != null && !alpha.isBlank()) {
++                factory.setAdversarialHashingPowerShare(Double.parseDouble(alpha));
++            }
++            return factory;
+         }
+ 
+         if (networkTopology instanceof ExplicitNetworkTopology) {
+diff --git a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulator.java b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulator.java
+index 27deac62..22d92ed1 100644
+--- a/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulator.java
++++ b/trilemma/org.palladiosimulator.blockchainsystems.trilemma/src/org/palladiosimulator/blockchainsystems/trilemma/TrilemmaSimulator.java
+@@ -472,7 +472,9 @@ public class TrilemmaSimulator {
+         for (String key : List.of(
+                 "fraction_of_attackers",
+                 "number_of_attackers",
+-                "realized_fraction_of_attackers")) {
++                "realized_fraction_of_attackers",
++                "adversarial_hashing_power_share",
++                "transaction_batch_size")) {
+             String value = row.get(key);
+             if (value != null && !value.isBlank()) {
+                 b.append(key).append('=').append(value).append('|');
+@@ -618,6 +620,25 @@ public class TrilemmaSimulator {
+             throw new IllegalArgumentException(
+                     "Refined CSV requires fraction_of_attackers (preferred) or number_of_attackers for pilot compatibility: " + row);
+         }
++        String alphaRaw = row.get("adversarial_hashing_power_share");
++        if (alphaRaw != null && !alphaRaw.isBlank()) {
++            // Single-attacker design: one adversarial node holds share alpha.
++            if (hasFraction) {
++                throw new IllegalArgumentException(
++                        "Use either adversarial_hashing_power_share (single attacker) or fraction_of_attackers, not both: " + row);
++            }
++            double alpha = Double.parseDouble(alphaRaw);
++            if (!Double.isFinite(alpha) || alpha < 0.0 || alpha > 0.25) {
++                throw new IllegalArgumentException("adversarial_hashing_power_share outside [0,0.25]: " + alpha);
++            }
++            int supplied = hasCount ? (int) Math.rint(Double.parseDouble(row.get("number_of_attackers"))) : -1;
++            int expected = alpha > 0.0 ? 1 : 0;
++            if (hasCount && supplied != expected) {
++                throw new IllegalArgumentException(
++                        "number_of_attackers=" + supplied + " must be " + expected
++                                + " for adversarial_hashing_power_share=" + alpha);
++            }
++        }
+         if (hasFraction) {
+             final double fA;
+             final int nv;
+-- 
+2.43.0
+
